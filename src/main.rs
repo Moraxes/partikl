@@ -131,7 +131,7 @@ fn add_friction(mut particles: Query<(&Transform, &mut LastPosition, &mut Accele
     if velocity.length_squared() < VELOCITY_THRESHOLD {
       last_pos.0 = transform.translation;
     } else {
-      acceleration.0 -= velocity * 0.5;
+      acceleration.0 -= velocity * 0.125;
     }
   }
 }
