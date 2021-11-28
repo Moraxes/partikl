@@ -38,6 +38,37 @@ struct Category {
 #[derive(Component, Default, Clone, Copy)]
 struct CategoryId(usize);
 
+#[derive(Copy, Clone)]
+struct SimRegion {
+  top_right: Vec2
+}
+
+impl SimRegion {
+  pub fn new(width: f32, height: f32) -> SimRegion {
+    SimRegion { top_right: Vec2::new(width/2.0, height/2.0) }
+  }
+
+  pub fn get_corrected_position_delta(&self, origin: Vec3, target: Vec3) -> Vec3 {
+    let delta = target - origin;
+    delta + self.get_wrap_around_adjustment(delta)
+  }
+
+  pub fn get_wrap_around_adjustment(&self, point: Vec3) -> Vec3 {
+    let mut adjustment = Vec3::ZERO;
+    if point.x > self.top_right.x {
+      adjustment.x = -self.top_right.x;
+    } else if point.x < -self.top_right.x {
+      adjustment.x = self.top_right.x;
+    }
+    if point.y > self.top_right.y {
+      adjustment.y = -self.top_right.y;
+    } else if point.y < -self.top_right.y {
+      adjustment.y = self.top_right.y;
+    }
+    2.0 * adjustment
+  }
+}
+
 const DELTA_TIME: f64 = 0.01;
 const VELOCITY_THRESHOLD: f32 = 0.0001;
 
@@ -64,16 +95,17 @@ fn main() {
         .with_system(compute_forces)
         .with_system(add_friction)
         .with_system(integrate)
+        .with_system(wrap_around)
         .with_system(update_shape),
     )
     .add_system(bevy::input::system::exit_on_esc_system)
     .run();
 }
 
-fn compute_forces(categories: Res<Categories>, mut particles: Query<(&Transform, &mut Acceleration, &CategoryId)>) {
+fn compute_forces(categories: Res<Categories>, sim_region: Res<SimRegion>, mut particles: Query<(&Transform, &mut Acceleration, &CategoryId)>) {
   let mut iter = particles.iter_combinations_mut();
   while let Some([(transform1, mut acceleration1, cat1), (transform2, mut acceleration2, cat2)]) = iter.fetch_next() {
-    let delta = transform2.translation - transform1.translation;
+    let delta = sim_region.get_corrected_position_delta(transform1.translation, transform2.translation);
     let distance_sq: f32 = delta.length_squared();
     if distance_sq > 1600.0 {
       continue;
@@ -131,6 +163,14 @@ fn integrate(mut query: Query<(&mut Acceleration, &mut Transform, &mut LastPosit
     acceleration.0 = Vec3::ZERO;
     last_pos.0 = transform.translation;
     transform.translation = new_pos;
+  }
+}
+
+fn wrap_around(sim_region: Res<SimRegion>, mut query: Query<(&mut Transform, &mut LastPosition)>) {
+  for (mut transform, mut last_pos) in query.iter_mut() {
+    let adjustment = sim_region.get_wrap_around_adjustment(transform.translation);
+    transform.translation += adjustment;
+    last_pos.0 += adjustment;
   }
 }
 
@@ -217,7 +257,7 @@ fn generate_dots(
       category
     });
   }
-
+  commands.insert_resource(SimRegion::new(width, height));
   commands.spawn_bundle(OrthographicCameraBundle::new_2d());
 }
 
