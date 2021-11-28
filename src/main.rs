@@ -39,6 +39,7 @@ struct Category {
 struct CategoryId(usize);
 
 const DELTA_TIME: f64 = 0.01;
+const VELOCITY_THRESHOLD: f32 = 0.0001;
 
 fn main() {
   let mut rng = rand::thread_rng();
@@ -95,7 +96,7 @@ fn compute_forces(categories: Res<Categories>, mut particles: Query<(&mut Transf
 fn add_friction(mut particles: Query<(&Transform, &mut LastPosition, &mut Acceleration)>) {
   for (transform, mut last_pos, mut acceleration) in particles.iter_mut() {
     let velocity = (transform.translation - last_pos.0) / DELTA_TIME as f32;
-    if velocity.length_squared() < 0.0001 {
+    if velocity.length_squared() < VELOCITY_THRESHOLD {
       last_pos.0 = transform.translation;
     } else {
       acceleration.0 -= velocity * 0.5;
@@ -136,13 +137,15 @@ fn integrate(mut query: Query<(&mut Acceleration, &mut Transform, &mut LastPosit
 fn update_shape(mut query: Query<(&mut Transform, &LastPosition)>) {
   for (mut transform, last_pos) in query.iter_mut() {
     let velocity = (transform.translation - last_pos.0).truncate();
-    transform.scale = scale_from_velocity(velocity);
-    transform.rotation = rotation_from_velocity(velocity);
+    let velocity_length_sq = velocity.length_squared();
+    if velocity_length_sq > VELOCITY_THRESHOLD {
+      transform.scale = scale_from_velocity(velocity_length_sq);
+      transform.rotation = rotation_from_velocity(velocity);
+    }
   }
 }
 
-fn scale_from_velocity(velocity: Vec2) -> Vec3 {
-  let velocity_length_sq = velocity.length_squared();
+fn scale_from_velocity(velocity_length_sq: f32) -> Vec3 {
   let coeff = (2.0 + velocity_length_sq).log2();
   Vec3::new(coeff, 0.75 / coeff + 0.25, 1.0)
 }
