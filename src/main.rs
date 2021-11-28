@@ -96,7 +96,7 @@ fn add_friction(mut particles: Query<(&Transform, &mut LastPosition, &mut Accele
   for (transform, mut last_pos, mut acceleration) in particles.iter_mut() {
     let velocity = (transform.translation - last_pos.0) / DELTA_TIME as f32;
     if velocity.length_squared() < 0.0001 {
-      last_pos.0 = Vec3::ZERO;
+      last_pos.0 = transform.translation;
     } else {
       acceleration.0 -= velocity * 0.5;
     }
