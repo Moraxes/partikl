@@ -70,7 +70,7 @@ fn main() {
     .run();
 }
 
-fn compute_forces(categories: Res<Categories>, mut particles: Query<(&mut Transform, &mut Acceleration, &CategoryId)>) {
+fn compute_forces(categories: Res<Categories>, mut particles: Query<(&Transform, &mut Acceleration, &CategoryId)>) {
   let mut iter = particles.iter_combinations_mut();
   while let Some([(transform1, mut acceleration1, cat1), (transform2, mut acceleration2, cat2)]) = iter.fetch_next() {
     let delta = transform2.translation - transform1.translation;
@@ -170,7 +170,7 @@ fn generate_dots(
   }));
 
   const CORNERS: i32 = 16;
-  const DIAMETER: f32 = 4.0;
+  const DIAMETER: f32 = 10.0;
   let mut mesh = Mesh::new(bevy::render::pipeline::PrimitiveTopology::TriangleList);
   let mut v_pos = vec![[0.0, 0.0, 0.0]];
   v_pos.extend((0..CORNERS).map(|it| {
