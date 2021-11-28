@@ -72,13 +72,20 @@ impl SimRegion {
 const DELTA_TIME: f64 = 0.01;
 const VELOCITY_THRESHOLD: f32 = 0.0001;
 
+fn get_random_color(rng: &mut impl Rng) -> [f32; 3] {
+  use rand::seq::SliceRandom;
+  let mut rgb = [1.0, 0.0, rng.gen()];
+  rgb.shuffle(rng);
+  rgb
+}
+
 fn main() {
   let mut rng = rand::thread_rng();
   let mut categories = Categories(Vec::new());
   for _ in 0..3 {
     categories.0.push(Category {
       force_coeffs: vec![100.0 * rng.gen::<f32>() - 50.0, 100.0 * rng.gen::<f32>() - 50.0, 100.0 * rng.gen::<f32>() - 50.0],
-      color: [rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()],
+      color: get_random_color(&mut rng),
       mesh_handle: Default::default()
     });
   }
@@ -210,7 +217,7 @@ fn generate_dots(
   }));
 
   const CORNERS: i32 = 16;
-  const DIAMETER: f32 = 10.0;
+  const DIAMETER: f32 = 8.0;
   let mut mesh = Mesh::new(bevy::render::pipeline::PrimitiveTopology::TriangleList);
   let mut v_pos = vec![[0.0, 0.0, 0.0]];
   v_pos.extend((0..CORNERS).map(|it| {
