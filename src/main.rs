@@ -127,7 +127,7 @@ fn compute_forces(categories: Res<Categories>, sim_region: Res<SimRegion>, mut p
       acceleration2.0 += safety_margin_repulsion_force;
     } else {
       acceleration1.0 += zigzag_kernel(categories.0[cat2.0].force_coeffs[cat1.0], 30.0, 10.0, distance) * distance_unit_vector;
-      // acceleration2.0 += attraction_force(categories.0[cat1.0].force_coeffs[cat2.0], distance) * distance_unit_vector;
+      acceleration2.0 -= zigzag_kernel(categories.0[cat1.0].force_coeffs[cat2.0], 30.0, 10.0, distance) * distance_unit_vector;
     }
   }
 }
