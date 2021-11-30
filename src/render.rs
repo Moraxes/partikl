@@ -20,11 +20,12 @@ pub fn generate_categories(
   let mut rng = rand::thread_rng();
   let mut categories = core::Categories(Vec::new());
   for _ in 0..3 {
-    categories.0.push(core::Category {
-      force_coeffs: vec![100.0 * rng.gen::<f32>() - 50.0, 100.0 * rng.gen::<f32>() - 50.0, 100.0 * rng.gen::<f32>() - 50.0],
+    let category = core::Category {
+      force_coeffs: vec![1000.0 * rng.gen::<f32>() - 500.0, 1000.0 * rng.gen::<f32>() - 500.0, 1000.0 * rng.gen::<f32>() - 500.0],
       color: get_random_color(&mut rng),
       mesh_handle: Default::default()
-    });
+    };
+    categories.0.push(category);
   }
   commands.insert_resource(categories);
 }
