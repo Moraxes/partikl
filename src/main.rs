@@ -23,6 +23,7 @@ enum System {
 
 fn main() {
   App::new()
+    .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
     .insert_resource(Msaa { samples: 8 })
     .add_plugins(DefaultPlugins)
     .add_stage_before(
