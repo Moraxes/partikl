@@ -14,18 +14,9 @@ fn get_random_color(rng: &mut impl Rng) -> [f32; 3] {
   rgb
 }
 
-pub fn generate_particles(
+pub fn generate_categories(
   mut commands: Commands,
-  mut meshes: ResMut<Assets<Mesh>>,
-  mut pipelines: ResMut<Assets<PipelineDescriptor>>,
-  mut shaders: ResMut<Assets<Shader>>,
-  windows: Res<Windows>
 ) {
-  let pipeline_handle = pipelines.add(PipelineDescriptor::default_config(ShaderStages {
-    vertex: shaders.add(Shader::from_glsl(ShaderStage::Vertex, VERTEX_SHADER)),
-    fragment: Some(shaders.add(Shader::from_glsl(ShaderStage::Fragment, FRAGMENT_SHADER))),
-  }));
-
   let mut rng = rand::thread_rng();
   let mut categories = core::Categories(Vec::new());
   for _ in 0..3 {
@@ -35,7 +26,13 @@ pub fn generate_particles(
       mesh_handle: Default::default()
     });
   }
+  commands.insert_resource(categories);
+}
 
+pub fn generate_meshes(
+  mut meshes: ResMut<Assets<Mesh>>,
+  mut categories: ResMut<core::Categories>,
+) {
   const CORNERS: i32 = 16;
   const DIAMETER: f32 = 8.0;
   let mut mesh = Mesh::new(bevy::render::pipeline::PrimitiveTopology::TriangleList);
@@ -58,7 +55,20 @@ pub fn generate_particles(
     mesh_clone.set_indices(Some(bevy::render::mesh::Indices::U32(indices)));
     cat.mesh_handle = meshes.add(mesh_clone);
   }
+}
 
+pub fn generate_particles(
+  mut commands: Commands,
+  mut pipelines: ResMut<Assets<PipelineDescriptor>>,
+  mut shaders: ResMut<Assets<Shader>>,
+  categories: Res<core::Categories>,
+  windows: Res<Windows>
+) {
+  let mut rng = rand::thread_rng();
+  let pipeline_handle = pipelines.add(PipelineDescriptor::default_config(ShaderStages {
+    vertex: shaders.add(Shader::from_glsl(ShaderStage::Vertex, VERTEX_SHADER)),
+    fragment: Some(shaders.add(Shader::from_glsl(ShaderStage::Fragment, FRAGMENT_SHADER))),
+  }));
   let window = windows.get_primary().expect("no primary window");
   let width = window.width();
   let height = window.height();
@@ -86,7 +96,6 @@ pub fn generate_particles(
       category
     });
   }
-  commands.insert_resource(categories);
   commands.insert_resource(core::SimRegion::new(width, height));
 }
 
