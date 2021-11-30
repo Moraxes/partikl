@@ -18,9 +18,10 @@ pub fn compute_forces(categories: Res<Categories>, sim_region: Res<SimRegion>, m
       let safety_margin_repulsion_force = (1000.0 - 100.0 * distance) * distance_unit_vector;
       acceleration1.0 -= safety_margin_repulsion_force;
       acceleration2.0 += safety_margin_repulsion_force;
-    } else {
-      acceleration1.0 += zigzag_kernel(categories.0[cat2.0].force_coeffs[cat1.0], 30.0, 10.0, distance) * distance_unit_vector;
-      acceleration2.0 -= zigzag_kernel(categories.0[cat1.0].force_coeffs[cat2.0], 30.0, 10.0, distance) * distance_unit_vector;
+    } else if cat1.0 < cat2.0 {
+      acceleration1.0 += triangular_kernel(categories.0[cat2.0].force_coeffs[cat1.0], 30.0, 10.0, distance) * distance_unit_vector;
+    } else if cat1.0 > cat2.0 {
+      acceleration2.0 -= triangular_kernel(categories.0[cat1.0].force_coeffs[cat2.0], 30.0, 10.0, distance) * distance_unit_vector;
     }
   }
 }
@@ -31,15 +32,18 @@ pub fn add_friction(mut particles: Query<(&Transform, &mut LastPosition, &mut Ac
     if velocity.length_squared() < VELOCITY_THRESHOLD {
       last_pos.0 = transform.translation;
     } else {
-      acceleration.0 -= velocity * 0.125;
+      let velocity_length = velocity.length();
+      acceleration.0 -= 0.01 * velocity * velocity_length;
     }
   }
 }
 
+#[allow(dead_code)]
 fn zigzag_kernel(magnitude: f32, middle: f32, width: f32, x: f32) -> f32 {
   magnitude * unit_zigzag((x - middle) / width)
 }
 
+#[allow(dead_code)]
 fn unit_zigzag(x: f32) -> f32 {
   triangular_kernel(-1.0, -1.0, 2.0, 3.0 * x) + triangular_kernel(1.0, 1.0, 2.0, 3.0 * x)
 }
