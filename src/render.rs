@@ -14,7 +14,7 @@ fn get_random_color(rng: &mut impl Rng) -> [f32; 3] {
   rgb
 }
 
-pub fn generate_categories(
+pub fn init_categories(
   mut commands: Commands,
 ) {
   let mut rng = rand::thread_rng();
@@ -30,7 +30,7 @@ pub fn generate_categories(
   commands.insert_resource(categories);
 }
 
-pub fn generate_meshes(
+pub fn init_meshes(
   mut meshes: ResMut<Assets<Mesh>>,
   mut categories: ResMut<core::Categories>,
 ) {
@@ -58,7 +58,7 @@ pub fn generate_meshes(
   }
 }
 
-pub fn generate_particles(
+pub fn init_particles(
   mut commands: Commands,
   mut pipelines: ResMut<Assets<PipelineDescriptor>>,
   mut shaders: ResMut<Assets<Shader>>,

@@ -14,14 +14,14 @@ mod ui;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[derive(StageLabel)]
 enum Stage {
-  GenerateCategories,
+  InitCategories,
   FixedUpdateStage,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[derive(SystemLabel)]
 enum System {
-  GenerateParticles,
+  InitParticles,
 }
 
 fn main() {
@@ -46,15 +46,15 @@ fn main() {
     .add_plugin(FrameTimeDiagnosticsPlugin::default())
     .add_stage_before(
       CoreStage::Startup,
-      Stage::GenerateCategories,
+      Stage::InitCategories,
       SystemStage::single_threaded()
         .with_run_criteria(RunOnce::default())
-        .with_system(render::generate_categories))
-    .add_startup_system(render::generate_meshes.system().before(System::GenerateParticles))
-    .add_startup_system(render::generate_particles.system().label(System::GenerateParticles))
-    .add_startup_system(ui::generate_ui)
+        .with_system(render::init_categories))
+    .add_startup_system(render::init_meshes.system().before(System::InitParticles))
+    .add_startup_system(render::init_particles.system().label(System::InitParticles))
+    .add_startup_system(ui::init_ui)
     .add_stage_after(
-      CoreStage::Update,
+      CoreStage::Startup,
       Stage::FixedUpdateStage,
       SystemStage::parallel()
         .with_run_criteria(FixedTimestep::step(core::DELTA_TIME))

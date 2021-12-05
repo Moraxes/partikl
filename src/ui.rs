@@ -4,7 +4,7 @@ use bevy::prelude::*;
 #[derive(Component)]
 pub struct FpsText;
 
-pub fn generate_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn init_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
   commands.spawn_bundle(UiCameraBundle::default());
   commands.spawn_bundle(TextBundle {
     style: Style {
