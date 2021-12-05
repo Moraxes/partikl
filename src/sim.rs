@@ -1,6 +1,26 @@
 use bevy::prelude::*;
+use bevy::core::FixedTimestep;
 
 use crate::core::*;
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(SystemLabel)]
+enum System {
+  ComputeFriction,
+  Integrate
+}
+
+pub fn simulation_stage() -> SystemStage {
+  SystemStage::parallel()
+    .with_run_criteria(FixedTimestep::step(DELTA_TIME))
+    .with_system(compute_forces.before(System::ComputeFriction))
+    .with_system(compute_friction
+      .label(System::ComputeFriction)
+      .before(System::Integrate))
+    .with_system(integrate.label(System::Integrate))
+    .with_system(wrap_around.after(System::Integrate))
+    .with_system(update_shape.after(System::Integrate))
+}
 
 pub fn compute_forces(categories: Res<Categories>, sim_region: Res<SimRegion>, mut particles: Query<(&Transform, &mut Acceleration, &CategoryId)>) {
   let mut iter = particles.iter_combinations_mut();
@@ -26,7 +46,7 @@ pub fn compute_forces(categories: Res<Categories>, sim_region: Res<SimRegion>, m
   }
 }
 
-pub fn add_friction(mut particles: Query<(&Transform, &mut LastPosition, &mut Acceleration)>) {
+pub fn compute_friction(mut particles: Query<(&Transform, &mut LastPosition, &mut Acceleration)>) {
   for (transform, mut last_pos, mut acceleration) in particles.iter_mut() {
     let velocity = (transform.translation - last_pos.0) / DELTA_TIME as f32;
     if velocity.length_squared() < VELOCITY_THRESHOLD {

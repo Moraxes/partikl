@@ -1,7 +1,4 @@
-use bevy::{
-  core::FixedTimestep,
-  prelude::*,
-};
+use bevy::prelude::*;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::ecs::schedule::RunOnce;
 use bevy::window::WindowMode;
@@ -50,19 +47,13 @@ fn main() {
       SystemStage::single_threaded()
         .with_run_criteria(RunOnce::default())
         .with_system(render::init_categories))
-    .add_startup_system(render::init_meshes.system().before(System::InitParticles))
-    .add_startup_system(render::init_particles.system().label(System::InitParticles))
+    .add_startup_system(render::init_meshes.before(System::InitParticles))
+    .add_startup_system(render::init_particles.label(System::InitParticles))
     .add_startup_system(ui::init_ui)
     .add_stage_after(
       CoreStage::Startup,
       Stage::FixedUpdateStage,
-      SystemStage::parallel()
-        .with_run_criteria(FixedTimestep::step(core::DELTA_TIME))
-        .with_system(sim::compute_forces)
-        .with_system(sim::add_friction)
-        .with_system(sim::integrate)
-        .with_system(sim::wrap_around)
-        .with_system(sim::update_shape),
+      sim::simulation_stage(),
     )
     .add_system(ui::update_text)
     .add_system(bevy::input::system::exit_on_esc_system)
