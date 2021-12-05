@@ -8,10 +8,19 @@ use std::f32::consts::PI;
 
 use crate::core;
 
-fn get_random_color(rng: &mut impl Rng) -> [f32; 3] {
-  let mut rgb = [1.0, 0.0, rng.gen()];
-  rgb.shuffle(rng);
-  rgb
+fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<[f32; 3]> {
+  let phase = 360.0 * rng.gen::<f32>();
+  (0..n).map(|it| {
+    let mut hue = phase + 360.0 * it as f32 / n as f32;
+    if hue > 0.0 {
+      hue -= 360.0;
+    }
+    let rgba = Color::hsl(hue,
+      0.5 + 0.5 * rng.gen::<f32>(),
+      0.25 + 0.5 * rng.gen::<f32>()
+    ).as_rgba_f32();
+    [rgba[0], rgba[1], rgba[2]]
+  }).collect()
 }
 
 pub fn init_categories(
@@ -19,10 +28,10 @@ pub fn init_categories(
 ) {
   let mut rng = rand::thread_rng();
   let mut categories = core::Categories(Vec::new());
-  for _ in 0..3 {
+  for col in get_random_colors(3, &mut rng) {
     let category = core::Category {
       force_coeffs: vec![1000.0 * rng.gen::<f32>() - 500.0, 1000.0 * rng.gen::<f32>() - 500.0, 1000.0 * rng.gen::<f32>() - 500.0],
-      color: get_random_color(&mut rng),
+      color: col,
       mesh_handle: Default::default()
     };
     categories.0.push(category);
