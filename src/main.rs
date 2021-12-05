@@ -3,6 +3,7 @@ use bevy::{
   prelude::*,
 };
 use bevy::ecs::schedule::RunOnce;
+use bevy::window::WindowMode;
 
 mod core;
 mod render;
@@ -25,6 +26,20 @@ fn main() {
   App::new()
     .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
     .insert_resource(Msaa { samples: 8 })
+    .insert_resource(WindowDescriptor {
+      width: 1920.0,
+      height: 1080.0,
+      position: None,
+      resize_constraints: Default::default(),
+      scale_factor_override: None,
+      title: "partikl".to_string(),
+      vsync: false,
+      resizable: false,
+      decorations: false,
+      cursor_visible: false,
+      cursor_locked: false,
+      mode: WindowMode::BorderlessFullscreen
+    })
     .add_plugins(DefaultPlugins)
     .add_stage_before(
       CoreStage::Startup,
