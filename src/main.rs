@@ -32,7 +32,7 @@ fn main() {
       resize_constraints: Default::default(),
       scale_factor_override: None,
       title: "partikl".to_string(),
-      vsync: false,
+      vsync: true,
       resizable: false,
       decorations: false,
       cursor_visible: false,
