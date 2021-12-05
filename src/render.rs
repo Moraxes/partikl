@@ -98,9 +98,6 @@ pub fn generate_particles(
     });
   }
   commands.insert_resource(core::SimRegion::new(width, height));
-}
-
-pub fn generate_ui(mut commands: Commands) {
   commands.spawn_bundle(OrthographicCameraBundle::new_2d());
 }
 

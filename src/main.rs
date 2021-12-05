@@ -2,12 +2,14 @@ use bevy::{
   core::FixedTimestep,
   prelude::*,
 };
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::ecs::schedule::RunOnce;
 use bevy::window::WindowMode;
 
 mod core;
 mod render;
 mod sim;
+mod ui;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[derive(StageLabel)]
@@ -41,6 +43,7 @@ fn main() {
       mode: WindowMode::BorderlessFullscreen
     })
     .add_plugins(DefaultPlugins)
+    .add_plugin(FrameTimeDiagnosticsPlugin::default())
     .add_stage_before(
       CoreStage::Startup,
       Stage::GenerateCategories,
@@ -49,7 +52,7 @@ fn main() {
         .with_system(render::generate_categories))
     .add_startup_system(render::generate_meshes.system().before(System::GenerateParticles))
     .add_startup_system(render::generate_particles.system().label(System::GenerateParticles))
-    .add_startup_system(render::generate_ui)
+    .add_startup_system(ui::generate_ui)
     .add_stage_after(
       CoreStage::Update,
       Stage::FixedUpdateStage,
@@ -61,6 +64,7 @@ fn main() {
         .with_system(sim::wrap_around)
         .with_system(sim::update_shape),
     )
+    .add_system(ui::update_text)
     .add_system(bevy::input::system::exit_on_esc_system)
     .run();
 }
