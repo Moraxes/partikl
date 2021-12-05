@@ -85,11 +85,20 @@ pub fn integrate(mut query: Query<(&mut Acceleration, &mut Transform, &mut LastP
   }
 }
 
-pub fn wrap_around(sim_region: Res<SimRegion>, mut query: Query<(&mut Transform, &mut LastPosition)>) {
-  for (mut transform, mut last_pos) in query.iter_mut() {
+pub fn wrap_around(
+  sim_region: Res<SimRegion>,
+  mut spatial_index: ResMut<SpatialIndex>,
+  mut query: Query<(Entity, &mut Transform, &mut LastPosition)>
+) {
+  for (entity, mut transform, mut last_pos) in query.iter_mut() {
+    let x_old = last_pos.0.x;
+    let y_old = last_pos.0.y;
     let adjustment = sim_region.get_wrap_around_adjustment(transform.translation);
     transform.translation += adjustment;
     last_pos.0 += adjustment;
+    let x_new = transform.translation.x;
+    let y_new = transform.translation.y;
+    spatial_index.move_entity(entity, x_old, y_old, x_new, y_new);
   }
 }
 

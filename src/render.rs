@@ -79,6 +79,10 @@ pub fn init_particles(
     vertex: shaders.add(Shader::from_glsl(ShaderStage::Vertex, VERTEX_SHADER)),
     fragment: Some(shaders.add(Shader::from_glsl(ShaderStage::Fragment, FRAGMENT_SHADER))),
   }));
+  let mut spatial_index = core::SpatialIndex {
+    granularity: 40.0,
+    ..Default::default()
+  };
   let window = windows.get_primary().expect("no primary window");
   let width = window.width();
   let height = window.height();
@@ -92,7 +96,7 @@ pub fn init_particles(
       rng.gen::<f32>() * 250f32 - 125f32,
       rng.gen::<f32>() * 250f32 - 125f32,
       0.0);
-    commands.spawn_bundle(core::ParticleBundle {
+    let entity = commands.spawn_bundle(core::ParticleBundle {
       mesh: MeshBundle {
         transform: Transform::from_translation(translation),
         mesh: categories.0[category.0].mesh_handle.clone(),
@@ -104,9 +108,11 @@ pub fn init_particles(
       acceleration: core::Acceleration(Vec3::new(0.0, 0.0, 0.0)),
       last_pos: core::LastPosition(translation - core::DELTA_TIME as f32 * starting_velocity),
       category
-    });
+    }).id();
+    spatial_index.insert_entity(entity, position_x, position_y);
   }
   commands.insert_resource(core::SimRegion::new(width, height));
+  commands.insert_resource(spatial_index);
   commands.spawn_bundle(OrthographicCameraBundle::new_2d());
 }
 
