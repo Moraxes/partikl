@@ -32,14 +32,22 @@ pub struct Category {
 #[derive(Component, Default, Clone, Copy)]
 pub struct CategoryId(pub usize);
 
-#[derive(Copy, Clone)]
+#[derive(Default)]
 pub struct SimRegion {
-  top_right: Vec2
+  top_right: Vec2,
+  pub granularity: f32,
+  pub index: HashMap<(i32, i32), Vec<Entity>>,
 }
 
 impl SimRegion {
-  pub fn new(width: f32, height: f32) -> SimRegion {
-    SimRegion { top_right: Vec2::new(width/2.0, height/2.0) }
+  const OFFSETS: [i32; 3] = [-1, 0, 1];
+
+  pub fn new(width: f32, height: f32, granularity: f32) -> SimRegion {
+    SimRegion {
+      top_right: Vec2::new(width/2.0, height/2.0),
+      granularity,
+      ..Default::default()
+    }
   }
 
   pub fn get_corrected_position_delta(&self, origin: Vec3, target: Vec3) -> Vec3 {
@@ -61,16 +69,6 @@ impl SimRegion {
     }
     2.0 * adjustment
   }
-}
-
-#[derive(Default)]
-pub struct SpatialIndex {
-  pub granularity: f32,
-  pub index: HashMap<(i32, i32), Vec<Entity>>,
-}
-
-impl SpatialIndex {
-  const OFFSETS: [i32; 3] = [-1, 0, 1];
 
   pub fn insert_entity(&mut self, entity: Entity, x: f32, y: f32) {
     self.index.entry(self.bucket_coords(x, y)).or_default().push(entity)

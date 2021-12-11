@@ -81,13 +81,10 @@ pub fn init_particles(
     vertex: shaders.add(Shader::from_glsl(ShaderStage::Vertex, VERTEX_SHADER)),
     fragment: Some(shaders.add(Shader::from_glsl(ShaderStage::Fragment, FRAGMENT_SHADER))),
   }));
-  let mut spatial_index = core::SpatialIndex {
-    granularity: 40.0,
-    ..Default::default()
-  };
   let window = windows.get_primary().expect("no primary window");
   let width = window.width();
   let height = window.height();
+  let mut sim_region = core::SimRegion::new(width, height, 40.0);
 
   for _ in 0..args.number_of_particles {
     let category = core::CategoryId((0..categories.0.len()).choose(&mut rng).expect("no categories"));
@@ -111,10 +108,9 @@ pub fn init_particles(
       last_pos: core::LastPosition(translation - core::DELTA_TIME as f32 * starting_velocity),
       category
     }).id();
-    spatial_index.insert_entity(entity, position_x, position_y);
+    sim_region.insert_entity(entity, position_x, position_y);
   }
-  commands.insert_resource(core::SimRegion::new(width, height));
-  commands.insert_resource(spatial_index);
+  commands.insert_resource(sim_region);
   commands.spawn_bundle(OrthographicCameraBundle::new_2d());
 }
 

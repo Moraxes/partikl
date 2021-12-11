@@ -27,13 +27,12 @@ pub fn compute_forces(
   args: Res<ProgramArgs>,
   categories: Res<Categories>,
   sim_region: Res<SimRegion>,
-  spatial_index: Res<SpatialIndex>,
   pool: Res<ComputeTaskPool>,
   mut particles_out: Query<(Entity, &Transform, &mut Acceleration, &CategoryId)>,
   particles_in: Query<(&Transform, &CategoryId)>
 ) {
   particles_out.par_for_each_mut(&pool, args.parallel_batch_size, |(entity, transform, mut acceleration, category)| {
-    let neighbour_ids = spatial_index.get_bucket_with_boundary(transform.translation.x, transform.translation.y);
+    let neighbour_ids = sim_region.get_bucket_with_boundary(transform.translation.x, transform.translation.y);
     for nid in neighbour_ids {
       if nid == entity {
         continue;
@@ -98,8 +97,7 @@ pub fn integrate(mut query: Query<(&mut Acceleration, &mut Transform, &mut LastP
 }
 
 pub fn wrap_around(
-  sim_region: Res<SimRegion>,
-  mut spatial_index: ResMut<SpatialIndex>,
+  mut sim_region: ResMut<SimRegion>,
   mut query: Query<(Entity, &mut Transform, &mut LastPosition)>
 ) {
   for (entity, mut transform, mut last_pos) in query.iter_mut() {
@@ -110,7 +108,7 @@ pub fn wrap_around(
     last_pos.0 += adjustment;
     let x_new = transform.translation.x;
     let y_new = transform.translation.y;
-    spatial_index.move_entity(entity, x_old, y_old, x_new, y_new);
+    sim_region.move_entity(entity, x_old, y_old, x_new, y_new);
   }
 }
 
