@@ -108,3 +108,9 @@ impl SimRegion {
     ((x / self.granularity).floor() as i32, (y / self.granularity).floor() as i32)
   }
 }
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum SimState {
+  Running,
+  Paused,
+}

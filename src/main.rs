@@ -44,6 +44,7 @@ fn main() {
     })
     .add_plugins(DefaultPlugins)
     .add_plugin(FrameTimeDiagnosticsPlugin::default())
+    .add_state(core::SimState::Running)
     .add_stage_before(
       CoreStage::Startup,
       Stage::InitCategories,
@@ -60,6 +61,7 @@ fn main() {
     )
     .add_system(ui::update_text)
     .add_system(ui::exit_after_time)
+    .add_system(ui::pause_on_space)
     .add_system(bevy::input::system::exit_on_esc_system)
     .run();
 }

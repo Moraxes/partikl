@@ -28,9 +28,13 @@ pub fn compute_forces(
   categories: Res<Categories>,
   sim_region: Res<SimRegion>,
   pool: Res<ComputeTaskPool>,
+  state: Res<State<SimState>>,
   mut particles_out: Query<(Entity, &Transform, &mut Acceleration, &CategoryId)>,
   particles_in: Query<(&Transform, &CategoryId)>
 ) {
+  if state.current() == &SimState::Paused {
+    return;
+  }
   particles_out.par_for_each_mut(&pool, args.parallel_batch_size, |(entity, transform, mut acceleration, category)| {
     let neighbour_ids = sim_region.get_bucket_with_boundary(transform.translation.x, transform.translation.y);
     for nid in neighbour_ids {
@@ -55,7 +59,10 @@ pub fn compute_forces(
   });
 }
 
-pub fn compute_friction(mut particles: Query<(&Transform, &mut LastPosition, &mut Acceleration)>) {
+pub fn compute_friction(state: Res<State<SimState>>, mut particles: Query<(&Transform, &mut LastPosition, &mut Acceleration)>) {
+  if state.current() == &SimState::Paused {
+    return;
+  }
   for (transform, mut last_pos, mut acceleration) in particles.iter_mut() {
     let velocity = (transform.translation - last_pos.0) / DELTA_TIME as f32;
     if velocity.length_squared() < VELOCITY_THRESHOLD {
@@ -85,7 +92,11 @@ fn unit_triangle(x: f32) -> f32 {
   (1.0 - x.abs()).max(0.0)
 }
 
-pub fn integrate(mut query: Query<(&mut Acceleration, &mut Transform, &mut LastPosition)>) {
+pub fn integrate(
+  state: Res<State<SimState>>, mut query: Query<(&mut Acceleration, &mut Transform, &mut LastPosition)>) {
+  if state.current() == &SimState::Paused {
+    return;
+  }
   let dt_sq = (DELTA_TIME * DELTA_TIME) as f32;
   for (mut acceleration, mut transform, mut last_pos) in query.iter_mut() {
     let new_pos =
@@ -97,9 +108,13 @@ pub fn integrate(mut query: Query<(&mut Acceleration, &mut Transform, &mut LastP
 }
 
 pub fn wrap_around(
+  state: Res<State<SimState>>,
   mut sim_region: ResMut<SimRegion>,
   mut query: Query<(Entity, &mut Transform, &mut LastPosition)>
 ) {
+  if state.current() == &SimState::Paused {
+    return;
+  }
   for (entity, mut transform, mut last_pos) in query.iter_mut() {
     let x_old = last_pos.0.x;
     let y_old = last_pos.0.y;
@@ -112,7 +127,10 @@ pub fn wrap_around(
   }
 }
 
-pub fn update_shape(mut query: Query<(&mut Transform, &LastPosition)>) {
+pub fn update_shape(state: Res<State<SimState>>, mut query: Query<(&mut Transform, &LastPosition)>) {
+  if state.current() == &SimState::Paused {
+    return;
+  }
   for (mut transform, last_pos) in query.iter_mut() {
     let velocity = (transform.translation - last_pos.0).truncate();
     let velocity_length_sq = velocity.length_squared();

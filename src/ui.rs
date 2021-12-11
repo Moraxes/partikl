@@ -2,7 +2,7 @@ use bevy::app::AppExit;
 use bevy::diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 
-use crate::core::ProgramArgs;
+use crate::core::*;
 
 #[derive(Component)]
 pub struct FpsText;
@@ -46,13 +46,23 @@ pub fn update_text(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text, Wi
 }
 
 pub fn exit_after_time(
-    args: Res<ProgramArgs>,
-    time: Res<Time>,
-    mut app_exit_events: EventWriter<AppExit>,
+  args: Res<ProgramArgs>,
+  time: Res<Time>,
+  mut app_exit_events: EventWriter<AppExit>,
 ) {
   if let Some(time_limit) = args.exit_after {
     if time.seconds_since_startup() >= time_limit {
       app_exit_events.send(AppExit);
     }
+  }
+}
+
+pub fn pause_on_space(keyboard: Res<Input<KeyCode>>, mut state: ResMut<State<SimState>>) {
+  if keyboard.just_pressed(KeyCode::Space) {
+    let new_state = match state.current() {
+      SimState::Running => SimState::Paused,
+      SimState::Paused => SimState::Running,
+    };
+    state.set(new_state).unwrap();
   }
 }
