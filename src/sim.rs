@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::tasks::prelude::*;
 use bevy::core::FixedTimestep;
 
 use crate::core::*;
@@ -22,26 +23,36 @@ pub fn simulation_stage() -> SystemStage {
     .with_system(update_shape.after(System::Integrate))
 }
 
-pub fn compute_forces(categories: Res<Categories>, sim_region: Res<SimRegion>, mut particles: Query<(&Transform, &mut Acceleration, &CategoryId)>) {
-  let mut iter = particles.iter_combinations_mut();
-  while let Some([(transform1, mut acceleration1, cat1), (transform2, mut acceleration2, cat2)]) = iter.fetch_next() {
-    let delta = sim_region.get_corrected_position_delta(transform1.translation, transform2.translation);
-    let distance_sq: f32 = delta.length_squared();
-    if distance_sq > 1600.0 {
-      continue;
+pub fn compute_forces(
+  categories: Res<Categories>,
+  sim_region: Res<SimRegion>,
+  spatial_index: Res<SpatialIndex>,
+  pool: Res<ComputeTaskPool>,
+  mut particles_out: Query<(Entity, &Transform, &mut Acceleration, &CategoryId)>,
+  particles_in: Query<(&Transform, &CategoryId)>
+) {
+  particles_out.par_for_each_mut(&pool, 1, |(entity, transform, mut acceleration, category)| {
+    let neighbour_ids = spatial_index.get_bucket_with_boundary(transform.translation.x, transform.translation.y);
+    for nid in neighbour_ids {
+      if nid == entity {
+        continue;
+      }
+      let (other_transform, other_category) = particles_in.get(nid).unwrap();
+      let delta = sim_region.get_corrected_position_delta(transform.translation, other_transform.translation);
+      let distance_sq: f32 = delta.length_squared();
+      if distance_sq > 1600.0 {
+        return;
+      }
+      let distance = distance_sq.sqrt();
+      let distance_unit_vector = delta / distance;
+      if distance < 10.0 {
+        let safety_margin_repulsion_force = (1000.0 - 100.0 * distance) * distance_unit_vector;
+        acceleration.0 -= safety_margin_repulsion_force;
+      } else {
+        acceleration.0 += triangular_kernel(categories.0[other_category.0].force_coeffs[category.0], 30.0, 10.0, distance) * distance_unit_vector;
+      }
     }
-    let distance = distance_sq.sqrt();
-    let distance_unit_vector = delta / distance;
-    if distance < 10.0 {
-      let safety_margin_repulsion_force = (1000.0 - 100.0 * distance) * distance_unit_vector;
-      acceleration1.0 -= safety_margin_repulsion_force;
-      acceleration2.0 += safety_margin_repulsion_force;
-    } else if cat1.0 < cat2.0 {
-      acceleration1.0 += triangular_kernel(categories.0[cat2.0].force_coeffs[cat1.0], 30.0, 10.0, distance) * distance_unit_vector;
-    } else if cat1.0 > cat2.0 {
-      acceleration2.0 -= triangular_kernel(categories.0[cat1.0].force_coeffs[cat2.0], 30.0, 10.0, distance) * distance_unit_vector;
-    }
-  }
+  });
 }
 
 pub fn compute_friction(mut particles: Query<(&Transform, &mut LastPosition, &mut Acceleration)>) {
