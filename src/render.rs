@@ -5,6 +5,7 @@ use bevy::render::{
 };
 use rand::prelude::*;
 use std::f32::consts::PI;
+use crate::args::ProgramArgs;
 
 use crate::core;
 
@@ -68,6 +69,7 @@ pub fn init_meshes(
 }
 
 pub fn init_particles(
+  args: Res<ProgramArgs>,
   mut commands: Commands,
   mut pipelines: ResMut<Assets<PipelineDescriptor>>,
   mut shaders: ResMut<Assets<Shader>>,
@@ -87,7 +89,7 @@ pub fn init_particles(
   let width = window.width();
   let height = window.height();
 
-  for _ in 0..1000 {
+  for _ in 0..args.number_of_particles {
     let category = core::CategoryId((0..categories.0.len()).choose(&mut rng).expect("no categories"));
     let position_x = rng.gen::<f32>() * width - width / 2.0;
     let position_y = rng.gen::<f32>() * height - height / 2.0;
