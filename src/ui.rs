@@ -1,5 +1,8 @@
+use bevy::app::AppExit;
 use bevy::diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
+
+use crate::core::ProgramArgs;
 
 #[derive(Component)]
 pub struct FpsText;
@@ -38,6 +41,18 @@ pub fn update_text(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text, Wi
       if let Some(average) = fps.average() {
         text.sections[0].value = format!("{:.2}", average);
       }
+    }
+  }
+}
+
+pub fn exit_after_time(
+    args: Res<ProgramArgs>,
+    time: Res<Time>,
+    mut app_exit_events: EventWriter<AppExit>,
+) {
+  if let Some(time_limit) = args.exit_after {
+    if time.seconds_since_startup() >= time_limit {
+      app_exit_events.send(AppExit);
     }
   }
 }

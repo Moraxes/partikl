@@ -24,6 +24,7 @@ pub fn simulation_stage() -> SystemStage {
 }
 
 pub fn compute_forces(
+  args: Res<ProgramArgs>,
   categories: Res<Categories>,
   sim_region: Res<SimRegion>,
   spatial_index: Res<SpatialIndex>,
@@ -31,7 +32,7 @@ pub fn compute_forces(
   mut particles_out: Query<(Entity, &Transform, &mut Acceleration, &CategoryId)>,
   particles_in: Query<(&Transform, &CategoryId)>
 ) {
-  particles_out.par_for_each_mut(&pool, 1, |(entity, transform, mut acceleration, category)| {
+  particles_out.par_for_each_mut(&pool, args.parallel_batch_size, |(entity, transform, mut acceleration, category)| {
     let neighbour_ids = spatial_index.get_bucket_with_boundary(transform.translation.x, transform.translation.y);
     for nid in neighbour_ids {
       if nid == entity {

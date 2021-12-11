@@ -2,6 +2,8 @@ use bevy::prelude::*;
 
 use std::collections::HashMap;
 
+pub use crate::args::*;
+
 pub const DELTA_TIME: f64 = 0.01;
 pub const VELOCITY_THRESHOLD: f32 = 0.0001;
 

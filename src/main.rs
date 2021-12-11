@@ -2,7 +2,9 @@ use bevy::prelude::*;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::ecs::schedule::RunOnce;
 use bevy::window::WindowMode;
+use structopt::StructOpt;
 
+mod args;
 mod core;
 mod render;
 mod sim;
@@ -23,6 +25,7 @@ enum System {
 
 fn main() {
   App::new()
+    .insert_resource(args::ProgramArgs::from_args())
     .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
     .insert_resource(Msaa { samples: 8 })
     .insert_resource(WindowDescriptor {
@@ -56,6 +59,7 @@ fn main() {
       sim::simulation_stage(),
     )
     .add_system(ui::update_text)
+    .add_system(ui::exit_after_time)
     .add_system(bevy::input::system::exit_on_esc_system)
     .run();
 }
