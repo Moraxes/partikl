@@ -66,23 +66,18 @@ impl SimRegion {
 #[derive(Default)]
 pub struct SpatialIndex {
   pub granularity: f32,
-  // pub left: f32,
-  // pub right: f32,
-  // pub top: f32,
-  // pub bottom: f32,
   pub index: HashMap<(i32, i32), Vec<Entity>>,
 }
 
 impl SpatialIndex {
   const OFFSETS: [i32; 3] = [-1, 0, 1];
-  const EMPTY_BUCKET: &'static [Entity] = &[];
 
   pub fn insert_entity(&mut self, entity: Entity, x: f32, y: f32) {
     self.index.entry(self.bucket_coords(x, y)).or_default().push(entity)
   }
 
   pub fn remove_entity(&mut self, entity: Entity, x_old: f32, y_old: f32) {
-    let mut bucket_old = self.index.get_mut(&self.bucket_coords(x_old, y_old))
+    let bucket_old = self.index.get_mut(&self.bucket_coords(x_old, y_old))
       .expect("no bucket");
     let idx = bucket_old.iter().position(|&e| e == entity)
       .expect("entity not in bucket");
@@ -97,14 +92,6 @@ impl SpatialIndex {
     }
     self.remove_entity(entity, x_old, y_old);
     self.insert_entity(entity, x_new, y_new);
-  }
-
-  pub fn get_bucket(&self, x: f32, y: f32) -> &[Entity] {
-    // TODO: correctly handle region boundary
-    let (ix, iy) = self.bucket_coords(x, y);
-    self.index.get(&(ix, iy))
-      .map(|vec| vec.as_slice())
-      .unwrap_or(Self::EMPTY_BUCKET)
   }
 
   pub fn get_bucket_with_boundary(&self, x: f32, y: f32) -> impl Iterator<Item=Entity> + '_ {
