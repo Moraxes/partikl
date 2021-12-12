@@ -38,7 +38,7 @@ fn main() {
       vsync: true,
       resizable: false,
       decorations: false,
-      cursor_visible: false,
+      cursor_visible: true,
       cursor_locked: false,
       mode: WindowMode::BorderlessFullscreen
     })
