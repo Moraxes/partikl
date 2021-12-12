@@ -45,7 +45,7 @@ pub fn compute_forces(
       let delta = sim_region.get_corrected_position_delta(transform.translation, other_transform.translation);
       let distance_sq: f32 = delta.length_squared();
       if distance_sq > 1600.0 {
-        return;
+        continue;
       }
       let distance = distance_sq.sqrt();
       let distance_unit_vector = delta / distance;
