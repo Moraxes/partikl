@@ -26,7 +26,7 @@ pub struct Categories(pub Vec<Category>);
 #[derive(Default)]
 pub struct Category {
   pub force_coeffs: Vec<f32>,
-  pub color: [f32; 3],
+  pub color: [f32; 4],
   pub mesh_handle: Handle<Mesh>
 }
 #[derive(Component, Default, Clone, Copy)]
@@ -70,6 +70,40 @@ impl SimRegion {
     2.0 * adjustment
   }
 
+  fn get_wrapped_buckets(&self, ix: i32, iy: i32) -> Vec<(i32, i32)> {
+    let right = (self.top_right.x / self.granularity).round() as i32;
+    let top = (self.top_right.y / self.granularity).round() as i32;
+    let left = (-self.top_right.x / self.granularity).round() as i32;
+    let bottom = (-self.top_right.y / self.granularity).round() as i32;
+    let mut result = vec![(ix, iy); 4];
+    let mut count = 1;
+
+    if ix <= left {
+      result[count].0 += right - left;
+      count += 1;
+    } else if ix >= right {
+      result[count].0 -= right - left;
+      count += 1;
+    }
+
+    if iy <= bottom {
+      result[count].1 += top - bottom;
+      count += 1;
+    } else if iy >= top {
+      result[count].1 -= top - bottom;
+      count += 1;
+    }
+
+    if (ix <= left || ix >= right) && (iy <= bottom || iy >= top) {
+      result[count].0 = result[1].0;
+      result[count].1 = result[2].1;
+      count += 1;
+    }
+
+    result.truncate(count);
+    result
+  }
+
   pub fn insert_entity(&mut self, entity: Entity, x: f32, y: f32) {
     self.index.entry(self.bucket_coords(x, y)).or_default().push(entity)
   }
@@ -93,19 +127,17 @@ impl SimRegion {
   }
 
   pub fn get_bucket_with_boundary(&self, x: f32, y: f32) -> impl Iterator<Item=Entity> + '_ {
-    // TODO: correctly handle region boundary
     let (ix, iy) = self.bucket_coords(x, y);
     Self::OFFSETS.iter().cloned()
-      .flat_map(move |xoff|
-        Self::OFFSETS.iter().map(move |&yoff| (ix + xoff, iy + yoff)))
-      .flat_map(|offset|
-        self.index.get(&offset))
+      .flat_map(move |xoff| Self::OFFSETS.iter().flat_map(move |&yoff|
+        self.get_wrapped_buckets(ix + xoff, iy + yoff))
+      ).flat_map(|offset| self.index.get(&offset))
       .flatten()
       .cloned()
   }
 
   pub fn bucket_coords(&self, x: f32, y: f32) -> (i32, i32) {
-    ((x / self.granularity).floor() as i32, (y / self.granularity).floor() as i32)
+    ((x / self.granularity).round() as i32, (y / self.granularity).round() as i32)
   }
 }
 
@@ -114,3 +146,10 @@ pub enum SimState {
   Running,
   Paused,
 }
+
+#[derive(Component, Default, Debug)]
+pub struct Selection;
+#[derive(Component, Default, Debug)]
+pub struct Highlight;
+#[derive(Component, Default, Debug)]
+pub struct MainCamera;
