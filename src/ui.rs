@@ -1,6 +1,6 @@
 use bevy::app::AppExit;
 use bevy::diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin};
-use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
+use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy::render::camera::OrthographicProjection;
 use bevy::window::WindowMode;
@@ -83,15 +83,43 @@ pub fn handle_keyboard_input(
 
 pub fn handle_mouse_input(
   mut mouse_wheel_events: EventReader<MouseWheel>,
-  mut camera: Query<(&mut MainCamera, &mut OrthographicProjection)>
+  mut mouse_motion_events: EventReader<MouseMotion>,
+  mouse_button_input: Res<Input<MouseButton>>,
+  keyboard_input: Res<Input<KeyCode>>,
+  mut windows: ResMut<Windows>,
+  mut camera: Query<(&mut MainCamera, &mut OrthographicProjection, &mut Transform)>
 ) {
   for event in mouse_wheel_events.iter() {
     let log_delta = match event {
       MouseWheel { unit: MouseScrollUnit::Line, y, .. } => y.round() as i32,
       MouseWheel { unit: MouseScrollUnit::Pixel, y, .. } => (y / 10.0).round() as i32,
     };
-    let (mut main_camera, mut projection) = camera.get_single_mut().unwrap();
+    let (mut main_camera, mut projection, _) = camera.get_single_mut().unwrap();
     main_camera.zoom_exponent -= log_delta;
     projection.scale = main_camera.zoom_base.powf(main_camera.zoom_exponent as f32);
+  }
+
+  if mouse_button_input.just_released(MouseButton::Left) {
+    let primary_window = windows.get_primary_mut().unwrap();
+    primary_window.set_cursor_visibility(true);
+    primary_window.set_cursor_lock_mode(true);
+  }
+
+  if !keyboard_input.pressed(KeyCode::LControl) {
+    return;
+  }
+
+  if mouse_button_input.just_pressed(MouseButton::Left) {
+    let primary_window = windows.get_primary_mut().unwrap();
+    primary_window.set_cursor_visibility(false);
+    primary_window.set_cursor_lock_mode(false);
+  }
+
+  for event in mouse_motion_events.iter() {
+    if !mouse_button_input.pressed(MouseButton::Left) {
+      continue;
+    }
+    let (_, projection, mut camera_transform) = camera.get_single_mut().unwrap();
+    camera_transform.translation += (event.delta * Vec2::new(-1.0, 1.0)).extend(0.0) * projection.scale;
   }
 }
