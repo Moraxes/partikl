@@ -152,4 +152,7 @@ pub struct Selection;
 #[derive(Component, Default, Debug)]
 pub struct Highlight;
 #[derive(Component, Default, Debug)]
-pub struct MainCamera;
+pub struct MainCamera {
+  pub zoom_exponent: i32,
+  pub zoom_base: f32,
+}

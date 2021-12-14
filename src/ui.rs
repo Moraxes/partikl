@@ -1,6 +1,8 @@
 use bevy::app::AppExit;
 use bevy::diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin};
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
+use bevy::render::camera::OrthographicProjection;
 use bevy::window::WindowMode;
 
 use crate::core::*;
@@ -76,5 +78,20 @@ pub fn handle_keyboard_input(
       WindowMode::Windowed => primary_window.set_mode(WindowMode::BorderlessFullscreen),
       _ => primary_window.set_mode(WindowMode::Windowed),
     }
+  }
+}
+
+pub fn handle_mouse_input(
+  mut mouse_wheel_events: EventReader<MouseWheel>,
+  mut camera: Query<(&mut MainCamera, &mut OrthographicProjection)>
+) {
+  for event in mouse_wheel_events.iter() {
+    let log_delta = match event {
+      MouseWheel { unit: MouseScrollUnit::Line, y, .. } => y.round() as i32,
+      MouseWheel { unit: MouseScrollUnit::Pixel, y, .. } => (y / 10.0).round() as i32,
+    };
+    let (mut main_camera, mut projection) = camera.get_single_mut().unwrap();
+    main_camera.zoom_exponent -= log_delta;
+    projection.scale = main_camera.zoom_base.powf(main_camera.zoom_exponent as f32);
   }
 }

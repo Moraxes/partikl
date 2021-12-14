@@ -163,7 +163,8 @@ pub fn init_particles(
     sim_region.insert_entity(particle, position_x, position_y);
   }
   commands.insert_resource(sim_region);
-  commands.spawn_bundle(OrthographicCameraBundle::new_2d()).insert(core::MainCamera);
+  commands.spawn_bundle(OrthographicCameraBundle::new_2d())
+    .insert(core::MainCamera { zoom_base: 1.125, zoom_exponent: 1 });
 }
 
 const VERTEX_SHADER: &str = r"
