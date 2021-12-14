@@ -61,7 +61,7 @@ fn main() {
     )
     .add_system(ui::update_text)
     .add_system(ui::exit_after_time)
-    .add_system(ui::pause_on_space)
+    .add_system(ui::handle_keyboard_input)
     .add_system(bevy::input::system::exit_on_esc_system)
     .run();
 }

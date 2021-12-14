@@ -1,6 +1,7 @@
 use bevy::app::AppExit;
 use bevy::diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
+use bevy::window::WindowMode;
 
 use crate::core::*;
 
@@ -57,12 +58,23 @@ pub fn exit_after_time(
   }
 }
 
-pub fn pause_on_space(keyboard: Res<Input<KeyCode>>, mut state: ResMut<State<SimState>>) {
+pub fn handle_keyboard_input(
+  keyboard: Res<Input<KeyCode>>,
+  mut state: ResMut<State<SimState>>,
+  mut windows: ResMut<Windows>
+) {
   if keyboard.just_pressed(KeyCode::Space) {
     let new_state = match state.current() {
       SimState::Running => SimState::Paused,
       SimState::Paused => SimState::Running,
     };
     state.set(new_state).unwrap();
+  }
+  if keyboard.just_pressed(KeyCode::F) {
+    let primary_window = windows.get_primary_mut().unwrap();
+    match primary_window.mode() {
+      WindowMode::Windowed => primary_window.set_mode(WindowMode::BorderlessFullscreen),
+      _ => primary_window.set_mode(WindowMode::Windowed),
+    }
   }
 }
