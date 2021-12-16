@@ -164,7 +164,7 @@ fn select_on_click(
   camera_query: Query<&Transform, With<MainCamera>>,
   particles: Query<(Entity, &Transform, &Children), With<Acceleration>>,
   sim_region: Res<SimRegion>,
-  mut gizmos: Query<(Option<&Selection>, Option<&Highlight>, &mut Visible), Or<(With<Selection>, With<Highlight>)>>,
+  mut gizmos: Query<(Option<&Selection>, Option<&Highlight>, &mut Visibility), Or<(With<Selection>, With<Highlight>)>>,
   mut selected_gizmo: Local<SelectedGizmo>,
 ) {
   let window = windows.get_primary().unwrap();

@@ -30,7 +30,7 @@ fn main() {
     .insert_resource(loading::get_particle_spec(&program_args))
     .insert_resource(program_args)
     .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
-    .insert_resource(Msaa { samples: 8 })
+    .insert_resource(Msaa { samples: 4 })
     .insert_resource(WindowDescriptor {
       width: 1920.0,
       height: 1080.0,
@@ -43,7 +43,8 @@ fn main() {
       decorations: false,
       cursor_visible: true,
       cursor_locked: false,
-      mode: WindowMode::BorderlessFullscreen
+      mode: WindowMode::BorderlessFullscreen,
+      transparent: false,
     })
     .add_plugins(DefaultPlugins)
     .add_plugin(FrameTimeDiagnosticsPlugin::default())
@@ -53,7 +54,7 @@ fn main() {
       Stage::InitCategories,
       SystemStage::single_threaded()
         .with_run_criteria(RunOnce::default())
-        .with_system(render::init_appearances))
+        .with_system(render::init_materials))
     .add_startup_system(render::init_particles.label(System::InitParticles))
     .add_startup_system(ui::init_ui)
     .add_stage_after(

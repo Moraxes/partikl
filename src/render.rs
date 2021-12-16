@@ -1,8 +1,5 @@
 use bevy::prelude::*;
-use bevy::render::{
-  pipeline::{PipelineDescriptor, RenderPipeline},
-  shader::{ShaderStage, ShaderStages},
-};
+use bevy::render::camera::ScalingMode;
 use rand::prelude::*;
 use std::f32::consts::PI;
 use crate::args::ProgramArgs;
@@ -25,24 +22,26 @@ fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<[f32; 4]> {
   }).collect()
 }
 
-pub fn init_appearances(
+pub fn init_materials(
   mut particle_spec: ResMut<core::ParticleSpec>,
-  mut meshes: ResMut<Assets<Mesh>>,
+  mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-  let mesh = make_circle(8.0);
   let mut rng = rand::thread_rng();
   for color in get_random_colors(particle_spec.interactions.len(), &mut rng) {
-    let mut mesh_clone = mesh.clone();
-    set_mesh_color(&mut mesh_clone, CORNERS as usize + 1, color);
-    particle_spec.appearances.push(core::Appearance {
-      color,
-      mesh_handle: meshes.add(mesh_clone)
-    });
+    let material = StandardMaterial {
+      base_color: color.into(),
+      double_sided: true,
+      unlit: true,
+      ..Default::default()
+    };
+    particle_spec.materials.push(materials.add(material));
   }
 }
 
+#[allow(dead_code)]
 fn make_circle(diameter: f32) -> Mesh {
-  let mut mesh = Mesh::new(bevy::render::pipeline::PrimitiveTopology::TriangleList);
+  use bevy::render::{mesh::Indices, render_resource::PrimitiveTopology};
+  let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
   let mut v_pos = vec![[0.0, 0.0, 0.0]];
   v_pos.extend((0..CORNERS).map(|it| {
     let angle = it as f32 * 2.0 * PI / (CORNERS as f32);
@@ -54,12 +53,14 @@ fn make_circle(diameter: f32) -> Mesh {
     let next = if it == CORNERS { 1 } else { it + 1 };
     [0u32, current as u32, next as u32]
   }).collect::<Vec<_>>();
-  mesh.set_indices(Some(bevy::render::mesh::Indices::U32(indices)));
+  mesh.set_indices(Some(Indices::U32(indices)));
   mesh
 }
 
+#[allow(dead_code)]
 fn make_hollow_circle(diameter: f32) -> Mesh {
-  let mut mesh = Mesh::new(bevy::render::pipeline::PrimitiveTopology::TriangleStrip);
+  use bevy::render::{mesh::Indices, render_resource::PrimitiveTopology};
+  let mut mesh = Mesh::new(PrimitiveTopology::TriangleStrip);
   let mut v_pos = Vec::new();
   v_pos.extend((0..CORNERS).flat_map(|it| {
     let angle = it as f32 * 2.0 * PI / (CORNERS as f32);
@@ -74,40 +75,28 @@ fn make_hollow_circle(diameter: f32) -> Mesh {
     let current = if it == CORNERS { 0 } else { it };
     [2 * current as u32, 2 * current as u32 + 1]
   }));
-  mesh.set_indices(Some(bevy::render::mesh::Indices::U32(indices)));
+  mesh.set_indices(Some(Indices::U32(indices)));
   mesh
-}
-
-fn set_mesh_color(mesh: &mut Mesh, vertices: usize, color: [f32; 4]) {
-  mesh.set_attribute("Vertex_Color", vec![color; vertices]);
 }
 
 pub fn init_particles(
   args: Res<ProgramArgs>,
   mut commands: Commands,
-  mut pipelines: ResMut<Assets<PipelineDescriptor>>,
-  mut shaders: ResMut<Assets<Shader>>,
   mut meshes: ResMut<Assets<Mesh>>,
+  mut materials: ResMut<Assets<StandardMaterial>>,
   particle_spec: Res<core::ParticleSpec>,
   windows: Res<Windows>
 ) {
   let mut rng = rand::thread_rng();
-  let pipeline_handle = pipelines.add(PipelineDescriptor::default_config(ShaderStages {
-    vertex: shaders.add(Shader::from_glsl(ShaderStage::Vertex, VERTEX_SHADER)),
-    fragment: Some(shaders.add(Shader::from_glsl(ShaderStage::Fragment, FRAGMENT_SHADER))),
-  }));
   let window = windows.get_primary().expect("no primary window");
   let width = window.width();
   let height = window.height();
   let mut sim_region = core::SimRegion::new(width, height, 40.0);
 
-  let mesh = make_hollow_circle(14.0);
-  let mut selection_mesh = mesh.clone();
-  let mut highlight_mesh = mesh.clone();
-  set_mesh_color(&mut selection_mesh, 2 * CORNERS as usize, [1.0, 1.0, 1.0, 0.5]);
-  set_mesh_color(&mut highlight_mesh, 2 * CORNERS as usize, [1.0, 0.0, 0.5, 0.5]);
-  let selection_mesh_handle = meshes.add(selection_mesh);
-  let highlight_mesh_handle = meshes.add(highlight_mesh);
+  let circle_mesh = meshes.add(
+    Mesh::from(shape::Icosphere { radius: 8.0, subdivisions: 2 }));
+  let gizmo_mesh = meshes.add(
+    Mesh::from(shape::Icosphere { radius: 14.0, subdivisions: 2 }));
 
   for _ in 0..args.num_particles {
     let interaction = core::InteractionId((0..particle_spec.interactions.len()).choose(&mut rng).expect("no particle spec"));
@@ -119,64 +108,38 @@ pub fn init_particles(
       rng.gen::<f32>() * 250f32 - 125f32,
       0.0);
     let particle = commands.spawn_bundle(core::ParticleBundle {
-      mesh: MeshBundle {
+      mesh: PbrBundle {
         transform: Transform::from_translation(translation),
-        mesh: particle_spec.appearances[interaction.0].mesh_handle.clone(),
-        render_pipelines: RenderPipelines::from_pipelines(vec![RenderPipeline::new(
-          pipeline_handle.clone(),
-        )]),
+        mesh: circle_mesh.clone(),
+        material: particle_spec.materials[interaction.0].clone(),
         ..Default::default()
       },
       acceleration: core::Acceleration(Vec3::new(0.0, 0.0, 0.0)),
       last_pos: core::LastPosition(translation - core::DELTA_TIME as f32 * starting_velocity),
       interaction
     }).id();
-    let particle_selection = commands.spawn_bundle(MeshBundle {
-      visible: Visible { is_visible: false, ..Default::default() },
-      mesh: selection_mesh_handle.clone(),
-      render_pipelines: RenderPipelines::from_pipelines(vec![RenderPipeline::new(
-        pipeline_handle.clone(),
-      )]),
+    let particle_selection = commands.spawn_bundle(PbrBundle {
+      visibility: Visibility { is_visible: false },
+      mesh: gizmo_mesh.clone(),
+      material: materials.add(Color::from([1.0, 1.0, 1.0, 0.5]).into()),
       ..Default::default()
     }).insert(core::Selection::default()).id();
-    let particle_highlight = commands.spawn_bundle(MeshBundle {
-      visible: Visible { is_visible: false, ..Default::default() },
-      mesh: highlight_mesh_handle.clone(),
-      render_pipelines: RenderPipelines::from_pipelines(vec![RenderPipeline::new(
-        pipeline_handle.clone(),
-      )]),
+    let particle_highlight = commands.spawn_bundle(PbrBundle {
+      visibility: Visibility { is_visible: false },
+      mesh: gizmo_mesh.clone(),
+      material: materials.add(Color::from([1.0f32, 0.0, 0.5, 0.5]).into()),
       ..Default::default()
     }).insert(core::Highlight::default()).id();
     commands.entity(particle).push_children(&[particle_selection, particle_highlight]);
     sim_region.insert_entity(particle, position_x, position_y);
+    sim_region.insert_entity(particle, 0.0, 0.0);
   }
   commands.insert_resource(sim_region);
-  commands.spawn_bundle(OrthographicCameraBundle::new_2d())
+
+  let mut camera = OrthographicCameraBundle::new_3d();
+  camera.orthographic_projection.scaling_mode = ScalingMode::WindowSize;
+  camera.transform = Transform::from_xyz(0.0, 0.0, 1000.0)
+    .looking_at(Vec3::ZERO, Vec3::Y);
+  commands.spawn_bundle(camera)
     .insert(core::MainCamera { zoom_base: 1.125, zoom_exponent: 1 });
 }
-
-const VERTEX_SHADER: &str = r"
-#version 450
-layout(location = 0) in vec3 Vertex_Position;
-layout(location = 1) in vec4 Vertex_Color;
-layout(location = 1) out vec4 v_Color;
-layout(set = 0, binding = 0) uniform CameraViewProj {
-    mat4 ViewProj;
-};
-layout(set = 1, binding = 0) uniform Transform {
-    mat4 Model;
-};
-void main() {
-    v_Color = Vertex_Color;
-    gl_Position = ViewProj * Model * vec4(Vertex_Position, 1.0);
-}
-";
-
-const FRAGMENT_SHADER: &str = r"
-#version 450
-layout(location = 1) in vec4 v_Color;
-layout(location = 0) out vec4 o_Target;
-void main() {
-    o_Target = vec4(v_Color);
-}
-";

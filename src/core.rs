@@ -17,7 +17,7 @@ pub struct LastPosition(pub Vec3);
 #[derive(Bundle, Default)]
 pub struct ParticleBundle {
   #[bundle]
-  pub mesh: MeshBundle,
+  pub mesh: PbrBundle,
   pub last_pos: LastPosition,
   pub acceleration: Acceleration,
   pub interaction: InteractionId
@@ -26,16 +26,11 @@ pub struct ParticleBundle {
 #[derive(Default)]
 pub struct ParticleSpec {
   pub interactions: Vec<Interaction>,
-  pub appearances: Vec<Appearance>,
+  pub materials: Vec<Handle<StandardMaterial>>,
 }
 #[derive(Default, Deserialize, Serialize, Debug)]
 pub struct Interaction {
   pub force_coeffs: Vec<f32>,
-}
-#[derive(Default, Debug)]
-pub struct Appearance {
-  pub color: [f32; 4],
-  pub mesh_handle: Handle<Mesh>
 }
 #[derive(Component, Default, Clone, Copy)]
 pub struct InteractionId(pub usize);
