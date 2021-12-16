@@ -26,23 +26,23 @@ pub fn simulation_stage() -> SystemStage {
 
 pub fn compute_forces(
   args: Res<ProgramArgs>,
-  categories: Res<Categories>,
+  particle_spec: Res<ParticleSpec>,
   sim_region: Res<SimRegion>,
   pool: Res<ComputeTaskPool>,
   state: Res<State<SimState>>,
-  mut particles_out: Query<(Entity, &Transform, &mut Acceleration, &CategoryId)>,
-  particles_in: Query<(&Transform, &CategoryId)>
+  mut particles_out: Query<(Entity, &Transform, &mut Acceleration, &InteractionId)>,
+  particles_in: Query<(&Transform, &InteractionId)>
 ) {
   if state.current() == &SimState::Paused {
     return;
   }
-  particles_out.par_for_each_mut(&pool, args.parallel_batch_size, |(entity, transform, mut acceleration, category)| {
+  particles_out.par_for_each_mut(&pool, args.parallel_batch_size, |(entity, transform, mut acceleration, interaction)| {
     let neighbour_ids = sim_region.get_bucket_with_boundary(transform.translation.x, transform.translation.y);
     for nid in neighbour_ids {
       if nid == entity {
         continue;
       }
-      let (other_transform, other_category) = particles_in.get(nid).unwrap();
+      let (other_transform, other_interaction) = particles_in.get(nid).unwrap();
       let delta = sim_region.get_corrected_position_delta(transform.translation, other_transform.translation);
       let distance_sq: f32 = delta.length_squared();
       if distance_sq > 1600.0 {
@@ -54,7 +54,7 @@ pub fn compute_forces(
         let safety_margin_repulsion_force = (1000.0 - 100.0 * distance) * distance_unit_vector;
         acceleration.0 -= safety_margin_repulsion_force;
       } else {
-        acceleration.0 += triangular_kernel(categories.0[other_category.0].force_coeffs[category.0], 30.0, 10.0, distance) * distance_unit_vector;
+        acceleration.0 += triangular_kernel(particle_spec.interactions[other_interaction.0].force_coeffs[interaction.0], 30.0, 10.0, distance) * distance_unit_vector;
       }
     }
   });

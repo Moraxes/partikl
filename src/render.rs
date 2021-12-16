@@ -25,20 +25,20 @@ fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<[f32; 4]> {
   }).collect()
 }
 
-pub fn init_categories(
-  mut commands: Commands,
+pub fn init_appearances(
+  mut particle_spec: ResMut<core::ParticleSpec>,
+  mut meshes: ResMut<Assets<Mesh>>,
 ) {
+  let mesh = make_circle(8.0);
   let mut rng = rand::thread_rng();
-  let mut categories = core::Categories(Vec::new());
-  for col in get_random_colors(3, &mut rng) {
-    let category = core::Category {
-      force_coeffs: vec![1000.0 * rng.gen::<f32>() - 500.0, 1000.0 * rng.gen::<f32>() - 500.0, 1000.0 * rng.gen::<f32>() - 500.0],
-      color: col,
-      mesh_handle: Default::default()
-    };
-    categories.0.push(category);
+  for color in get_random_colors(particle_spec.interactions.len(), &mut rng) {
+    let mut mesh_clone = mesh.clone();
+    set_mesh_color(&mut mesh_clone, CORNERS as usize + 1, color);
+    particle_spec.appearances.push(core::Appearance {
+      color,
+      mesh_handle: meshes.add(mesh_clone)
+    });
   }
-  commands.insert_resource(categories);
 }
 
 fn make_circle(diameter: f32) -> Mesh {
@@ -82,25 +82,13 @@ fn set_mesh_color(mesh: &mut Mesh, vertices: usize, color: [f32; 4]) {
   mesh.set_attribute("Vertex_Color", vec![color; vertices]);
 }
 
-pub fn init_meshes(
-  mut meshes: ResMut<Assets<Mesh>>,
-  mut categories: ResMut<core::Categories>,
-) {
-  let mesh = make_circle(8.0);
-  for mut cat in &mut categories.0 {
-    let mut mesh_clone = mesh.clone();
-    set_mesh_color(&mut mesh_clone, CORNERS as usize + 1, cat.color);
-    cat.mesh_handle = meshes.add(mesh_clone);
-  }
-}
-
 pub fn init_particles(
   args: Res<ProgramArgs>,
   mut commands: Commands,
   mut pipelines: ResMut<Assets<PipelineDescriptor>>,
   mut shaders: ResMut<Assets<Shader>>,
   mut meshes: ResMut<Assets<Mesh>>,
-  categories: Res<core::Categories>,
+  particle_spec: Res<core::ParticleSpec>,
   windows: Res<Windows>
 ) {
   let mut rng = rand::thread_rng();
@@ -121,8 +109,8 @@ pub fn init_particles(
   let selection_mesh_handle = meshes.add(selection_mesh);
   let highlight_mesh_handle = meshes.add(highlight_mesh);
 
-  for _ in 0..args.number_of_particles {
-    let category = core::CategoryId((0..categories.0.len()).choose(&mut rng).expect("no categories"));
+  for _ in 0..args.num_particles {
+    let interaction = core::InteractionId((0..particle_spec.interactions.len()).choose(&mut rng).expect("no particle spec"));
     let position_x = rng.gen::<f32>() * width - width / 2.0;
     let position_y = rng.gen::<f32>() * height - height / 2.0;
     let translation = Vec3::new(position_x, position_y, 0.0);
@@ -133,7 +121,7 @@ pub fn init_particles(
     let particle = commands.spawn_bundle(core::ParticleBundle {
       mesh: MeshBundle {
         transform: Transform::from_translation(translation),
-        mesh: categories.0[category.0].mesh_handle.clone(),
+        mesh: particle_spec.appearances[interaction.0].mesh_handle.clone(),
         render_pipelines: RenderPipelines::from_pipelines(vec![RenderPipeline::new(
           pipeline_handle.clone(),
         )]),
@@ -141,7 +129,7 @@ pub fn init_particles(
       },
       acceleration: core::Acceleration(Vec3::new(0.0, 0.0, 0.0)),
       last_pos: core::LastPosition(translation - core::DELTA_TIME as f32 * starting_velocity),
-      category
+      interaction
     }).id();
     let particle_selection = commands.spawn_bundle(MeshBundle {
       visible: Visible { is_visible: false, ..Default::default() },

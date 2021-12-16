@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use serde::{Deserialize, Serialize};
+
 use std::collections::HashMap;
 
 pub use crate::args::*;
@@ -18,19 +20,25 @@ pub struct ParticleBundle {
   pub mesh: MeshBundle,
   pub last_pos: LastPosition,
   pub acceleration: Acceleration,
-  pub category: CategoryId
+  pub interaction: InteractionId
 }
 
 #[derive(Default)]
-pub struct Categories(pub Vec<Category>);
-#[derive(Default)]
-pub struct Category {
+pub struct ParticleSpec {
+  pub interactions: Vec<Interaction>,
+  pub appearances: Vec<Appearance>,
+}
+#[derive(Default, Deserialize, Serialize, Debug)]
+pub struct Interaction {
   pub force_coeffs: Vec<f32>,
+}
+#[derive(Default, Debug)]
+pub struct Appearance {
   pub color: [f32; 4],
   pub mesh_handle: Handle<Mesh>
 }
 #[derive(Component, Default, Clone, Copy)]
-pub struct CategoryId(pub usize);
+pub struct InteractionId(pub usize);
 
 #[derive(Default)]
 pub struct SimRegion {

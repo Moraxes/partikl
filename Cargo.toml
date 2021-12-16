@@ -4,9 +4,21 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rand = "0.8.4"
+ron = "0.7.0"
 structopt = "0.3"
 
 [dependencies.bevy]
 git = "https://github.com/bevyengine/bevy"
 rev = "94db0176fecfac7e7e9763f2dc7458a54c105886"
+
+[dependencies.chrono]
+version = "0.4.19"
+features = [ "serde" ]
+
+[dependencies.rand]
+version = "0.8.4"
+features = [ "small_rng" ]
+
+[dependencies.serde]
+version = "1.0.131"
+features = [ "serde_derive" ]

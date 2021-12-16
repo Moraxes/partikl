@@ -6,6 +6,7 @@ use structopt::StructOpt;
 
 mod args;
 mod core;
+mod loading;
 mod render;
 mod sim;
 mod ui;
@@ -24,8 +25,10 @@ enum System {
 }
 
 fn main() {
+  let program_args = args::ProgramArgs::from_args();
   App::new()
-    .insert_resource(args::ProgramArgs::from_args())
+    .insert_resource(loading::get_particle_spec(&program_args))
+    .insert_resource(program_args)
     .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
     .insert_resource(Msaa { samples: 8 })
     .insert_resource(WindowDescriptor {
@@ -50,8 +53,7 @@ fn main() {
       Stage::InitCategories,
       SystemStage::single_threaded()
         .with_run_criteria(RunOnce::default())
-        .with_system(render::init_categories))
-    .add_startup_system(render::init_meshes.before(System::InitParticles))
+        .with_system(render::init_appearances))
     .add_startup_system(render::init_particles.label(System::InitParticles))
     .add_startup_system(ui::init_ui)
     .add_stage_after(
