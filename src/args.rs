@@ -42,7 +42,7 @@ pub struct ProgramArgs {
   pub num_particles: usize,
 
   /// Batch size for parallel operations.
-  #[structopt(long, default_value = "1")]
+  #[structopt(long, default_value = "20")]
   pub parallel_batch_size: usize,
 
   /// Prevents the interaction spec from being dumped.
