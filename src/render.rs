@@ -132,7 +132,6 @@ pub fn init_particles(
     }).insert(core::Highlight::default()).id();
     commands.entity(particle).push_children(&[particle_selection, particle_highlight]);
     sim_region.insert_entity(particle, position_x, position_y);
-    sim_region.insert_entity(particle, 0.0, 0.0);
   }
   commands.insert_resource(sim_region);
 
