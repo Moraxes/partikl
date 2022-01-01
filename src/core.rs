@@ -10,9 +10,9 @@ pub const DELTA_TIME: f64 = 0.01;
 pub const VELOCITY_THRESHOLD: f32 = 0.0001;
 
 #[derive(Component, Default, Debug)]
-pub struct Acceleration(pub Vec3);
+pub struct Acceleration(pub Vec2);
 #[derive(Component, Default, Debug)]
-pub struct LastPosition(pub Vec3);
+pub struct LastPosition(pub Vec2);
 
 #[derive(Bundle, Default)]
 pub struct ParticleBundle {
@@ -53,13 +53,13 @@ impl SimRegion {
     }
   }
 
-  pub fn get_corrected_position_delta(&self, origin: Vec3, target: Vec3) -> Vec3 {
+  pub fn get_corrected_position_delta(&self, origin: Vec2, target: Vec2) -> Vec2 {
     let delta = target - origin;
     delta + self.get_wrap_around_adjustment(delta)
   }
 
-  pub fn get_wrap_around_adjustment(&self, point: Vec3) -> Vec3 {
-    let mut adjustment = Vec3::ZERO;
+  pub fn get_wrap_around_adjustment(&self, point: Vec2) -> Vec2 {
+    let mut adjustment = Vec2::ZERO;
     if point.x > self.top_right.x {
       adjustment.x = -self.top_right.x;
     } else if point.x < -self.top_right.x {
@@ -129,14 +129,17 @@ impl SimRegion {
     self.insert_entity(entity, x_new, y_new);
   }
 
-  pub fn get_bucket_with_boundary(&self, x: f32, y: f32) -> impl Iterator<Item=Entity> + '_ {
-    let (ix, iy) = self.bucket_coords(x, y);
+  pub fn get_entities(&self, (ix, iy): (i32, i32)) -> impl Iterator<Item=Entity> + Clone + '_ {
     Self::OFFSETS.iter().cloned()
       .flat_map(move |xoff| Self::OFFSETS.iter().flat_map(move |&yoff|
         self.get_wrapped_buckets(ix + xoff, iy + yoff))
       ).flat_map(|offset| self.index.get(&offset))
       .flatten()
       .cloned()
+  }
+
+  pub fn get_entities_by_position(&self, x: f32, y: f32) -> impl Iterator<Item=Entity> + '_ {
+    self.get_entities(self.bucket_coords(x, y))
   }
 
   pub fn bucket_coords(&self, x: f32, y: f32) -> (i32, i32) {

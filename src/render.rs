@@ -114,8 +114,8 @@ pub fn init_particles(
         material: particle_spec.materials[interaction.0].clone(),
         ..Default::default()
       },
-      acceleration: core::Acceleration(Vec3::new(0.0, 0.0, 0.0)),
-      last_pos: core::LastPosition(translation - core::DELTA_TIME as f32 * starting_velocity),
+      acceleration: core::Acceleration(Vec2::new(0.0, 0.0)),
+      last_pos: core::LastPosition((translation - core::DELTA_TIME as f32 * starting_velocity).truncate()),
       interaction
     }).id();
     let particle_selection = commands.spawn_bundle(PbrBundle {

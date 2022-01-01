@@ -1,3 +1,5 @@
+#![feature(bool_to_option)]
+
 use bevy::prelude::*;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::ecs::schedule::RunOnce;
