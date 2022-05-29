@@ -9,7 +9,7 @@ structopt = "0.3"
 
 [dependencies.bevy]
 git = "https://github.com/bevyengine/bevy"
-rev = "7356f1586d74039f840bcfcf24af3e21c23e3c18"
+rev = "d353fbc6ea9e0c4fa69fc3b8e646e1ce79fbbc16"
 
 [dependencies.chrono]
 version = "0.4.19"

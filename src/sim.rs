@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy::tasks::prelude::*;
-use bevy::core::FixedTimestep;
+use bevy::time::FixedTimestep;
 use bevy::math::Vec3Swizzles;
 
 use crate::core::*;
@@ -40,8 +40,6 @@ impl<T, I> ParallelIterator<std::vec::IntoIter<T>> for Buckets<T, I> where
   I: Iterator<Item = T> + Send,
   T: Send
 {
-  type Item = T;
-
   fn next_batch(&mut self) -> Option<std::vec::IntoIter<T>> {
     let result = (0..self.batch_size)
       .filter_map(|_| self.coords.next())

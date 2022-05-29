@@ -16,7 +16,7 @@ pub fn init_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     style: Style {
       align_self: AlignSelf::FlexEnd,
       position_type: PositionType::Absolute,
-      position: Rect {
+      position: UiRect {
         bottom: Val::Px(5.0),
         top: Val::Px(5.0),
         ..Default::default()

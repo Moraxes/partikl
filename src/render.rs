@@ -26,7 +26,7 @@ pub fn init_materials(
   mut particle_spec: ResMut<core::ParticleSpec>,
   mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-  let mut rng = rand::thread_rng();
+  let mut rng = thread_rng();
   for color in get_random_colors(particle_spec.interactions.len(), &mut rng) {
     let material = StandardMaterial {
       base_color: color.into(),
@@ -47,7 +47,7 @@ fn make_circle(diameter: f32) -> Mesh {
     let angle = it as f32 * 2.0 * PI / (CORNERS as f32);
     [angle.cos() * diameter / 2.0, angle.sin() * diameter / 2.0, 0.0]
   }));
-  mesh.set_attribute(Mesh::ATTRIBUTE_POSITION, v_pos);
+  mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, v_pos);
   let indices = (1..=CORNERS).flat_map(|it| {
     let current = it;
     let next = if it == CORNERS { 1 } else { it + 1 };
@@ -69,7 +69,7 @@ fn make_hollow_circle(diameter: f32) -> Mesh {
       [angle.cos() * (diameter / 2.0 + 1.0), angle.sin() * (diameter / 2.0 + 1.0), 0.0],
     ]
   }));
-  mesh.set_attribute(Mesh::ATTRIBUTE_POSITION, v_pos);
+  mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, v_pos);
   let mut indices = vec![0, 1];
   indices.extend((1..=CORNERS).flat_map(|it| {
     let current = if it == CORNERS { 0 } else { it };
@@ -87,7 +87,7 @@ pub fn init_particles(
   particle_spec: Res<core::ParticleSpec>,
   windows: Res<Windows>
 ) {
-  let mut rng = rand::thread_rng();
+  let mut rng = thread_rng();
   let window = windows.get_primary().expect("no primary window");
   let width = window.width();
   let height = window.height();

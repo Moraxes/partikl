@@ -1,9 +1,7 @@
-#![feature(bool_to_option)]
-
 use bevy::prelude::*;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
-use bevy::ecs::schedule::RunOnce;
-use bevy::window::WindowMode;
+use bevy::ecs::schedule::ShouldRun;
+use bevy::window::{close_on_esc, PresentMode, WindowMode};
 use structopt::StructOpt;
 
 mod args;
@@ -40,27 +38,28 @@ fn main() {
       resize_constraints: Default::default(),
       scale_factor_override: None,
       title: "partikl".to_string(),
-      vsync: true,
+      present_mode: PresentMode::Mailbox,
       resizable: false,
       decorations: false,
       cursor_visible: true,
       cursor_locked: false,
       mode: WindowMode::BorderlessFullscreen,
       transparent: false,
+      ..Default::default()
     })
     .add_plugins(DefaultPlugins)
     .add_plugin(FrameTimeDiagnosticsPlugin::default())
     .add_state(core::SimState::Running)
     .add_stage_before(
-      CoreStage::Startup,
+      CoreStage::First,
       Stage::InitCategories,
       SystemStage::single_threaded()
-        .with_run_criteria(RunOnce::default())
+        .with_run_criteria(ShouldRun::once)
         .with_system(render::init_materials))
     .add_startup_system(render::init_particles.label(System::InitParticles))
     .add_startup_system(ui::init_ui)
     .add_stage_after(
-      CoreStage::Startup,
+      CoreStage::First,
       Stage::FixedUpdateStage,
       sim::simulation_stage(),
     )
@@ -68,6 +67,6 @@ fn main() {
     .add_system(ui::exit_after_time)
     .add_system(ui::handle_keyboard_input)
     .add_system(ui::handle_mouse_input)
-    .add_system(bevy::input::system::exit_on_esc_system)
+    .add_system(close_on_esc)
     .run();
 }
