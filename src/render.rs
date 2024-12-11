@@ -7,8 +7,6 @@ use crate::args::ProgramArgs;
 
 use crate::core;
 
-const CORNERS: i32 = 16;
-
 fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<[f32; 4]> {
   let phase = 360.0 * rng.gen::<f32>();
   (0..n).map(|it| {
