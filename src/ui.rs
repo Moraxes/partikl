@@ -80,7 +80,7 @@ pub fn handle_keyboard_input(
   if keyboard.just_pressed(KeyCode::KeyF) {
     let mut primary_window = windows.get_single_mut().unwrap();
     primary_window.mode = match primary_window.mode {
-      WindowMode::Windowed => WindowMode::BorderlessFullscreen,
+      WindowMode::Windowed => WindowMode::BorderlessFullscreen(MonitorSelection::Current),
       _ => WindowMode::Windowed,
     }
   }

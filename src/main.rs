@@ -28,7 +28,7 @@ fn main() {
         present_mode: PresentMode::Mailbox,
         resizable: false,
         decorations: false,
-        mode: WindowMode::BorderlessFullscreen,
+        mode: WindowMode::BorderlessFullscreen(MonitorSelection::Current),
         transparent: false,
         ..Default::default()
       }),
