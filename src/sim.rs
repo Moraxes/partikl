@@ -200,7 +200,7 @@ pub fn select_on_click(
   let camera_transform = camera_query.single();
   let world_position = camera_transform.compute_matrix() * cursor_position_offset.extend(0.0).extend(1.0);
 
-  if mouse_buttons.just_pressed(MouseButton::Left) {
+  if mouse_buttons.just_released(MouseButton::Left) {
     for (_, _, mut visibility) in gizmos.iter_mut().filter(|(s, _, _)| s.is_some()) {
       *visibility = Visibility::Hidden;
     }
