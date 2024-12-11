@@ -119,13 +119,13 @@ pub fn init_particles(
       interaction
     }).id();
     let particle_selection = commands.spawn_bundle(PbrBundle {
-      visibility: Visibility { is_visible: false },
+      // visibility: Visibility { is_visible: false },
       mesh: gizmo_mesh.clone(),
       material: materials.add(Color::from([1.0, 1.0, 1.0, 0.5]).into()),
       ..Default::default()
     }).insert(core::Selection::default()).id();
     let particle_highlight = commands.spawn_bundle(PbrBundle {
-      visibility: Visibility { is_visible: false },
+      // visibility: Visibility { is_visible: false },
       mesh: gizmo_mesh.clone(),
       material: materials.add(Color::from([1.0f32, 0.0, 0.5, 0.5]).into()),
       ..Default::default()
@@ -135,10 +135,9 @@ pub fn init_particles(
   }
   commands.insert_resource(sim_region);
 
-  let mut camera = OrthographicCameraBundle::new_3d();
-  camera.orthographic_projection.scaling_mode = ScalingMode::WindowSize;
-  camera.transform = Transform::from_xyz(0.0, 0.0, 1000.0)
-    .looking_at(Vec3::ZERO, Vec3::Y);
+  let mut camera = Camera2dBundle::default();
+  camera.projection.scaling_mode = ScalingMode::WindowSize;
+  camera.transform = Transform::from_xyz(0.0, 0.0, 1000.0).looking_at(Vec3::ZERO, Vec3::Y);
   commands.spawn_bundle(camera)
     .insert(core::MainCamera { zoom_base: 1.125, zoom_exponent: 1 });
 }
