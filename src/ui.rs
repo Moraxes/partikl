@@ -35,7 +35,7 @@ pub fn exit_after_time(
 ) {
   if let Some(time_limit) = args.exit_after {
     if time.elapsed_seconds_f64() >= time_limit {
-      app_exit_events.send(AppExit);
+      app_exit_events.send(AppExit::Success);
     }
   }
 }
