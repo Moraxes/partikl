@@ -235,7 +235,6 @@ fn select_on_click(
       for &child in children.iter() {
         if let Ok((Some(_), None, mut visibility)) = gizmos.get_mut(child) {
           *visibility = Visibility::Inherited;
-          println!("clicked a particle");
         }
       }
       break;
@@ -254,7 +253,6 @@ fn select_on_click(
       for &child in children.iter() {
         if let Ok((None, Some(_), mut visibility)) = gizmos.get_mut(child) {
           *visibility = Visibility::Inherited;
-          println!("clicked a particle");
         }
       }
     }
