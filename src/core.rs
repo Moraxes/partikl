@@ -16,7 +16,6 @@ pub struct LastPosition(pub Vec2);
 
 #[derive(Bundle, Default)]
 pub struct ParticleBundle {
-  #[bundle]
   pub mesh: PbrBundle,
   pub last_pos: LastPosition,
   pub acceleration: Acceleration,
