@@ -146,8 +146,9 @@ impl SimRegion {
   }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Resource)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, Hash, States)]
 pub enum SimState {
+  #[default]
   Running,
   Paused,
 }

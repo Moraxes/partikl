@@ -42,15 +42,16 @@ pub fn exit_after_time(
 
 pub fn handle_keyboard_input(
   keyboard: Res<Input<KeyCode>>,
-  mut state: ResMut<State<SimState>>,
+  state: Res<State<SimState>>,
+  mut next_state: ResMut<NextState<SimState>>,
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
   if keyboard.just_pressed(KeyCode::Space) {
-    let new_state = match state.current() {
+    let new_state = match state.0 {
       SimState::Running => SimState::Paused,
       SimState::Paused => SimState::Running,
     };
-    state.set(new_state).unwrap();
+    next_state.set(new_state);
   }
   if keyboard.just_pressed(KeyCode::F) {
     let mut primary_window = windows.get_single_mut().unwrap();

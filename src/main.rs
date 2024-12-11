@@ -46,7 +46,6 @@ fn main() {
       ..Default::default()
     }))
     .add_plugin(FrameTimeDiagnosticsPlugin::default())
-    .add_state(core::SimState::Running)
     .add_stage_before(
       CoreStage::First,
       Stage::InitCategories,
