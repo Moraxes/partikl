@@ -29,7 +29,7 @@ fn main() {
   App::new()
     .insert_resource(loading::get_particle_spec(&program_args))
     .insert_resource(program_args)
-    .insert_resource(Msaa { samples: 4 })
+    .insert_resource(Msaa::Sample4)
     .add_plugins(DefaultPlugins.set(WindowPlugin {
       primary_window: Some(Window {
         resolution: WindowResolution::new(1920.0, 1080.0),
