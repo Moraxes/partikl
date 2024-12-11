@@ -58,7 +58,7 @@ pub fn exit_after_time(
   mut app_exit_events: EventWriter<AppExit>,
 ) {
   if let Some(time_limit) = args.exit_after {
-    if time.elapsed_seconds_f64() >= time_limit {
+    if time.elapsed_secs_f64() >= time_limit {
       app_exit_events.send(AppExit::Success);
     }
   }
