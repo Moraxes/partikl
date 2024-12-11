@@ -29,7 +29,6 @@ fn main() {
   App::new()
     .insert_resource(loading::get_particle_spec(&program_args))
     .insert_resource(program_args)
-    .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
     .insert_resource(Msaa { samples: 4 })
     .insert_resource(WindowDescriptor {
       width: 1920.0,

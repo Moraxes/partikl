@@ -1,3 +1,4 @@
+use bevy::core_pipeline::clear_color::ClearColorConfig;
 use bevy::prelude::*;
 use bevy::render::camera::ScalingMode;
 use rand::prelude::*;
@@ -142,7 +143,7 @@ pub fn init_particles(
     }.into(),
     ..Default::default()
   };
-
+  camera.camera_3d.clear_color = ClearColorConfig::Custom(Color::BLACK);
   camera.transform = Transform::from_xyz(0.0, 0.0, 1000.0).looking_at(Vec3::ZERO, Vec3::Y);
   commands.spawn_bundle(camera)
     .insert(core::MainCamera { zoom_base: 1.125, zoom_exponent: 1 });
