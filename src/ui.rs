@@ -1,4 +1,5 @@
 use bevy::app::AppExit;
+use bevy::color::palettes::css::WHITE;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
@@ -11,19 +12,26 @@ use crate::core::*;
 pub struct FpsText;
 
 pub fn init_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
-  commands.spawn(TextBundle::from_section("hello", TextStyle {
-    font: asset_server.load("FiraMono-Regular.ttf"),
-      font_size: 16.0,
-      color: Color::WHITE,
-    })).insert(FpsText);
+  commands.spawn((
+    Text::new("hello"),
+    TextFont {
+      font: asset_server.load("FiraMono-Regular.ttf"),
+        font_size: 16.0,
+        ..Default::default()
+      },
+      TextColor(WHITE.into()),
+    )).insert(FpsText);
 }
 
-pub fn update_text(diagnostics: Res<DiagnosticsStore>, mut query: Query<&mut Text, With<FpsText>>) {
-  for mut text in query.iter_mut() {
-    if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
-      if let Some(average) = fps.average() {
-        text.sections[0].value = format!("{:.2}", average);
-      }
+pub fn update_text(
+  diagnostics: Res<DiagnosticsStore>,
+  query: Query<Entity, With<FpsText>>,
+  mut writer: TextUiWriter,
+) {
+  if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
+    if let Some(average) = fps.average() {
+      let entity = query.single();
+      *writer.text(entity, 0) = format!("{:.2}", average);
     }
   }
 }
