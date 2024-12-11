@@ -34,14 +34,14 @@ fn main() {
       }),
       ..Default::default()
     }))
-    .add_plugin(FrameTimeDiagnosticsPlugin::default())
+    .add_plugins(FrameTimeDiagnosticsPlugin::default())
     .add_state::<SimState>()
-    .add_startup_systems((
+    .add_systems(Startup, (
       render::init_materials,
       render::init_particles,
     ).chain())
-    .add_startup_system(ui::init_ui)
-    .add_systems({
+    .add_systems(Startup, ui::init_ui)
+    .add_systems(FixedUpdate, {
       use sim::*;
       (
         compute_forces.before(compute_friction),
@@ -50,13 +50,14 @@ fn main() {
         wrap_around.after(integrate),
         update_shape.after(integrate),
       )
-        .in_schedule(CoreSchedule::FixedUpdate)
     })
-    .add_system(sim::select_on_click)
-    .add_system(ui::update_text)
-    .add_system(ui::exit_after_time)
-    .add_system(ui::handle_keyboard_input)
-    .add_system(ui::handle_mouse_input)
-    .add_system(close_on_esc)
+    .add_systems(Update, (
+      sim::select_on_click,
+      ui::update_text,
+      ui::exit_after_time,
+      ui::handle_keyboard_input,
+      ui::handle_mouse_input,
+      close_on_esc
+    ))
     .run();
 }
