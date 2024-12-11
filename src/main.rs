@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::ecs::schedule::ShouldRun;
-use bevy::window::{close_on_esc, PresentMode, WindowMode};
+use bevy::window::{close_on_esc, PresentMode, WindowMode, WindowResolution};
 use structopt::StructOpt;
 
 mod args;
@@ -30,22 +30,21 @@ fn main() {
     .insert_resource(loading::get_particle_spec(&program_args))
     .insert_resource(program_args)
     .insert_resource(Msaa { samples: 4 })
-    .insert_resource(WindowDescriptor {
-      width: 1920.0,
-      height: 1080.0,
-      position: WindowPosition::Automatic,
-      resize_constraints: Default::default(),
-      scale_factor_override: None,
-      title: "partikl".to_string(),
-      present_mode: PresentMode::Mailbox,
-      resizable: false,
-      decorations: false,
-      cursor_visible: true,
-      mode: WindowMode::BorderlessFullscreen,
-      transparent: false,
+    .add_plugins(DefaultPlugins.set(WindowPlugin {
+      primary_window: Some(Window {
+        resolution: WindowResolution::new(1920.0, 1080.0),
+        position: WindowPosition::Automatic,
+        resize_constraints: Default::default(),
+        title: "partikl".to_string(),
+        present_mode: PresentMode::Mailbox,
+        resizable: false,
+        decorations: false,
+        mode: WindowMode::BorderlessFullscreen,
+        transparent: false,
+        ..Default::default()
+      }),
       ..Default::default()
-    })
-    .add_plugins(DefaultPlugins)
+    }))
     .add_plugin(FrameTimeDiagnosticsPlugin::default())
     .add_state(core::SimState::Running)
     .add_stage_before(
