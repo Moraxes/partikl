@@ -108,7 +108,7 @@ pub fn init_particles(
       rng.gen::<f32>() * 250f32 - 125f32,
       rng.gen::<f32>() * 250f32 - 125f32,
       0.0);
-    let particle = commands.spawn_bundle(core::ParticleBundle {
+    let particle = commands.spawn(core::ParticleBundle {
       mesh: PbrBundle {
         transform: Transform::from_translation(translation),
         mesh: circle_mesh.clone(),
@@ -119,13 +119,13 @@ pub fn init_particles(
       last_pos: core::LastPosition((translation - core::DELTA_TIME as f32 * starting_velocity).truncate()),
       interaction
     }).id();
-    let particle_selection = commands.spawn_bundle(PbrBundle {
+    let particle_selection = commands.spawn(PbrBundle {
       visibility: Visibility { is_visible: false },
       mesh: gizmo_mesh.clone(),
       material: materials.add(Color::from([1.0, 1.0, 1.0, 0.5]).into()),
       ..Default::default()
     }).insert(core::Selection::default()).id();
-    let particle_highlight = commands.spawn_bundle(PbrBundle {
+    let particle_highlight = commands.spawn(PbrBundle {
       visibility: Visibility { is_visible: false },
       mesh: gizmo_mesh.clone(),
       material: materials.add(Color::from([1.0f32, 0.0, 0.5, 0.5]).into()),
@@ -145,6 +145,6 @@ pub fn init_particles(
   };
   camera.camera_3d.clear_color = ClearColorConfig::Custom(Color::BLACK);
   camera.transform = Transform::from_xyz(0.0, 0.0, 1000.0).looking_at(Vec3::ZERO, Vec3::Y);
-  commands.spawn_bundle(camera)
+  commands.spawn(camera)
     .insert(core::MainCamera { zoom_base: 1.125, zoom_exponent: 1 });
 }

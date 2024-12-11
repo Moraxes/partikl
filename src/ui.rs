@@ -11,7 +11,7 @@ use crate::core::*;
 pub struct FpsText;
 
 pub fn init_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
-  commands.spawn_bundle(TextBundle::from_section("hello", TextStyle {
+  commands.spawn(TextBundle::from_section("hello", TextStyle {
     font: asset_server.load("FiraMono-Regular.ttf"),
       font_size: 16.0,
       color: Color::WHITE,
