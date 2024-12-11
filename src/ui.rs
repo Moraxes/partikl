@@ -41,7 +41,7 @@ pub fn exit_after_time(
 }
 
 pub fn handle_keyboard_input(
-  keyboard: Res<Input<KeyCode>>,
+  keyboard: Res<ButtonInput<KeyCode>>,
   state: Res<State<SimState>>,
   mut next_state: ResMut<NextState<SimState>>,
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
@@ -65,8 +65,8 @@ pub fn handle_keyboard_input(
 pub fn handle_mouse_input(
   mut mouse_wheel_events: EventReader<MouseWheel>,
   mut mouse_motion_events: EventReader<MouseMotion>,
-  mouse_button_input: Res<Input<MouseButton>>,
-  keyboard_input: Res<Input<KeyCode>>,
+  mouse_button_input: Res<ButtonInput<MouseButton>>,
+  keyboard_input: Res<ButtonInput<KeyCode>>,
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
   mut camera: Query<(&mut MainCamera, &mut OrthographicProjection, &mut Transform)>
 ) {

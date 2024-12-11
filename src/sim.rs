@@ -181,7 +181,7 @@ pub struct SelectedGizmo {
 }
 
 pub fn select_on_click(
-  mouse_buttons: Res<Input<MouseButton>>,
+  mouse_buttons: Res<ButtonInput<MouseButton>>,
   windows: Query<&Window, With<PrimaryWindow>>,
   camera_query: Query<&Transform, With<MainCamera>>,
   particles: Query<(Entity, &Transform, &Children), With<Acceleration>>,
