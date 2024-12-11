@@ -106,8 +106,8 @@ pub fn handle_mouse_input(
 
   if mouse_button_input.just_released(MouseButton::Left) {
     let mut primary_window = windows.get_single_mut().unwrap();
-    primary_window.cursor.visible = true;
-    primary_window.cursor.grab_mode = CursorGrabMode::Locked;
+    primary_window.cursor_options.visible = true;
+    primary_window.cursor_options.grab_mode = CursorGrabMode::Locked;
   }
 
   if !keyboard_input.pressed(KeyCode::ControlLeft) {
@@ -116,8 +116,8 @@ pub fn handle_mouse_input(
 
   if mouse_button_input.just_pressed(MouseButton::Left) {
     let mut primary_window = windows.get_single_mut().unwrap();
-    primary_window.cursor.visible = false;
-    primary_window.cursor.grab_mode = CursorGrabMode::None;
+    primary_window.cursor_options.visible = false;
+    primary_window.cursor_options.grab_mode = CursorGrabMode::None;
   }
 
   for event in mouse_motion_events.read() {
