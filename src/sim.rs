@@ -222,8 +222,8 @@ fn select_on_click(
   let world_position = camera_transform.compute_matrix() * cursor_position_offset.extend(0.0).extend(1.0);
 
   if mouse_buttons.just_pressed(MouseButton::Left) {
-    for (_, _, mut visible) in gizmos.iter_mut().filter(|(s, _, _)| s.is_some()) {
-      visible.is_visible = false;
+    for (_, _, mut visibility) in gizmos.iter_mut().filter(|(s, _, _)| s.is_some()) {
+      *visibility = Visibility::Hidden;
     }
     selected_gizmo.id = None;
     for (particle, transform, children) in particles.iter() {
@@ -233,8 +233,8 @@ fn select_on_click(
       selected_gizmo.id = Some(particle);
       selected_gizmo.translation = transform.translation;
       for &child in children.iter() {
-        if let Ok((Some(_), None, mut visible)) = gizmos.get_mut(child) {
-          visible.is_visible = true;
+        if let Ok((Some(_), None, mut visibility)) = gizmos.get_mut(child) {
+          *visibility = Visibility::Inherited;
           println!("clicked a particle");
         }
       }
@@ -245,15 +245,15 @@ fn select_on_click(
   if let Some(particle) = selected_gizmo.id {
     let (_, transform, _) = particles.get(particle).unwrap();
     selected_gizmo.translation = transform.translation;
-    for (_, _, mut visible) in gizmos.iter_mut().filter(|(_, h, _)| h.is_some()) {
-      visible.is_visible = false;
+    for (_, _, mut visibility) in gizmos.iter_mut().filter(|(_, h, _)| h.is_some()) {
+      *visibility = Visibility::Hidden;
     }
     let neighbour_ids = sim_region.get_entities_by_position(selected_gizmo.translation.x, selected_gizmo.translation.y);
     for nid in neighbour_ids {
       let (_, _, children) = particles.get(nid).unwrap();
       for &child in children.iter() {
-        if let Ok((None, Some(_), mut visible)) = gizmos.get_mut(child) {
-          visible.is_visible = true;
+        if let Ok((None, Some(_), mut visibility)) = gizmos.get_mut(child) {
+          *visibility = Visibility::Inherited;
           println!("clicked a particle");
         }
       }
