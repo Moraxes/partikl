@@ -170,7 +170,7 @@ fn scale_from_velocity(velocity_length_sq: f32) -> Vec3 {
 }
 
 fn rotation_from_velocity(velocity: Vec2) -> Quat {
-  let angle = velocity.angle_between(Vec2::new(1.0, 0.0));
+  let angle = velocity.angle_to(Vec2::new(1.0, 0.0));
   Quat::from_rotation_z(-angle)
 }
 
