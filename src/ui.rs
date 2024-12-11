@@ -47,7 +47,7 @@ pub fn handle_keyboard_input(
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
   if keyboard.just_pressed(KeyCode::Space) {
-    let new_state = match state.0 {
+    let new_state = match state.get() {
       SimState::Running => SimState::Paused,
       SimState::Paused => SimState::Running,
     };

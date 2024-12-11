@@ -40,7 +40,7 @@ pub fn compute_forces(
   mut particles_out: Query<(Entity, &Transform, &mut Acceleration, &InteractionId)>,
   particles_in: Query<(Entity, &Transform, &InteractionId)>
 ) {
-  if state.0 == SimState::Paused {
+  if state.get() == &SimState::Paused {
     return;
   }
   let pool = ComputeTaskPool::get();
@@ -83,7 +83,7 @@ pub fn compute_forces(
 }
 
 pub fn compute_friction(state: Res<State<SimState>>, mut particles: Query<(&Transform, &mut LastPosition, &mut Acceleration)>) {
-  if state.0 == SimState::Paused {
+  if state.get() == &SimState::Paused {
     return;
   }
   for (transform, mut last_pos, mut acceleration) in particles.iter_mut() {
@@ -117,7 +117,7 @@ fn unit_triangle(x: f32) -> f32 {
 
 pub fn integrate(
   state: Res<State<SimState>>, mut query: Query<(&mut Acceleration, &mut Transform, &mut LastPosition)>) {
-  if state.0 == SimState::Paused {
+  if state.get() == &SimState::Paused {
     return;
   }
   let dt_sq = (DELTA_TIME * DELTA_TIME) as f32;
@@ -135,7 +135,7 @@ pub fn wrap_around(
   mut sim_region: ResMut<SimRegion>,
   mut query: Query<(Entity, &mut Transform, &mut LastPosition)>
 ) {
-  if state.0 == SimState::Paused {
+  if state.get() == &SimState::Paused {
     return;
   }
   for (entity, mut transform, mut last_pos) in query.iter_mut() {
@@ -151,7 +151,7 @@ pub fn wrap_around(
 }
 
 pub fn update_shape(state: Res<State<SimState>>, mut query: Query<(&mut Transform, &LastPosition)>) {
-  if state.0 == SimState::Paused {
+  if state.get() == &SimState::Paused {
     return;
   }
   for (mut transform, last_pos) in query.iter_mut() {
