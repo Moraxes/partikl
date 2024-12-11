@@ -70,7 +70,7 @@ pub fn handle_mouse_input(
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
   mut camera: Query<(&mut MainCamera, &mut OrthographicProjection, &mut Transform)>
 ) {
-  for event in mouse_wheel_events.iter() {
+  for event in mouse_wheel_events.read() {
     let log_delta = match event {
       MouseWheel { unit: MouseScrollUnit::Line, y, .. } => y.round() as i32,
       MouseWheel { unit: MouseScrollUnit::Pixel, y, .. } => (y / 10.0).round() as i32,
@@ -96,7 +96,7 @@ pub fn handle_mouse_input(
     primary_window.cursor.grab_mode = CursorGrabMode::None;
   }
 
-  for event in mouse_motion_events.iter() {
+  for event in mouse_motion_events.read() {
     if !mouse_button_input.pressed(MouseButton::Left) {
       continue;
     }
