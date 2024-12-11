@@ -42,7 +42,6 @@ fn main() {
       resizable: false,
       decorations: false,
       cursor_visible: true,
-      cursor_locked: false,
       mode: WindowMode::BorderlessFullscreen,
       transparent: false,
       ..Default::default()
