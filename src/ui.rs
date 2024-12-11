@@ -1,5 +1,5 @@
 use bevy::app::AppExit;
-use bevy::diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin};
+use bevy::diagnostic::{Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy::render::camera::OrthographicProjection;
@@ -18,7 +18,7 @@ pub fn init_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     })).insert(FpsText);
 }
 
-pub fn update_text(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text, With<FpsText>>) {
+pub fn update_text(diagnostics: Res<DiagnosticsStore>, mut query: Query<&mut Text, With<FpsText>>) {
   for mut text in query.iter_mut() {
     if let Some(fps) = diagnostics.get(FrameTimeDiagnosticsPlugin::FPS) {
       if let Some(average) = fps.average() {
