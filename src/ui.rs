@@ -86,7 +86,7 @@ pub fn handle_mouse_input(
     primary_window.cursor.grab_mode = CursorGrabMode::Locked;
   }
 
-  if !keyboard_input.pressed(KeyCode::LControl) {
+  if !keyboard_input.pressed(KeyCode::ControlLeft) {
     return;
   }
 
