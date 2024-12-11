@@ -135,10 +135,15 @@ pub fn init_particles(
   }
   commands.insert_resource(sim_region);
 
-  let mut camera = OrthographicCameraBundle::new_3d();
-  camera.orthographic_projection.scaling_mode = ScalingMode::WindowSize;
-  camera.transform = Transform::from_xyz(0.0, 0.0, 1000.0)
-    .looking_at(Vec3::ZERO, Vec3::Y);
+  let mut camera = Camera3dBundle {
+    projection: OrthographicProjection {
+        scaling_mode: ScalingMode::WindowSize,
+        ..default()
+    }.into(),
+    ..Default::default()
+  };
+
+  camera.transform = Transform::from_xyz(0.0, 0.0, 1000.0).looking_at(Vec3::ZERO, Vec3::Y);
   commands.spawn_bundle(camera)
     .insert(core::MainCamera { zoom_base: 1.125, zoom_exponent: 1 });
 }

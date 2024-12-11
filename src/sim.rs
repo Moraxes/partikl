@@ -56,7 +56,6 @@ pub fn compute_forces(
   args: Res<ProgramArgs>,
   particle_spec: Res<ParticleSpec>,
   sim_region: Res<SimRegion>,
-  pool: Res<ComputeTaskPool>,
   state: Res<State<SimState>>,
   mut particles_out: Query<(Entity, &Transform, &mut Acceleration, &InteractionId)>,
   particles_in: Query<(Entity, &Transform, &InteractionId)>
@@ -64,6 +63,7 @@ pub fn compute_forces(
   if state.current() == &SimState::Paused {
     return;
   }
+  let pool = ComputeTaskPool::get();
   let coords_iter = sim_region.index.iter()
     .filter(|(_, v)| !v.is_empty())
     .map(|(&k, v)| (v, sim_region.get_entities(k).clone()));
@@ -234,6 +234,7 @@ fn select_on_click(
       for &child in children.iter() {
         if let Ok((Some(_), None, mut visible)) = gizmos.get_mut(child) {
           visible.is_visible = true;
+          println!("clicked a particle");
         }
       }
       break;
@@ -252,6 +253,7 @@ fn select_on_click(
       for &child in children.iter() {
         if let Ok((None, Some(_), mut visible)) = gizmos.get_mut(child) {
           visible.is_visible = true;
+          println!("clicked a particle");
         }
       }
     }

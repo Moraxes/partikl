@@ -34,7 +34,7 @@ fn main() {
     .insert_resource(WindowDescriptor {
       width: 1920.0,
       height: 1080.0,
-      position: None,
+      position: WindowPosition::Automatic,
       resize_constraints: Default::default(),
       scale_factor_override: None,
       title: "partikl".to_string(),
