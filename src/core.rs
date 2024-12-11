@@ -23,7 +23,7 @@ pub struct ParticleBundle {
   pub interaction: InteractionId
 }
 
-#[derive(Default)]
+#[derive(Default, Resource)]
 pub struct ParticleSpec {
   pub interactions: Vec<Interaction>,
   pub materials: Vec<Handle<StandardMaterial>>,
@@ -35,7 +35,7 @@ pub struct Interaction {
 #[derive(Component, Default, Clone, Copy)]
 pub struct InteractionId(pub usize);
 
-#[derive(Default)]
+#[derive(Default, Resource)]
 pub struct SimRegion {
   top_right: Vec2,
   pub granularity: f32,
@@ -147,7 +147,7 @@ impl SimRegion {
   }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Resource)]
 pub enum SimState {
   Running,
   Paused,

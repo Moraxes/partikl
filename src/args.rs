@@ -1,7 +1,8 @@
 use std::path::PathBuf;
+use bevy::prelude::Resource;
 use structopt::StructOpt;
 
-#[derive(StructOpt, Debug)]
+#[derive(StructOpt, Debug, Resource)]
 #[structopt(name = "partikl")]
 pub struct ProgramArgs {
   /// Exit after this many seconds.
