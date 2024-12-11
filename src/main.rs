@@ -18,7 +18,7 @@ fn main() {
     .insert_resource(loading::get_particle_spec(&program_args))
     .insert_resource(program_args)
     .insert_resource(Msaa::Sample4)
-    .insert_resource(FixedTime::new_from_secs(DELTA_TIME as f32))
+    .insert_resource(Time::<Fixed>::from_seconds(DELTA_TIME))
     .add_plugins(DefaultPlugins.set(WindowPlugin {
       primary_window: Some(Window {
         resolution: WindowResolution::new(1920.0, 1080.0),
