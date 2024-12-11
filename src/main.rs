@@ -35,7 +35,7 @@ fn main() {
       ..Default::default()
     }))
     .add_plugins(FrameTimeDiagnosticsPlugin::default())
-    .add_state::<SimState>()
+    .init_state::<SimState>()
     .add_systems(Startup, (
       render::init_materials,
       render::init_particles,
