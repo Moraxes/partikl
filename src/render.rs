@@ -139,7 +139,7 @@ pub fn init_particles(
 
   let mut camera = Camera3dBundle {
     projection: OrthographicProjection {
-        scaling_mode: ScalingMode::WindowSize,
+        scaling_mode: ScalingMode::WindowSize(1.0),
         ..default()
     }.into(),
     ..Default::default()
