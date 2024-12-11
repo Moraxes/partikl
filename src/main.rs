@@ -2,7 +2,7 @@ use core::{SimState, DELTA_TIME};
 
 use bevy::prelude::*;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
-use bevy::window::{close_on_esc, PresentMode, WindowMode, WindowResolution};
+use bevy::window::{PresentMode, WindowMode, WindowResolution};
 use structopt::StructOpt;
 
 mod args;
@@ -57,7 +57,7 @@ fn main() {
       ui::exit_after_time,
       ui::handle_keyboard_input,
       ui::handle_mouse_input,
-      close_on_esc
+      ui::close_on_esc,
     ))
     .run();
 }
