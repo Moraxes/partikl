@@ -88,7 +88,7 @@ pub fn init_particles(
       material: materials.add(Color::srgba(1.0f32, 0.0, 0.5, 0.5)),
       ..Default::default()
     }).insert(core::Highlight::default()).id();
-    commands.entity(particle).push_children(&[particle_selection, particle_highlight]);
+    commands.entity(particle).add_children(&[particle_selection, particle_highlight]);
     sim_region.insert_entity(particle, position_x, position_y);
   }
   commands.insert_resource(sim_region);
