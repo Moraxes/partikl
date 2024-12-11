@@ -3,7 +3,7 @@ use bevy::diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin};
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy::render::camera::OrthographicProjection;
-use bevy::window::WindowMode;
+use bevy::window::{CursorGrabMode, PrimaryWindow, WindowMode};
 
 use crate::core::*;
 
@@ -43,7 +43,7 @@ pub fn exit_after_time(
 pub fn handle_keyboard_input(
   keyboard: Res<Input<KeyCode>>,
   mut state: ResMut<State<SimState>>,
-  mut windows: ResMut<Windows>
+  mut windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
   if keyboard.just_pressed(KeyCode::Space) {
     let new_state = match state.current() {
@@ -53,10 +53,10 @@ pub fn handle_keyboard_input(
     state.set(new_state).unwrap();
   }
   if keyboard.just_pressed(KeyCode::F) {
-    let primary_window = windows.get_primary_mut().unwrap();
-    match primary_window.mode() {
-      WindowMode::Windowed => primary_window.set_mode(WindowMode::BorderlessFullscreen),
-      _ => primary_window.set_mode(WindowMode::Windowed),
+    let primary_window = windows.get_single_mut().unwrap();
+    primary_window.mode = match primary_window.mode {
+      WindowMode::Windowed => WindowMode::BorderlessFullscreen,
+      _ => WindowMode::Windowed,
     }
   }
 }
@@ -66,7 +66,7 @@ pub fn handle_mouse_input(
   mut mouse_motion_events: EventReader<MouseMotion>,
   mouse_button_input: Res<Input<MouseButton>>,
   keyboard_input: Res<Input<KeyCode>>,
-  mut windows: ResMut<Windows>,
+  mut windows: Query<&mut Window, With<PrimaryWindow>>,
   mut camera: Query<(&mut MainCamera, &mut OrthographicProjection, &mut Transform)>
 ) {
   for event in mouse_wheel_events.iter() {
@@ -80,9 +80,9 @@ pub fn handle_mouse_input(
   }
 
   if mouse_button_input.just_released(MouseButton::Left) {
-    let primary_window = windows.get_primary_mut().unwrap();
-    primary_window.set_cursor_visibility(true);
-    primary_window.set_cursor_lock_mode(true);
+    let mut primary_window = windows.get_single_mut().unwrap();
+    primary_window.cursor.visible = true;
+    primary_window.cursor.grab_mode = CursorGrabMode::Locked;
   }
 
   if !keyboard_input.pressed(KeyCode::LControl) {
@@ -90,9 +90,9 @@ pub fn handle_mouse_input(
   }
 
   if mouse_button_input.just_pressed(MouseButton::Left) {
-    let primary_window = windows.get_primary_mut().unwrap();
-    primary_window.set_cursor_visibility(false);
-    primary_window.set_cursor_lock_mode(false);
+    let mut primary_window = windows.get_single_mut().unwrap();
+    primary_window.cursor.visible = false;
+    primary_window.cursor.grab_mode = CursorGrabMode::None;
   }
 
   for event in mouse_motion_events.iter() {

@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::tasks::prelude::*;
 use bevy::time::FixedTimestep;
 use bevy::math::Vec3Swizzles;
+use bevy::window::PrimaryWindow;
 
 use crate::core::*;
 
@@ -202,14 +203,14 @@ struct SelectedGizmo {
 
 fn select_on_click(
   mouse_buttons: Res<Input<MouseButton>>,
-  windows: Res<Windows>,
+  windows: Query<&Window, With<PrimaryWindow>>,
   camera_query: Query<&Transform, With<MainCamera>>,
   particles: Query<(Entity, &Transform, &Children), With<Acceleration>>,
   sim_region: Res<SimRegion>,
   mut gizmos: Query<(Option<&Selection>, Option<&Highlight>, &mut Visibility), Or<(With<Selection>, With<Highlight>)>>,
   mut selected_gizmo: Local<SelectedGizmo>,
 ) {
-  let window = windows.get_primary().unwrap();
+  let window = windows.get_single().unwrap();
   let cursor_position_opt = window.cursor_position();
   if cursor_position_opt.is_none() {
     return;

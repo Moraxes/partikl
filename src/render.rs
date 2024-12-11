@@ -1,6 +1,7 @@
 use bevy::core_pipeline::clear_color::ClearColorConfig;
 use bevy::prelude::*;
 use bevy::render::camera::ScalingMode;
+use bevy::window::PrimaryWindow;
 use rand::prelude::*;
 use std::f32::consts::PI;
 use crate::args::ProgramArgs;
@@ -86,10 +87,10 @@ pub fn init_particles(
   mut meshes: ResMut<Assets<Mesh>>,
   mut materials: ResMut<Assets<StandardMaterial>>,
   particle_spec: Res<core::ParticleSpec>,
-  windows: Res<Windows>
+  windows: Query<&Window, With<PrimaryWindow>>,
 ) {
   let mut rng = thread_rng();
-  let window = windows.get_primary().expect("no primary window");
+  let window = windows.get_single().expect("no primary window");
   let width = window.width();
   let height = window.height();
   let mut sim_region = core::SimRegion::new(width, height, 40.0);
