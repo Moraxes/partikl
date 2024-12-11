@@ -96,9 +96,9 @@ pub fn init_particles(
   let mut sim_region = core::SimRegion::new(width, height, 40.0);
 
   let circle_mesh = meshes.add(
-    Mesh::from(shape::Icosphere { radius: 4.0, subdivisions: 2 }));
+    Mesh::try_from(shape::Icosphere { radius: 4.0, subdivisions: 2 }).unwrap());
   let gizmo_mesh = meshes.add(
-    Mesh::from(shape::Icosphere { radius: 7.0, subdivisions: 2 }));
+    Mesh::try_from(shape::Icosphere { radius: 7.0, subdivisions: 2 }).unwrap());
 
   for _ in 0..args.num_particles {
     let interaction = core::InteractionId((0..particle_spec.interactions.len()).choose(&mut rng).expect("no particle spec"));
