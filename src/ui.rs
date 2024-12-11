@@ -53,7 +53,7 @@ pub fn handle_keyboard_input(
     state.set(new_state).unwrap();
   }
   if keyboard.just_pressed(KeyCode::F) {
-    let primary_window = windows.get_single_mut().unwrap();
+    let mut primary_window = windows.get_single_mut().unwrap();
     primary_window.mode = match primary_window.mode {
       WindowMode::Windowed => WindowMode::BorderlessFullscreen,
       _ => WindowMode::Windowed,
