@@ -1,30 +1,9 @@
 use bevy::prelude::*;
 use bevy::tasks::prelude::*;
-use bevy::time::FixedTimestep;
 use bevy::math::Vec3Swizzles;
 use bevy::window::PrimaryWindow;
 
 use crate::core::*;
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[derive(SystemLabel)]
-enum System {
-  ComputeFriction,
-  Integrate
-}
-
-pub fn simulation_stage() -> SystemStage {
-  SystemStage::parallel()
-    .with_run_criteria(FixedTimestep::step(DELTA_TIME))
-    .with_system(compute_forces.before(System::ComputeFriction))
-    .with_system(compute_friction
-      .label(System::ComputeFriction)
-      .before(System::Integrate))
-    .with_system(integrate.label(System::Integrate))
-    .with_system(wrap_around.after(System::Integrate))
-    .with_system(update_shape.after(System::Integrate))
-    .with_system(select_on_click.after(System::Integrate))
-}
 
 struct Buckets<T, I> where I: Iterator<Item = T> {
   batch_size: usize,
@@ -196,12 +175,12 @@ fn rotation_from_velocity(velocity: Vec2) -> Quat {
 }
 
 #[derive(Default, Debug)]
-struct SelectedGizmo {
+pub struct SelectedGizmo {
   id: Option<Entity>,
   translation: Vec3,
 }
 
-fn select_on_click(
+pub fn select_on_click(
   mouse_buttons: Res<Input<MouseButton>>,
   windows: Query<&Window, With<PrimaryWindow>>,
   camera_query: Query<&Transform, With<MainCamera>>,

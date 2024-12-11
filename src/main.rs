@@ -1,6 +1,7 @@
+use core::{SimState, DELTA_TIME};
+
 use bevy::prelude::*;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
-use bevy::ecs::schedule::ShouldRun;
 use bevy::window::{close_on_esc, PresentMode, WindowMode, WindowResolution};
 use structopt::StructOpt;
 
@@ -11,25 +12,13 @@ mod render;
 mod sim;
 mod ui;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[derive(StageLabel)]
-enum Stage {
-  InitCategories,
-  FixedUpdateStage,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[derive(SystemLabel)]
-enum System {
-  InitParticles,
-}
-
 fn main() {
   let program_args = args::ProgramArgs::from_args();
   App::new()
     .insert_resource(loading::get_particle_spec(&program_args))
     .insert_resource(program_args)
     .insert_resource(Msaa::Sample4)
+    .insert_resource(FixedTime::new_from_secs(DELTA_TIME as f32))
     .add_plugins(DefaultPlugins.set(WindowPlugin {
       primary_window: Some(Window {
         resolution: WindowResolution::new(1920.0, 1080.0),
@@ -46,19 +35,24 @@ fn main() {
       ..Default::default()
     }))
     .add_plugin(FrameTimeDiagnosticsPlugin::default())
-    .add_stage_before(
-      CoreStage::First,
-      Stage::InitCategories,
-      SystemStage::single_threaded()
-        .with_run_criteria(ShouldRun::once)
-        .with_system(render::init_materials))
-    .add_startup_system(render::init_particles.label(System::InitParticles))
+    .add_state::<SimState>()
+    .add_startup_systems((
+      render::init_materials,
+      render::init_particles,
+    ).chain())
     .add_startup_system(ui::init_ui)
-    .add_stage_after(
-      CoreStage::First,
-      Stage::FixedUpdateStage,
-      sim::simulation_stage(),
-    )
+    .add_systems({
+      use sim::*;
+      (
+        compute_forces.before(compute_friction),
+        compute_friction.before(integrate),
+        integrate,
+        wrap_around.after(integrate),
+        update_shape.after(integrate),
+        select_on_click.after(integrate),
+      )
+        .in_schedule(CoreSchedule::FixedUpdate)
+    })
     .add_system(ui::update_text)
     .add_system(ui::exit_after_time)
     .add_system(ui::handle_keyboard_input)
