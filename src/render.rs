@@ -7,7 +7,7 @@ use crate::args::ProgramArgs;
 
 use crate::core;
 
-fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<[f32; 4]> {
+fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
   let phase = 360.0 * rng.gen::<f32>();
   (0..n).map(|it| {
     let mut hue = phase + 360.0 * it as f32 / n as f32;
@@ -17,7 +17,7 @@ fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<[f32; 4]> {
     Color::hsl(hue,
       0.5 + 0.5 * rng.gen::<f32>(),
       0.25 + 0.5 * rng.gen::<f32>()
-    ).as_rgba_f32()
+    ).into()
   }).collect()
 }
 
@@ -28,7 +28,7 @@ pub fn init_materials(
   let mut rng = thread_rng();
   for color in get_random_colors(particle_spec.interactions.len(), &mut rng) {
     let material = StandardMaterial {
-      base_color: Color::rgba_from_array(color),
+      base_color: color,
       double_sided: true,
       unlit: true,
       ..Default::default()
@@ -79,13 +79,13 @@ pub fn init_particles(
     let particle_selection = commands.spawn(PbrBundle {
       visibility: Visibility::Hidden,
       mesh: gizmo_mesh.clone(),
-      material: materials.add(Color::rgba_from_array([1.0, 1.0, 1.0, 0.5])),
+      material: materials.add(Color::srgba(1.0, 1.0, 1.0, 0.5)),
       ..Default::default()
     }).insert(core::Selection::default()).id();
     let particle_highlight = commands.spawn(PbrBundle {
       visibility: Visibility::Hidden,
       mesh: gizmo_mesh.clone(),
-      material: materials.add(Color::rgba_from_array([1.0f32, 0.0, 0.5, 0.5])),
+      material: materials.add(Color::srgba(1.0f32, 0.0, 0.5, 0.5)),
       ..Default::default()
     }).insert(core::Highlight::default()).id();
     commands.entity(particle).push_children(&[particle_selection, particle_highlight]);
