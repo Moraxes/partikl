@@ -49,10 +49,10 @@ fn main() {
         integrate,
         wrap_around.after(integrate),
         update_shape.after(integrate),
-        select_on_click.after(integrate),
       )
         .in_schedule(CoreSchedule::FixedUpdate)
     })
+    .add_system(sim::select_on_click)
     .add_system(ui::update_text)
     .add_system(ui::exit_after_time)
     .add_system(ui::handle_keyboard_input)
