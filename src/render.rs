@@ -65,43 +65,43 @@ pub fn init_particles(
       rng.gen::<f32>() * 250f32 - 125f32,
       rng.gen::<f32>() * 250f32 - 125f32,
       0.0);
-    let particle = commands.spawn(core::ParticleBundle {
-      mesh: PbrBundle {
-        transform: Transform::from_translation(translation),
-        mesh: circle_mesh.clone(),
-        material: particle_spec.materials[interaction.0].clone(),
-        ..Default::default()
+    let particle = commands.spawn((
+      core::ParticleBundle {
+        acceleration: core::Acceleration(Vec2::new(0.0, 0.0)),
+        last_pos: core::LastPosition((translation - core::DELTA_TIME as f32 * starting_velocity).truncate()),
+        interaction,
       },
-      acceleration: core::Acceleration(Vec2::new(0.0, 0.0)),
-      last_pos: core::LastPosition((translation - core::DELTA_TIME as f32 * starting_velocity).truncate()),
-      interaction
-    }).id();
-    let particle_selection = commands.spawn(PbrBundle {
-      visibility: Visibility::Hidden,
-      mesh: gizmo_mesh.clone(),
-      material: materials.add(Color::srgba(1.0, 1.0, 1.0, 0.5)),
-      ..Default::default()
-    }).insert(core::Selection::default()).id();
-    let particle_highlight = commands.spawn(PbrBundle {
-      visibility: Visibility::Hidden,
-      mesh: gizmo_mesh.clone(),
-      material: materials.add(Color::srgba(1.0f32, 0.0, 0.5, 0.5)),
-      ..Default::default()
-    }).insert(core::Highlight::default()).id();
+      Mesh3d(circle_mesh.clone()),
+      MeshMaterial3d(particle_spec.materials[interaction.0].clone()),
+    )).id();
+    let particle_selection = commands.spawn((
+      core::Selection::default(),
+      Mesh3d(gizmo_mesh.clone()),
+      MeshMaterial3d(materials.add(Color::srgba(1.0, 1.0, 1.0, 0.5)))
+    )).id();
+    let particle_highlight = commands.spawn((
+      core::Highlight::default(),
+      Mesh3d(gizmo_mesh.clone()),
+      MeshMaterial3d(materials.add(Color::srgba(1.0f32, 0.0, 0.5, 0.5)))
+    )).id();
     commands.entity(particle).add_children(&[particle_selection, particle_highlight]);
     sim_region.insert_entity(particle, position_x, position_y);
   }
   commands.insert_resource(sim_region);
 
-  let mut camera = Camera3dBundle {
-    projection: OrthographicProjection {
-        scaling_mode: ScalingMode::WindowSize(1.0),
-        ..default()
-    }.into(),
-    ..Default::default()
-  };
-  camera.camera.clear_color = ClearColorConfig::Custom(Color::BLACK);
-  camera.transform = Transform::from_xyz(0.0, 0.0, 1000.0).looking_at(Vec3::ZERO, Vec3::Y);
-  commands.spawn(camera)
-    .insert(core::MainCamera { zoom_base: 1.125, zoom_exponent: 1 });
+  commands.spawn((
+    core::MainCamera { zoom_base: 1.125, zoom_exponent: 1 },
+    Camera3d::default(),
+    Camera {
+      hdr: true,
+      clear_color: ClearColorConfig::Custom(Color::BLACK),
+      ..Default::default()
+    },
+    Msaa::Sample4,
+    Transform::from_xyz(0.0, 0.0, 1000.0).looking_at(Vec3::ZERO, Vec3::Y),
+    Projection::from(OrthographicProjection {
+      scaling_mode: ScalingMode::WindowSize,
+      ..OrthographicProjection::default_3d()
+    })
+  ));
 }
