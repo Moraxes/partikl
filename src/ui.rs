@@ -20,7 +20,7 @@ pub fn init_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
 
 pub fn update_text(diagnostics: Res<DiagnosticsStore>, mut query: Query<&mut Text, With<FpsText>>) {
   for mut text in query.iter_mut() {
-    if let Some(fps) = diagnostics.get(FrameTimeDiagnosticsPlugin::FPS) {
+    if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
       if let Some(average) = fps.average() {
         text.sections[0].value = format!("{:.2}", average);
       }
