@@ -81,13 +81,13 @@ pub fn init_particles(
     let particle_selection = commands.spawn(PbrBundle {
       visibility: Visibility::Hidden,
       mesh: gizmo_mesh.clone(),
-      material: materials.add(Color::rgba_from_array([1.0, 1.0, 1.0, 0.5]).into()),
+      material: materials.add(Color::rgba_from_array([1.0, 1.0, 1.0, 0.5])),
       ..Default::default()
     }).insert(core::Selection::default()).id();
     let particle_highlight = commands.spawn(PbrBundle {
       visibility: Visibility::Hidden,
       mesh: gizmo_mesh.clone(),
-      material: materials.add(Color::rgba_from_array([1.0f32, 0.0, 0.5, 0.5]).into()),
+      material: materials.add(Color::rgba_from_array([1.0f32, 0.0, 0.5, 0.5])),
       ..Default::default()
     }).insert(core::Highlight::default()).id();
     commands.entity(particle).push_children(&[particle_selection, particle_highlight]);
