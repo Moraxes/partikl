@@ -3,7 +3,6 @@ use bevy::prelude::*;
 use bevy::render::camera::ScalingMode;
 use bevy::window::PrimaryWindow;
 use rand::prelude::*;
-use std::f32::consts::PI;
 use crate::args::ProgramArgs;
 
 use crate::core;
@@ -38,47 +37,6 @@ pub fn init_materials(
     };
     particle_spec.materials.push(materials.add(material));
   }
-}
-
-#[allow(dead_code)]
-fn make_circle(diameter: f32) -> Mesh {
-  use bevy::render::{mesh::Indices, render_resource::PrimitiveTopology};
-  let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
-  let mut v_pos = vec![[0.0, 0.0, 0.0]];
-  v_pos.extend((0..CORNERS).map(|it| {
-    let angle = it as f32 * 2.0 * PI / (CORNERS as f32);
-    [angle.cos() * diameter / 2.0, angle.sin() * diameter / 2.0, 0.0]
-  }));
-  mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, v_pos);
-  let indices = (1..=CORNERS).flat_map(|it| {
-    let current = it;
-    let next = if it == CORNERS { 1 } else { it + 1 };
-    [0u32, current as u32, next as u32]
-  }).collect::<Vec<_>>();
-  mesh.set_indices(Some(Indices::U32(indices)));
-  mesh
-}
-
-#[allow(dead_code)]
-fn make_hollow_circle(diameter: f32) -> Mesh {
-  use bevy::render::{mesh::Indices, render_resource::PrimitiveTopology};
-  let mut mesh = Mesh::new(PrimitiveTopology::TriangleStrip);
-  let mut v_pos = Vec::new();
-  v_pos.extend((0..CORNERS).flat_map(|it| {
-    let angle = it as f32 * 2.0 * PI / (CORNERS as f32);
-    [
-      [angle.cos() * (diameter / 2.0 - 1.0), angle.sin() * (diameter / 2.0 - 1.0), 0.0],
-      [angle.cos() * (diameter / 2.0 + 1.0), angle.sin() * (diameter / 2.0 + 1.0), 0.0],
-    ]
-  }));
-  mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, v_pos);
-  let mut indices = vec![0, 1];
-  indices.extend((1..=CORNERS).flat_map(|it| {
-    let current = if it == CORNERS { 0 } else { it };
-    [2 * current as u32, 2 * current as u32 + 1]
-  }));
-  mesh.set_indices(Some(Indices::U32(indices)));
-  mesh
 }
 
 pub fn init_particles(
