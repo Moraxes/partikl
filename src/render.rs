@@ -11,7 +11,7 @@ fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
   let phase = 360.0 * rng.gen::<f32>();
   (0..n).map(|it| {
     let mut hue = phase + 360.0 * it as f32 / n as f32;
-    if hue > 0.0 {
+    if hue > 360.0 {
       hue -= 360.0;
     }
     Color::lch(
