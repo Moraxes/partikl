@@ -14,9 +14,10 @@ fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
     if hue > 0.0 {
       hue -= 360.0;
     }
-    Color::hsl(hue,
+    Color::lch(
       0.5 + 0.5 * rng.gen::<f32>(),
-      0.25 + 0.5 * rng.gen::<f32>()
+      0.25 + 0.5 * rng.gen::<f32>(),
+      hue,
     ).into()
   }).collect()
 }
