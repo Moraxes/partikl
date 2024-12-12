@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 use bevy::prelude::Resource;
-use structopt::StructOpt;
+use clap::Parser;
 
-#[derive(StructOpt, Debug, Resource)]
-#[structopt(name = "partikl")]
+#[derive(Parser, Debug, Resource)]
+#[command(version, name = "partikl")]
 pub struct ProgramArgs {
   /// Exit after this many seconds.
   ///
   /// This is useful for profiling/benchmarking.
-  #[structopt(long)]
+  #[arg(long)]
   pub exit_after: Option<f64>,
 
   /// Seed used for generating the interaction spec.
@@ -19,7 +19,7 @@ pub struct ProgramArgs {
   /// --no-dump-interaction-spec.
   ///
   /// Note that it's usually more convenient to use the <interaction-spec> arg.
-  #[structopt(long)]
+  #[arg(long)]
   pub interaction_seed: Option<u64>,
 
   /// Path to the interaction specification file.
@@ -32,21 +32,21 @@ pub struct ProgramArgs {
   ///
   /// If present, --no-dump-interaction spec is assumed, and --num-types is
   /// ignored.
-  #[structopt(parse(from_os_str))]
+  #[arg()]
   pub interaction_spec: Option<PathBuf>,
 
-  #[structopt(short = "t", long, default_value = "3")]
+  #[arg(short = 't', long, default_value_t = 3)]
   pub num_types: usize,
 
   /// Number of particles to be generated initially.
-  #[structopt(short = "n", long, default_value = "1000")]
+  #[arg(short = 'n', long, default_value_t = 1000)]
   pub num_particles: usize,
 
   /// Batch size for parallel operations.
-  #[structopt(long, default_value = "20")]
+  #[arg(long, default_value_t = 20)]
   pub parallel_batch_size: usize,
 
   /// Prevents the interaction spec from being dumped.
-  #[structopt(long)]
+  #[arg(long)]
   pub no_dump_interaction_spec: bool,
 }

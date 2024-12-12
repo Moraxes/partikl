@@ -3,7 +3,7 @@ use core::{SimState, DELTA_TIME};
 use bevy::prelude::*;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::window::{PresentMode, WindowMode, WindowResolution};
-use structopt::StructOpt;
+use clap::Parser;
 
 mod args;
 mod core;
@@ -13,7 +13,7 @@ mod sim;
 mod ui;
 
 fn main() {
-  let program_args = args::ProgramArgs::from_args();
+  let program_args = args::ProgramArgs::parse();
   App::new()
     .insert_resource(loading::get_particle_spec(&program_args))
     .insert_resource(program_args)
