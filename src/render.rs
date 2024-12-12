@@ -71,16 +71,19 @@ pub fn init_particles(
         last_pos: core::LastPosition((translation - core::DELTA_TIME as f32 * starting_velocity).truncate()),
         interaction,
       },
+      Transform::from_translation(translation),
       Mesh3d(circle_mesh.clone()),
       MeshMaterial3d(particle_spec.materials[interaction.0].clone()),
     )).id();
     let particle_selection = commands.spawn((
       core::Selection::default(),
+      Visibility::Hidden,
       Mesh3d(gizmo_mesh.clone()),
       MeshMaterial3d(materials.add(Color::srgba(1.0, 1.0, 1.0, 0.5)))
     )).id();
     let particle_highlight = commands.spawn((
       core::Highlight::default(),
+      Visibility::Hidden,
       Mesh3d(gizmo_mesh.clone()),
       MeshMaterial3d(materials.add(Color::srgba(1.0f32, 0.0, 0.5, 0.5)))
     )).id();
