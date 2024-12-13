@@ -18,7 +18,7 @@ pub struct LastPosition(pub Vec2);
 pub struct ParticleBundle {
   pub last_pos: LastPosition,
   pub acceleration: Acceleration,
-  pub interaction: InteractionId
+  pub interaction: InteractionId,
 }
 
 #[derive(Default, Resource)]
@@ -45,7 +45,7 @@ impl SimRegion {
 
   pub fn new(width: f32, height: f32, granularity: f32) -> SimRegion {
     SimRegion {
-      top_right: Vec2::new(width/2.0, height/2.0),
+      top_right: Vec2::new(width / 2.0, height / 2.0),
       granularity,
       ..Default::default()
     }
@@ -106,13 +106,21 @@ impl SimRegion {
   }
 
   pub fn insert_entity(&mut self, entity: Entity, x: f32, y: f32) {
-    self.index.entry(self.bucket_coords(x, y)).or_default().push(entity)
+    self
+      .index
+      .entry(self.bucket_coords(x, y))
+      .or_default()
+      .push(entity)
   }
 
   pub fn remove_entity(&mut self, entity: Entity, x_old: f32, y_old: f32) {
-    let bucket_old = self.index.get_mut(&self.bucket_coords(x_old, y_old))
+    let bucket_old = self
+      .index
+      .get_mut(&self.bucket_coords(x_old, y_old))
       .expect("no bucket");
-    let idx = bucket_old.iter().position(|&e| e == entity)
+    let idx = bucket_old
+      .iter()
+      .position(|&e| e == entity)
       .expect("entity not in bucket");
     bucket_old.swap_remove(idx);
   }
@@ -127,21 +135,29 @@ impl SimRegion {
     self.insert_entity(entity, x_new, y_new);
   }
 
-  pub fn get_entities(&self, (ix, iy): (i32, i32)) -> impl Iterator<Item=Entity> + Clone + '_ {
-    Self::OFFSETS.iter().cloned()
-      .flat_map(move |xoff| Self::OFFSETS.iter().flat_map(move |&yoff|
-        self.get_wrapped_buckets(ix + xoff, iy + yoff))
-      ).flat_map(|offset| self.index.get(&offset))
+  pub fn get_entities(&self, (ix, iy): (i32, i32)) -> impl Iterator<Item = Entity> + Clone + '_ {
+    Self::OFFSETS
+      .iter()
+      .cloned()
+      .flat_map(move |xoff| {
+        Self::OFFSETS
+          .iter()
+          .flat_map(move |&yoff| self.get_wrapped_buckets(ix + xoff, iy + yoff))
+      })
+      .flat_map(|offset| self.index.get(&offset))
       .flatten()
       .cloned()
   }
 
-  pub fn get_entities_by_position(&self, x: f32, y: f32) -> impl Iterator<Item=Entity> + '_ {
+  pub fn get_entities_by_position(&self, x: f32, y: f32) -> impl Iterator<Item = Entity> + '_ {
     self.get_entities(self.bucket_coords(x, y))
   }
 
   pub fn bucket_coords(&self, x: f32, y: f32) -> (i32, i32) {
-    ((x / self.granularity).round() as i32, (y / self.granularity).round() as i32)
+    (
+      (x / self.granularity).round() as i32,
+      (y / self.granularity).round() as i32,
+    )
   }
 }
 

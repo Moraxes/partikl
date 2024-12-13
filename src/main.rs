@@ -1,7 +1,7 @@
 use core::{SimState, DELTA_TIME};
 
-use bevy::prelude::*;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
+use bevy::prelude::*;
 use bevy::window::{PresentMode, WindowMode, WindowResolution};
 use clap::Parser;
 
@@ -35,10 +35,10 @@ fn main() {
     }))
     .add_plugins(FrameTimeDiagnosticsPlugin::default())
     .init_state::<SimState>()
-    .add_systems(Startup, (
-      render::init_materials,
-      render::init_particles,
-    ).chain())
+    .add_systems(
+      Startup,
+      (render::init_materials, render::init_particles).chain(),
+    )
     .add_systems(Startup, ui::init_ui)
     .add_systems(FixedUpdate, {
       use sim::*;
@@ -50,13 +50,16 @@ fn main() {
         update_shape.after(integrate),
       )
     })
-    .add_systems(Update, (
-      sim::select_on_click,
-      ui::update_text,
-      ui::exit_after_time,
-      ui::handle_keyboard_input,
-      ui::handle_mouse_input,
-      ui::close_on_esc,
-    ))
+    .add_systems(
+      Update,
+      (
+        sim::select_on_click,
+        ui::update_text,
+        ui::exit_after_time,
+        ui::handle_keyboard_input,
+        ui::handle_mouse_input,
+        ui::close_on_esc,
+      ),
+    )
     .run();
 }

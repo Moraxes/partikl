@@ -1,24 +1,31 @@
+use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
 use bevy::tasks::prelude::*;
-use bevy::math::Vec3Swizzles;
 use bevy::window::PrimaryWindow;
 
 use crate::core::*;
 
-struct Buckets<T, I> where I: Iterator<Item = T> {
+struct Buckets<T, I>
+where
+  I: Iterator<Item = T>,
+{
   batch_size: usize,
   coords: I,
 }
 
-impl<T, I> Buckets<T, I> where I: Iterator<Item = T> {
+impl<T, I> Buckets<T, I>
+where
+  I: Iterator<Item = T>,
+{
   fn new(batch_size: usize, coords: I) -> Self {
     Buckets { batch_size, coords }
   }
 }
 
-impl<T, I> ParallelIterator<std::vec::IntoIter<T>> for Buckets<T, I> where
+impl<T, I> ParallelIterator<std::vec::IntoIter<T>> for Buckets<T, I>
+where
   I: Iterator<Item = T> + Send,
-  T: Send
+  T: Send,
 {
   fn next_batch(&mut self) -> Option<std::vec::IntoIter<T>> {
     let result = (0..self.batch_size)
@@ -38,25 +45,36 @@ pub fn compute_forces(
   sim_region: Res<SimRegion>,
   state: Res<State<SimState>>,
   mut particles_out: Query<(Entity, &Transform, &mut Acceleration, &InteractionId)>,
-  particles_in: Query<(Entity, &Transform, &InteractionId)>
+  particles_in: Query<(Entity, &Transform, &InteractionId)>,
 ) {
   if state.get() == &SimState::Paused {
     return;
   }
   let pool = ComputeTaskPool::get();
-  let coords_iter = sim_region.index.iter()
+  let coords_iter = sim_region
+    .index
+    .iter()
     .filter(|(_, v)| !v.is_empty())
     .map(|(&k, v)| (v, sim_region.get_entities(k).clone()));
   let update_batches = Buckets::new(args.parallel_batch_size, coords_iter)
     .map(|(out_bucket, in_buckets)| {
       let mut result = Vec::with_capacity(out_bucket.len());
-      for (entity, transform, _, interaction) in out_bucket.iter().map(|&entity| particles_out.get(entity).unwrap()) {
+      for (entity, transform, _, interaction) in out_bucket
+        .iter()
+        .map(|&entity| particles_out.get(entity).unwrap())
+      {
         let mut acceleration = Vec2::ZERO;
-        for (other_entity, other_transform, other_interaction) in in_buckets.clone().map(|other_entity| particles_in.get(other_entity).unwrap()) {
+        for (other_entity, other_transform, other_interaction) in in_buckets
+          .clone()
+          .map(|other_entity| particles_in.get(other_entity).unwrap())
+        {
           if entity == other_entity {
-            continue
+            continue;
           }
-          let delta = sim_region.get_corrected_position_delta(transform.translation.xy(), other_transform.translation.xy());
+          let delta = sim_region.get_corrected_position_delta(
+            transform.translation.xy(),
+            other_transform.translation.xy(),
+          );
           let distance_sq: f32 = delta.length_squared();
           if distance_sq > 1600.0 {
             continue;
@@ -67,22 +85,31 @@ pub fn compute_forces(
             let safety_margin_repulsion_force = (1000.0 - 100.0 * distance) * distance_unit_vector;
             acceleration -= safety_margin_repulsion_force;
           } else {
-            acceleration += triangular_kernel(particle_spec.interactions[other_interaction.0].force_coeffs[interaction.0], 30.0, 10.0, distance) * distance_unit_vector;
+            acceleration += triangular_kernel(
+              particle_spec.interactions[other_interaction.0].force_coeffs[interaction.0],
+              30.0,
+              10.0,
+              distance,
+            ) * distance_unit_vector;
           }
         }
         result.push((entity, acceleration));
       }
       result
-    }).collect::<Vec<_>>(&pool);
+    })
+    .collect::<Vec<_>>(&pool);
 
   for batch in update_batches {
     for (entity, accel) in batch {
-      particles_out.get_mut(entity).unwrap().2.0 += accel;
+      particles_out.get_mut(entity).unwrap().2 .0 += accel;
     }
   }
 }
 
-pub fn compute_friction(state: Res<State<SimState>>, mut particles: Query<(&Transform, &mut LastPosition, &mut Acceleration)>) {
+pub fn compute_friction(
+  state: Res<State<SimState>>,
+  mut particles: Query<(&Transform, &mut LastPosition, &mut Acceleration)>,
+) {
   if state.get() == &SimState::Paused {
     return;
   }
@@ -116,14 +143,15 @@ fn unit_triangle(x: f32) -> f32 {
 }
 
 pub fn integrate(
-  state: Res<State<SimState>>, mut query: Query<(&mut Acceleration, &mut Transform, &mut LastPosition)>) {
+  state: Res<State<SimState>>,
+  mut query: Query<(&mut Acceleration, &mut Transform, &mut LastPosition)>,
+) {
   if state.get() == &SimState::Paused {
     return;
   }
   let dt_sq = (DELTA_TIME * DELTA_TIME) as f32;
   for (mut acceleration, mut transform, mut last_pos) in query.iter_mut() {
-    let new_pos =
-        2.0 * transform.translation.xy() - last_pos.0 + acceleration.0 * dt_sq;
+    let new_pos = 2.0 * transform.translation.xy() - last_pos.0 + acceleration.0 * dt_sq;
     acceleration.0 = Vec2::ZERO;
     last_pos.0 = transform.translation.xy();
     transform.translation = new_pos.extend(0.0);
@@ -133,7 +161,7 @@ pub fn integrate(
 pub fn wrap_around(
   state: Res<State<SimState>>,
   mut sim_region: ResMut<SimRegion>,
-  mut query: Query<(Entity, &mut Transform, &mut LastPosition)>
+  mut query: Query<(Entity, &mut Transform, &mut LastPosition)>,
 ) {
   if state.get() == &SimState::Paused {
     return;
@@ -150,7 +178,10 @@ pub fn wrap_around(
   }
 }
 
-pub fn update_shape(state: Res<State<SimState>>, mut query: Query<(&mut Transform, &LastPosition)>) {
+pub fn update_shape(
+  state: Res<State<SimState>>,
+  mut query: Query<(&mut Transform, &LastPosition)>,
+) {
   if state.get() == &SimState::Paused {
     return;
   }
@@ -186,7 +217,10 @@ pub fn select_on_click(
   camera_query: Query<&Transform, With<MainCamera>>,
   particles: Query<(Entity, &Transform, &Children), With<Acceleration>>,
   sim_region: Res<SimRegion>,
-  mut gizmos: Query<(Option<&Selection>, Option<&Highlight>, &mut Visibility), Or<(With<Selection>, With<Highlight>)>>,
+  mut gizmos: Query<
+    (Option<&Selection>, Option<&Highlight>, &mut Visibility),
+    Or<(With<Selection>, With<Highlight>)>,
+  >,
   mut selected_gizmo: Local<SelectedGizmo>,
 ) {
   let window = windows.get_single().unwrap();
@@ -198,7 +232,8 @@ pub fn select_on_click(
   let size = Vec2::new(window.width() as f32, window.height() as f32);
   let cursor_position_offset = cursor_position - size / 2.0;
   let camera_transform = camera_query.single();
-  let world_position = camera_transform.compute_matrix() * cursor_position_offset.extend(0.0).extend(1.0);
+  let world_position =
+    camera_transform.compute_matrix() * cursor_position_offset.extend(0.0).extend(1.0);
 
   if mouse_buttons.just_released(MouseButton::Left) {
     for (_, _, mut visibility) in gizmos.iter_mut().filter(|(s, _, _)| s.is_some()) {
@@ -206,7 +241,11 @@ pub fn select_on_click(
     }
     selected_gizmo.id = None;
     for (particle, transform, children) in particles.iter() {
-      if (transform.translation - world_position.truncate()).truncate().length_squared() > 16.0 {
+      if (transform.translation - world_position.truncate())
+        .truncate()
+        .length_squared()
+        > 16.0
+      {
         continue;
       }
       selected_gizmo.id = Some(particle);
@@ -226,7 +265,8 @@ pub fn select_on_click(
     for (_, _, mut visibility) in gizmos.iter_mut().filter(|(_, h, _)| h.is_some()) {
       *visibility = Visibility::Hidden;
     }
-    let neighbour_ids = sim_region.get_entities_by_position(selected_gizmo.translation.x, selected_gizmo.translation.y);
+    let neighbour_ids = sim_region
+      .get_entities_by_position(selected_gizmo.translation.x, selected_gizmo.translation.y);
     for nid in neighbour_ids {
       let (_, _, children) = particles.get(nid).unwrap();
       for &child in children.iter() {

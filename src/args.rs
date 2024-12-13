@@ -1,6 +1,6 @@
-use std::path::PathBuf;
 use bevy::prelude::Resource;
 use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug, Resource)]
 #[command(version, name = "partikl")]

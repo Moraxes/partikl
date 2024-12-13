@@ -12,15 +12,17 @@ use crate::core::*;
 pub struct FpsText;
 
 pub fn init_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
-  commands.spawn((
-    Text::new("hello"),
-    TextFont {
-      font: asset_server.load("FiraMono-Regular.ttf"),
+  commands
+    .spawn((
+      Text::new("hello"),
+      TextFont {
+        font: asset_server.load("FiraMono-Regular.ttf"),
         font_size: 16.0,
         ..Default::default()
       },
       TextColor(WHITE.into()),
-    )).insert(FpsText);
+    ))
+    .insert(FpsText);
 }
 
 pub fn update_text(
@@ -92,12 +94,20 @@ pub fn handle_mouse_input(
   mouse_button_input: Res<ButtonInput<MouseButton>>,
   keyboard_input: Res<ButtonInput<KeyCode>>,
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
-  mut camera: Query<(&mut MainCamera, &mut OrthographicProjection, &mut Transform)>
+  mut camera: Query<(&mut MainCamera, &mut OrthographicProjection, &mut Transform)>,
 ) {
   for event in mouse_wheel_events.read() {
     let log_delta = match event {
-      MouseWheel { unit: MouseScrollUnit::Line, y, .. } => y.round() as i32,
-      MouseWheel { unit: MouseScrollUnit::Pixel, y, .. } => (y / 10.0).round() as i32,
+      MouseWheel {
+        unit: MouseScrollUnit::Line,
+        y,
+        ..
+      } => y.round() as i32,
+      MouseWheel {
+        unit: MouseScrollUnit::Pixel,
+        y,
+        ..
+      } => (y / 10.0).round() as i32,
     };
     let (mut main_camera, mut projection, _) = camera.get_single_mut().unwrap();
     main_camera.zoom_exponent -= log_delta;
@@ -125,6 +135,7 @@ pub fn handle_mouse_input(
       continue;
     }
     let (_, projection, mut camera_transform) = camera.get_single_mut().unwrap();
-    camera_transform.translation += (event.delta * Vec2::new(-1.0, 1.0)).extend(0.0) * projection.scale;
+    camera_transform.translation +=
+      (event.delta * Vec2::new(-1.0, 1.0)).extend(0.0) * projection.scale;
   }
 }
