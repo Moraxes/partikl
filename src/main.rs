@@ -2,7 +2,7 @@ use core::{SimState, DELTA_TIME};
 
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
-use bevy::window::{PresentMode, WindowMode, WindowResolution};
+use bevy::window::{WindowMode, WindowResolution};
 use clap::Parser;
 
 mod args;
@@ -24,7 +24,6 @@ fn main() {
         position: WindowPosition::Automatic,
         resize_constraints: Default::default(),
         title: "partikl".to_string(),
-        present_mode: PresentMode::Mailbox,
         resizable: false,
         decorations: false,
         mode: WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
