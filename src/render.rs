@@ -9,15 +9,16 @@ use crate::core;
 
 fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
   let phase = 360.0 * rng.gen::<f32>();
+  let spread = 60.0 + 300.0 * rng.gen::<f32>();
   (0..n)
     .map(|it| {
-      let mut hue = phase + 360.0 * it as f32 / n as f32;
+      let mut hue = phase + spread * it as f32 / n as f32;
       if hue > 360.0 {
         hue -= 360.0;
       }
       Color::lch(
         0.5 + 0.5 * rng.gen::<f32>(),
-        0.25 + 0.5 * rng.gen::<f32>(),
+        0.325 + 0.5 * rng.gen::<f32>(),
         hue,
       )
       .into()
