@@ -56,8 +56,8 @@ pub fn init_particles(
   let height = window.height();
   let mut sim_region = core::SimRegion::new(width, height, 40.0);
 
-  let circle_mesh = meshes.add(Mesh::try_from(Sphere::new(4.0)).unwrap());
-  let gizmo_mesh = meshes.add(Mesh::try_from(Sphere::new(7.0)).unwrap());
+  let circle_mesh = meshes.add(Mesh::try_from(Sphere::new(args.particle_size)).unwrap());
+  let gizmo_mesh = meshes.add(Mesh::try_from(Sphere::new(args.particle_size + 3.0)).unwrap());
 
   for _ in 0..args.num_particles {
     let interaction = core::InteractionId(

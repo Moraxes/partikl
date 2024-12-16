@@ -49,4 +49,7 @@ pub struct ProgramArgs {
   /// Prevents the interaction spec from being dumped.
   #[arg(long)]
   pub no_dump_interaction_spec: bool,
+
+  #[arg(short = 's', default_value_t = 2.0)]
+  pub particle_size: f32,
 }
