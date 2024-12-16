@@ -223,6 +223,10 @@ pub fn select_on_click(
   >,
   mut selected_gizmo: Local<SelectedGizmo>,
 ) {
+  if !mouse_buttons.just_released(MouseButton::Left) {
+    return;
+  }
+
   let window = windows.get_single().unwrap();
   let cursor_position_opt = window.cursor_position();
   if cursor_position_opt.is_none() {
@@ -232,31 +236,29 @@ pub fn select_on_click(
   let size = Vec2::new(window.width() as f32, window.height() as f32);
   let cursor_position_offset = cursor_position - size / 2.0;
   let camera_transform = camera_query.single();
-  let world_position = camera_transform.compute_matrix()
-    * cursor_position_offset.extend(0.0).extend(1.0)
-    * Vec4::from((1.0, -1.0, 1.0, 1.0));
+  let world_position =
+    camera_transform.compute_matrix() * cursor_position_offset.extend(0.0).extend(1.0) * Vec4::from((1.0, -1.0, 1.0, 1.0));
 
-    for (_, _, mut visibility) in gizmos.iter_mut().filter(|(s, _, _)| s.is_some()) {
-      *visibility = Visibility::Hidden;
+  for (_, _, mut visibility) in gizmos.iter_mut().filter(|(s, _, _)| s.is_some()) {
+    *visibility = Visibility::Hidden;
+  }
+  selected_gizmo.id = None;
+  for (particle, transform, children) in particles.iter() {
+    if (transform.translation - world_position.truncate())
+      .truncate()
+      .length_squared()
+      > 16.0
+    {
+      continue;
     }
-    selected_gizmo.id = None;
-    for (particle, transform, children) in particles.iter() {
-      if (transform.translation - world_position.truncate())
-        .truncate()
-        .length_squared()
-        > 16.0
-      {
-        continue;
+    selected_gizmo.id = Some(particle);
+    selected_gizmo.translation = transform.translation;
+    for &child in children.iter() {
+      if let Ok((Some(_), None, mut visibility)) = gizmos.get_mut(child) {
+        *visibility = Visibility::Inherited;
       }
-      selected_gizmo.id = Some(particle);
-      selected_gizmo.translation = transform.translation;
-      for &child in children.iter() {
-        if let Ok((Some(_), None, mut visibility)) = gizmos.get_mut(child) {
-          *visibility = Visibility::Inherited;
-        }
-      }
-      break;
     }
+    break;
   }
 
   if let Some(particle) = selected_gizmo.id {
