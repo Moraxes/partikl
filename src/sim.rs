@@ -57,44 +57,43 @@ pub fn compute_forces(
     .filter(|(_, v)| !v.is_empty())
     .map(|(&k, v)| (v, sim_region.get_entities(k).clone()))
     .map(|(out_bucket, in_buckets)| {
-      let partial_forces = out_bucket
+      out_bucket
         .iter()
         .map(|&entity| particles_out.get(entity).unwrap())
-        .fold(Vec::with_capacity(out_bucket.len()), |mut result, (entity, transform, _, interaction)| {
-          let mut acceleration = Vec2::ZERO;
-          for (other_entity, other_transform, other_interaction) in in_buckets
+        .map(|(entity, transform, _, interaction)| {
+          let acceleration = in_buckets
             .clone()
             .map(|other_entity| particles_in.get(other_entity).unwrap())
-          {
-            if entity == other_entity {
-              continue;
-            }
-            let delta = sim_region.get_corrected_position_delta(
-              transform.translation.xy(),
-              other_transform.translation.xy(),
-            );
-            let distance_sq: f32 = delta.length_squared();
-            if distance_sq > 1600.0 {
-              continue;
-            }
-            let distance = distance_sq.sqrt();
-            let distance_unit_vector = delta / distance;
-            if distance < 10.0 {
-              let safety_margin_repulsion_force = (1000.0 - 100.0 * distance) * distance_unit_vector;
-              acceleration -= safety_margin_repulsion_force;
-            } else {
-              acceleration += triangular_kernel(
-                particle_spec.interactions[other_interaction.0].force_coeffs[interaction.0],
-                30.0,
-                10.0,
-                distance,
-              ) * distance_unit_vector;
-            }
-          }
-          result.push((entity, acceleration));
-          result
-        });
-        partial_forces
+            .fold(Vec2::ZERO, |mut acceleration, (other_entity, other_transform, other_interaction)| {
+              if entity == other_entity {
+                return acceleration;
+              }
+              let delta = sim_region.get_corrected_position_delta(
+                transform.translation.xy(),
+                other_transform.translation.xy(),
+              );
+              let distance_sq: f32 = delta.length_squared();
+              if distance_sq > 1600.0 {
+                return acceleration;
+              }
+              let distance = distance_sq.sqrt();
+              let distance_unit_vector = delta / distance;
+              if distance < 10.0 {
+                let safety_margin_repulsion_force = (1000.0 - 100.0 * distance) * distance_unit_vector;
+                acceleration -= safety_margin_repulsion_force;
+              } else {
+                acceleration += triangular_kernel(
+                  particle_spec.interactions[other_interaction.0].force_coeffs[interaction.0],
+                  30.0,
+                  10.0,
+                  distance,
+                ) * distance_unit_vector;
+              }
+              acceleration
+            });
+            (entity, acceleration)
+        })
+        .collect::<Vec<_>>()
     })
     .collect::<Vec<_>>();
 
