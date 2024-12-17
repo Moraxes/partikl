@@ -51,12 +51,11 @@ pub fn compute_forces(
     return;
   }
   let pool = ComputeTaskPool::get();
-  let coords_iter = sim_region
+  let update_batches = sim_region
     .index
     .iter()
     .filter(|(_, v)| !v.is_empty())
-    .map(|(&k, v)| (v, sim_region.get_entities(k).clone()));
-  let update_batches = Buckets::new(args.parallel_batch_size, coords_iter)
+    .map(|(&k, v)| (v, sim_region.get_entities(k).clone()))
     .map(|(out_bucket, in_buckets)| {
       let mut result = Vec::with_capacity(out_bucket.len());
       for (entity, transform, _, interaction) in out_bucket
@@ -97,7 +96,7 @@ pub fn compute_forces(
       }
       result
     })
-    .collect::<Vec<_>>(&pool);
+    .collect::<Vec<_>>();
 
   for batch in update_batches {
     for (entity, accel) in batch {
