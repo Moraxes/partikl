@@ -42,10 +42,6 @@ pub struct ProgramArgs {
   #[arg(short = 'n', long, default_value_t = 1000)]
   pub num_particles: usize,
 
-  /// Batch size for parallel operations.
-  #[arg(long, default_value_t = 20)]
-  pub parallel_batch_size: usize,
-
   /// Prevents the interaction spec from being dumped.
   #[arg(long)]
   pub no_dump_interaction_spec: bool,

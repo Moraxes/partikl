@@ -1,46 +1,11 @@
 use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
-use bevy::tasks::prelude::*;
+use bevy::utils::Parallel;
 use bevy::window::PrimaryWindow;
 
 use crate::core::*;
 
-struct Buckets<T, I>
-where
-  I: Iterator<Item = T>,
-{
-  batch_size: usize,
-  coords: I,
-}
-
-impl<T, I> Buckets<T, I>
-where
-  I: Iterator<Item = T>,
-{
-  fn new(batch_size: usize, coords: I) -> Self {
-    Buckets { batch_size, coords }
-  }
-}
-
-impl<T, I> ParallelIterator<std::vec::IntoIter<T>> for Buckets<T, I>
-where
-  I: Iterator<Item = T> + Send,
-  T: Send,
-{
-  fn next_batch(&mut self) -> Option<std::vec::IntoIter<T>> {
-    let result = (0..self.batch_size)
-      .filter_map(|_| self.coords.next())
-      .collect::<Vec<_>>();
-    if result.is_empty() {
-      None
-    } else {
-      Some(result.into_iter())
-    }
-  }
-}
-
 pub fn compute_forces(
-  args: Res<ProgramArgs>,
   particle_spec: Res<ParticleSpec>,
   sim_region: Res<SimRegion>,
   state: Res<State<SimState>>,
@@ -50,56 +15,53 @@ pub fn compute_forces(
   if state.get() == &SimState::Paused {
     return;
   }
-  let pool = ComputeTaskPool::get();
-  let update_batches = sim_region
-    .index
-    .iter()
-    .filter(|(_, v)| !v.is_empty())
-    .map(|(&k, v)| (v, sim_region.get_entities(k).clone()))
-    .map(|(out_bucket, in_buckets)| {
-      out_bucket
-        .iter()
-        .map(|&entity| particles_out.get(entity).unwrap())
-        .map(|(entity, transform, _, interaction)| {
-          let acceleration = in_buckets
-            .clone()
-            .map(|other_entity| particles_in.get(other_entity).unwrap())
-            .fold(Vec2::ZERO, |mut acceleration, (other_entity, other_transform, other_interaction)| {
-              if entity == other_entity {
-                return acceleration;
-              }
-              let delta = sim_region.get_corrected_position_delta(
-                transform.translation.xy(),
-                other_transform.translation.xy(),
-              );
-              let distance_sq: f32 = delta.length_squared();
-              if distance_sq > 1600.0 {
-                return acceleration;
-              }
-              let distance = distance_sq.sqrt();
-              let distance_unit_vector = delta / distance;
-              if distance < 10.0 {
-                let safety_margin_repulsion_force = (1000.0 - 100.0 * distance) * distance_unit_vector;
-                acceleration -= safety_margin_repulsion_force;
-              } else {
-                acceleration += triangular_kernel(
-                  particle_spec.interactions[other_interaction.0].force_coeffs[interaction.0],
-                  30.0,
-                  10.0,
-                  distance,
-                ) * distance_unit_vector;
-              }
-              acceleration
-            });
-            (entity, acceleration)
-        })
-        .collect::<Vec<_>>()
-    })
-    .collect::<Vec<_>>();
+  let mut queue: Parallel<Vec<(Entity, Vec2)>> = Parallel::default();
+  particles_out.par_iter_mut().for_each_init(
+    || queue.borrow_local_mut(),
+    |local_queue, (entity, transform, _, interaction)| {
+      let neighbours =
+        sim_region.get_entities_by_position(transform.translation.x, transform.translation.y);
+      let acceleration = neighbours
+        .into_iter()
+        .map(|other_entity| particles_in.get(other_entity).unwrap())
+        .fold(
+          Vec2::ZERO,
+          |mut acceleration, (other_entity, other_transform, other_interaction)| {
+            if entity == other_entity {
+              return acceleration;
+            }
+            let delta = sim_region.get_corrected_position_delta(
+              transform.translation.xy(),
+              other_transform.translation.xy(),
+            );
+            let distance_sq: f32 = delta.length_squared();
+            if distance_sq > 1600.0 {
+              return acceleration;
+            }
+            let distance = distance_sq.sqrt();
+            let distance_unit_vector = delta / distance;
+            if distance < 10.0 {
+              let safety_margin_repulsion_force =
+                (1000.0 - 100.0 * distance) * distance_unit_vector;
+              acceleration -= safety_margin_repulsion_force;
+            } else {
+              acceleration += triangular_kernel(
+                particle_spec.interactions[other_interaction.0].force_coeffs[interaction.0],
+                30.0,
+                10.0,
+                distance,
+              ) * distance_unit_vector;
+            }
+            acceleration
+          },
+        );
+      local_queue.push((entity, acceleration))
+    },
+  );
 
-  for batch in update_batches {
+  for batch in queue.iter_mut() {
     for (entity, accel) in batch {
-      particles_out.get_mut(entity).unwrap().2 .0 += accel;
+      particles_out.get_mut(*entity).unwrap().2 .0 += *accel;
     }
   }
 }
