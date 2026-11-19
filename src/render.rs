@@ -51,7 +51,7 @@ pub fn init_particles(
   windows: Query<&Window, With<PrimaryWindow>>,
 ) {
   let mut rng = rand::rng();
-  let window = windows.get_single().expect("no primary window");
+  let window = windows.single().expect("no primary window");
   let width = window.width();
   let height = window.height();
   let mut sim_region = core::SimRegion::new(width, height, 40.0);

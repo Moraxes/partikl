@@ -3,7 +3,6 @@ use bevy::color::palettes::css::WHITE;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
-use bevy::render::camera::OrthographicProjection;
 use bevy::window::{CursorGrabMode, PrimaryWindow, WindowMode};
 
 use crate::core::*;
@@ -32,7 +31,7 @@ pub fn update_text(
 ) {
   if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
     if let Some(average) = fps.average() {
-      let entity = query.single();
+      let entity = query.single().unwrap();
       *writer.text(entity, 0) = format!("{:.2}", average);
     }
   }
@@ -61,7 +60,7 @@ pub fn exit_after_time(
 ) {
   if let Some(time_limit) = args.exit_after {
     if time.elapsed_secs_f64() >= time_limit {
-      app_exit_events.send(AppExit::Success);
+      app_exit_events.write(AppExit::Success);
     }
   }
 }
@@ -80,7 +79,7 @@ pub fn handle_keyboard_input(
     next_state.set(new_state);
   }
   if keyboard.just_pressed(KeyCode::KeyF) {
-    let mut primary_window = windows.get_single_mut().unwrap();
+    let mut primary_window = windows.single_mut().unwrap();
     primary_window.mode = match primary_window.mode {
       WindowMode::Windowed => WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
       _ => WindowMode::Windowed,
@@ -94,7 +93,7 @@ pub fn handle_mouse_input(
   mouse_button_input: Res<ButtonInput<MouseButton>>,
   keyboard_input: Res<ButtonInput<KeyCode>>,
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
-  mut camera: Query<(&mut MainCamera, &mut OrthographicProjection, &mut Transform)>,
+  mut camera: Query<(&mut MainCamera, &mut Projection, &mut Transform)>,
 ) {
   for event in mouse_wheel_events.read() {
     let log_delta = match event {
@@ -109,13 +108,15 @@ pub fn handle_mouse_input(
         ..
       } => (y / 10.0).round() as i32,
     };
-    let (mut main_camera, mut projection, _) = camera.get_single_mut().unwrap();
+    let (mut main_camera, mut projection, _) = camera.single_mut().unwrap();
     main_camera.zoom_exponent -= log_delta;
-    projection.scale = main_camera.zoom_base.powf(main_camera.zoom_exponent as f32);
+    if let Projection::Orthographic(projection) = &mut *projection {
+      projection.scale = main_camera.zoom_base.powf(main_camera.zoom_exponent as f32);
+    }
   }
 
   if mouse_button_input.just_released(MouseButton::Left) {
-    let mut primary_window = windows.get_single_mut().unwrap();
+    let mut primary_window = windows.single_mut().unwrap();
     primary_window.cursor_options.visible = true;
     primary_window.cursor_options.grab_mode = CursorGrabMode::Locked;
   }
@@ -125,7 +126,7 @@ pub fn handle_mouse_input(
   }
 
   if mouse_button_input.just_pressed(MouseButton::Left) {
-    let mut primary_window = windows.get_single_mut().unwrap();
+    let mut primary_window = windows.single_mut().unwrap();
     primary_window.cursor_options.visible = false;
     primary_window.cursor_options.grab_mode = CursorGrabMode::None;
   }
@@ -134,8 +135,10 @@ pub fn handle_mouse_input(
     if !mouse_button_input.pressed(MouseButton::Left) {
       continue;
     }
-    let (_, projection, mut camera_transform) = camera.get_single_mut().unwrap();
-    camera_transform.translation +=
-      (event.delta * Vec2::new(-1.0, 1.0)).extend(0.0) * projection.scale;
+    let (_, projection, mut camera_transform) = camera.single_mut().unwrap();
+    if let Projection::Orthographic(projection) = &*projection {
+      camera_transform.translation +=
+        (event.delta * Vec2::new(-1.0, 1.0)).extend(0.0) * projection.scale;
+    }
   }
 }

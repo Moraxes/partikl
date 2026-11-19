@@ -187,7 +187,7 @@ pub fn select_on_click(
     return;
   }
 
-  let window = windows.get_single().unwrap();
+  let window = windows.single().unwrap();
   let cursor_position_opt = window.cursor_position();
   if cursor_position_opt.is_none() {
     return;
@@ -195,7 +195,7 @@ pub fn select_on_click(
   let cursor_position = cursor_position_opt.unwrap();
   let size = Vec2::new(window.width() as f32, window.height() as f32);
   let cursor_position_offset = cursor_position - size / 2.0;
-  let camera_transform = camera_query.single();
+  let camera_transform = camera_query.single().unwrap();
   let world_position = camera_transform.compute_matrix()
     * cursor_position_offset.extend(0.0).extend(1.0)
     * Vec4::from((1.0, -1.0, 1.0, 1.0));
@@ -214,7 +214,7 @@ pub fn select_on_click(
     }
     selected_gizmo.id = Some(particle);
     selected_gizmo.translation = transform.translation;
-    for &child in children.iter() {
+    for child in children.iter() {
       if let Ok((Some(_), None, mut visibility)) = gizmos.get_mut(child) {
         *visibility = Visibility::Inherited;
       }
@@ -232,7 +232,7 @@ pub fn select_on_click(
       .get_entities_by_position(selected_gizmo.translation.x, selected_gizmo.translation.y);
     for nid in neighbour_ids {
       let (_, _, children) = particles.get(nid).unwrap();
-      for &child in children.iter() {
+      for child in children.iter() {
         if let Ok((None, Some(_), mut visibility)) = gizmos.get_mut(child) {
           *visibility = Visibility::Inherited;
         }
