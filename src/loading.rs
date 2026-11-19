@@ -1,6 +1,6 @@
 use chrono::offset::Utc;
 
-use rand::Rng;
+use rand::{Rng, RngExt};
 
 use ron::de::from_reader;
 use ron::options::Options;
@@ -31,7 +31,7 @@ pub fn get_particle_spec(program_args: &args::ProgramArgs) -> core::ParticleSpec
       ];
       rand::rngs::SmallRng::from_seed(more_bytes)
     } else {
-      rand::rngs::SmallRng::from_entropy()
+      rand::rngs::SmallRng::from_rng(&mut rand::rng())
     };
     let type_count = program_args.num_types;
     let particle_spec = generate_particle_spec(&mut rng, type_count);
@@ -93,7 +93,7 @@ fn generate_particle_spec(rng: &mut impl Rng, type_count: usize) -> core::Partic
 fn generate_single_interaction(rng: &mut impl Rng, type_count: usize) -> core::Interaction {
   core::Interaction {
     force_coeffs: (0..type_count)
-      .map(|_| 1000.0 * rng.gen::<f32>() - 500.0)
+      .map(|_| 1000.0 * rng.random::<f32>() - 500.0)
       .collect(),
   }
 }

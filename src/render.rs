@@ -8,8 +8,8 @@ use rand::prelude::*;
 use crate::core;
 
 fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
-  let phase = 360.0 * rng.gen::<f32>();
-  let spread = 60.0 + 300.0 * rng.gen::<f32>();
+  let phase = 360.0 * rng.random::<f32>();
+  let spread = 60.0 + 300.0 * rng.random::<f32>();
   (0..n)
     .map(|it| {
       let mut hue = phase + spread * it as f32 / n as f32;
@@ -17,8 +17,8 @@ fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
         hue -= 360.0;
       }
       Color::lch(
-        0.5 + 0.5 * rng.gen::<f32>(),
-        0.325 + 0.5 * rng.gen::<f32>(),
+        0.5 + 0.5 * rng.random::<f32>(),
+        0.325 + 0.5 * rng.random::<f32>(),
         hue,
       )
       .into()
@@ -30,7 +30,7 @@ pub fn init_materials(
   mut particle_spec: ResMut<core::ParticleSpec>,
   mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-  let mut rng = thread_rng();
+  let mut rng = rand::rng();
   for color in get_random_colors(particle_spec.interactions.len(), &mut rng) {
     let material = StandardMaterial {
       base_color: color,
@@ -50,7 +50,7 @@ pub fn init_particles(
   particle_spec: Res<core::ParticleSpec>,
   windows: Query<&Window, With<PrimaryWindow>>,
 ) {
-  let mut rng = thread_rng();
+  let mut rng = rand::rng();
   let window = windows.get_single().expect("no primary window");
   let width = window.width();
   let height = window.height();
@@ -65,12 +65,12 @@ pub fn init_particles(
         .choose(&mut rng)
         .expect("no particle spec"),
     );
-    let position_x = rng.gen::<f32>() * width - width / 2.0;
-    let position_y = rng.gen::<f32>() * height - height / 2.0;
+    let position_x = rng.random::<f32>() * width - width / 2.0;
+    let position_y = rng.random::<f32>() * height - height / 2.0;
     let translation = Vec3::new(position_x, position_y, 0.0);
     let starting_velocity = Vec3::new(
-      rng.gen::<f32>() * 250f32 - 125f32,
-      rng.gen::<f32>() * 250f32 - 125f32,
+      rng.random::<f32>() * 250f32 - 125f32,
+      rng.random::<f32>() * 250f32 - 125f32,
       0.0,
     );
     let particle = commands
