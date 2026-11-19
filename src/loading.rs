@@ -3,7 +3,8 @@ use chrono::offset::Utc;
 use rand::Rng;
 
 use ron::de::from_reader;
-use ron::ser::{to_writer_pretty, PrettyConfig};
+use ron::options::Options;
+use ron::ser::PrettyConfig;
 
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
@@ -37,7 +38,8 @@ pub fn get_particle_spec(program_args: &args::ProgramArgs) -> core::ParticleSpec
     if !program_args.no_dump_interaction_spec {
       let path = PathBuf::from(format!("spec-{}.ron", Utc::now().format("%F-%H-%M-%S")));
       let file = File::create(&path).unwrap();
-      to_writer_pretty(file, &particle_spec.interactions, PrettyConfig::default())
+      Options::default()
+        .to_io_writer_pretty(file, &particle_spec.interactions, PrettyConfig::default())
         .expect(&format!("failed to write to {:?}", path));
     }
     particle_spec

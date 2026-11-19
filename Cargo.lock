@@ -396,7 +396,7 @@ dependencies = [
  "downcast-rs",
  "either",
  "petgraph",
- "ron",
+ "ron 0.8.1",
  "serde",
  "smallvec",
  "thread_local",
@@ -450,7 +450,7 @@ dependencies = [
  "futures-lite",
  "js-sys",
  "parking_lot",
- "ron",
+ "ron 0.8.1",
  "serde",
  "stackfuture",
  "uuid",
@@ -3243,7 +3243,7 @@ dependencies = [
  "chrono",
  "clap",
  "rand",
- "ron",
+ "ron 0.12.3",
  "serde",
 ]
 
@@ -3598,6 +3598,19 @@ dependencies = [
  "bitflags 2.6.0",
  "serde",
  "serde_derive",
+]
+
+[[package]]
+name = "ron"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97b3fe97c18ff24299ea56f802c5693eb34266fb0bc8317f4e101debc8a3ceaf"
+dependencies = [
+ "bitflags 2.6.0",
+ "serde",
+ "serde_derive",
+ "typeid",
+ "unicode-ident",
 ]
 
 [[package]]
