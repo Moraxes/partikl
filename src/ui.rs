@@ -3,7 +3,7 @@ use bevy::color::palettes::css::WHITE;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
-use bevy::window::{CursorGrabMode, PrimaryWindow, WindowMode};
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowMode};
 
 use crate::core::*;
 
@@ -56,7 +56,7 @@ pub fn close_on_esc(
 pub fn exit_after_time(
   args: Res<ProgramArgs>,
   time: Res<Time>,
-  mut app_exit_events: EventWriter<AppExit>,
+  mut app_exit_events: MessageWriter<AppExit>,
 ) {
   if let Some(time_limit) = args.exit_after {
     if time.elapsed_secs_f64() >= time_limit {
@@ -88,11 +88,11 @@ pub fn handle_keyboard_input(
 }
 
 pub fn handle_mouse_input(
-  mut mouse_wheel_events: EventReader<MouseWheel>,
-  mut mouse_motion_events: EventReader<MouseMotion>,
+  mut mouse_wheel_events: MessageReader<MouseWheel>,
+  mut mouse_motion_events: MessageReader<MouseMotion>,
   mouse_button_input: Res<ButtonInput<MouseButton>>,
   keyboard_input: Res<ButtonInput<KeyCode>>,
-  mut windows: Query<&mut Window, With<PrimaryWindow>>,
+  mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
   mut camera: Query<(&mut MainCamera, &mut Projection, &mut Transform)>,
 ) {
   for event in mouse_wheel_events.read() {
@@ -116,9 +116,9 @@ pub fn handle_mouse_input(
   }
 
   if mouse_button_input.just_released(MouseButton::Left) {
-    let mut primary_window = windows.single_mut().unwrap();
-    primary_window.cursor_options.visible = true;
-    primary_window.cursor_options.grab_mode = CursorGrabMode::Locked;
+    let mut cursor = cursor_options.single_mut().unwrap();
+    cursor.visible = true;
+    cursor.grab_mode = CursorGrabMode::Locked;
   }
 
   if !keyboard_input.pressed(KeyCode::ControlLeft) {
@@ -126,9 +126,9 @@ pub fn handle_mouse_input(
   }
 
   if mouse_button_input.just_pressed(MouseButton::Left) {
-    let mut primary_window = windows.single_mut().unwrap();
-    primary_window.cursor_options.visible = false;
-    primary_window.cursor_options.grab_mode = CursorGrabMode::None;
+    let mut cursor = cursor_options.single_mut().unwrap();
+    cursor.visible = false;
+    cursor.grab_mode = CursorGrabMode::None;
   }
 
   for event in mouse_motion_events.read() {

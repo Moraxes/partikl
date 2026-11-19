@@ -20,7 +20,7 @@ fn main() {
     .insert_resource(Time::<Fixed>::from_seconds(DELTA_TIME))
     .add_plugins(DefaultPlugins.set(WindowPlugin {
       primary_window: Some(Window {
-        resolution: WindowResolution::new(2560.0, 1440.0),
+        resolution: WindowResolution::new(2560, 1440),
         position: WindowPosition::Automatic,
         resize_constraints: Default::default(),
         title: "partikl".to_string(),

@@ -1,7 +1,7 @@
 use crate::args::ProgramArgs;
 use bevy::prelude::*;
-use bevy::render::camera::ClearColorConfig;
-use bevy::render::camera::ScalingMode;
+use bevy::camera::{ClearColorConfig, ScalingMode};
+use bevy::render::view::Hdr;
 use bevy::window::PrimaryWindow;
 use rand::prelude::*;
 
@@ -116,8 +116,8 @@ pub fn init_particles(
       zoom_exponent: 1,
     },
     Camera3d::default(),
+    Hdr,
     Camera {
-      hdr: true,
       clear_color: ClearColorConfig::Custom(Color::BLACK),
       ..Default::default()
     },

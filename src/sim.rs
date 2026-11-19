@@ -196,7 +196,7 @@ pub fn select_on_click(
   let size = Vec2::new(window.width() as f32, window.height() as f32);
   let cursor_position_offset = cursor_position - size / 2.0;
   let camera_transform = camera_query.single().unwrap();
-  let world_position = camera_transform.compute_matrix()
+  let world_position = camera_transform.to_matrix()
     * cursor_position_offset.extend(0.0).extend(1.0)
     * Vec4::from((1.0, -1.0, 1.0, 1.0));
 
