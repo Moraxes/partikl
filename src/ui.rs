@@ -15,8 +15,8 @@ pub fn init_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     .spawn((
       Text::new("hello"),
       TextFont {
-        font: asset_server.load("FiraMono-Regular.ttf"),
-        font_size: 16.0,
+        font: FontSource::Handle(asset_server.load("FiraMono-Regular.ttf")),
+        font_size: FontSize::Px(16.0),
         ..Default::default()
       },
       TextColor(WHITE.into()),

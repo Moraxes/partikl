@@ -1,7 +1,6 @@
 use crate::args::ProgramArgs;
 use bevy::prelude::*;
-use bevy::camera::{ClearColorConfig, ScalingMode};
-use bevy::render::view::Hdr;
+use bevy::camera::{ClearColorConfig, Hdr, ScalingMode};
 use bevy::window::PrimaryWindow;
 use rand::prelude::*;
 
