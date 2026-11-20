@@ -6,6 +6,8 @@ status: todo
 priority: later
 branch: main
 part_of: 12
+relates:
+- 19
 created: 2026-11-20T20:29:45
 ---
 Cel: ograniczyć koszt najgorszego przypadku. W skupiskach macierzy 4 odstęp to ok. 3,4 przy promieniu odpychania 10: odpychanie `100·(10−d)` przegrywa ze współczynnikami do 500. Następny krok: `REPULSION_STRENGTH` 100 → np. 1000 (albo limit siły przyciągania na cząstkę), zmierzyć kandydatów i czas `--quick` dla 32 macierzy, obejrzeć wygląd.
