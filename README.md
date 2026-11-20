@@ -1,18 +1,15 @@
-# Dziennik pracy partikl
+# Tracker partikl
 
-Gałąź `worklog` bez wspólnej historii z `main`, podpięta jako worktree w `.worklog/`
-(`git worktree add .worklog worklog`). Wyniki eksperymentów, pomiary, sprawdzone i odrzucone
-warianty, raporty. Historia zmian w kodzie zostaje w `main`.
+Zadania projektu dla człowieka i agentów: `tasks/NNN-tytuł.md`, obsługiwane narzędziem `track`
+(`~/repos/track`, opis formatu i poleceń w jego README). Gałąź `track`, worktree `.track/`,
+lokalna. Artefakty (wyniki benchmarków, raporty) są na gałęzi `artifacts` w `.artifacts/` i
+linkowane z zadań (`track link`, `track artifacts`).
 
-- Jeden wpis na plik: `yyyy-mm-dd-hh-mm-<tytuł po myślnikach>.md`.
-- Nagłówek: `commit:` rewizja `main`, na której zrobiono pomiar (z `-dirty`, jeśli na
-  niezacommitowanych zmianach, i wtedy opis zmian w treści); opcjonalnie `data:` pliki wyników
-  z `.data/bench-results/`.
-- Wpisów się nie poprawia. Nowy wynik albo korekta to nowy wpis, który wskazuje stary.
-- Commit na tej gałęzi: `docs: add <tytuł>`.
-
-## Raporty
-`reports/` to artefakty generowane narzędziami z `main` i nadpisywane przy każdym
-uruchomieniu (wyjątek od zasady niepoprawiania), nie edytować ręcznie:
-- `perf-report.md`: etapy optymalizacji, `node tools/bench-report/report.js` z
-  `.data/perf-stages.json` (manifest i przebiegi zostają w `.data/`, poza gitem).
+## Zasady
+- Tytuł krótki (2–5 słów), bo numer i tytuł mogą być nazwą gałęzi; szczegóły w `summary`.
+- Treść od najważniejszego: pierwszy akapit to cel i „Następny krok” (albo wynik, gdy
+  `done`), potem sekcje `##`. Wyniki eksperymentów idą do zadania, duże dane i raporty do
+  `.artifacts/` z linkiem.
+- Kolejność wynika z `blocked_by` i `priority` (`track ready`, `track next`), najwyżej 2 zadania
+  w toku.
+- Commity w `main` ze stopką `Task: 042` linkują się same (hook `post-commit`).
