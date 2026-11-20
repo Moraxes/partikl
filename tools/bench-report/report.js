@@ -20,11 +20,19 @@
 // etapu. Porównanie jest parami: ten sam (n, macierz, offset) w obu przebiegach, stosunek
 // median czasu nowy/stary, średnia geometryczna i 95% przedział ufności (rozkład normalny na
 // logach). Wynik względem punktu wyjścia to iloczyn wyników kolejnych etapów.
+//
+// Etapy mierzone trybem `--quick` (`tools/bench-ab/ab.sh`) są w osobnej liście `quick`, bo
+// to inne punkty (tylko n = 9000, offset 4096, trzy macierze) i inne porównanie (per macierz,
+// przedział z powtórzeń, nie z rozrzutu między punktami):
+//
+//   "quick": [ { "name": "…", "commit": "…", "note": "…",
+//                "rounds": [ { "before": "sim-….parquet", "after": "sim-….parquet" }, … ] } ]
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 const D = require('../bench-viz/data.js');
+const Q = require('../bench-ab/quick.js');
 
 const root = path.resolve(__dirname, '../..');
 const manifestPath = path.resolve(process.argv[2] ?? path.join(root, '.artifacts/perf-stages.json'));
@@ -241,7 +249,82 @@ stages.forEach((s, i) => {
   );
 });
 
+if (manifest.quick?.length) await quickSection(manifest.quick, lines, { num, table, short });
+
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, lines.join('\n'));
 console.log(`zapisano ${path.relative(process.cwd(), outPath)} (${stages.length} etapów)`);
+}
+
+/** Sekcja etapów trybu `--quick`: per macierz, stosunek po/przed z przedziałem z powtórzeń. */
+async function quickSection(quick, lines, { num, table, short }) {
+  const stages = [];
+  for (const q of quick) stages.push({ ...q, cmp: await Q.compareRounds(q.rounds, resultsDir) });
+  const seeds = stages[0].cmp.seeds;
+  const ratio = (m) => (m ? `${num(m.ratio)} [${num(m.lo)}; ${num(m.hi)}]` : '—');
+
+  lines.push('## Tryb szybki', '');
+  lines.push(
+    'Etapy mierzone `cargo bench --bench sim -- --quick` (n = 9000, offset 4096, macierze',
+    `${seeds.join(', ')}: wolny, typowy i szybki wzrost liczby kandydatów), przed i po na przemian`,
+    '(`tools/bench-ab/ab.sh`). Stosunek median czasu po/przed z powtórzeń wszystkich rund, 95%',
+    'przedział z bootstrapu (kroki jednej trajektorii nie są niezależne, więc przedział jest raczej',
+    'za wąski; rozrzut rund w szczegółach etapu).',
+    '',
+  );
+  lines.push('### Krok względem poprzedniego etapu', '');
+  lines.push(
+    table(
+      ['Etap', 'Commit', ...seeds.map((s) => `macierz ${s}`)],
+      stages.map((st) => [st.name, `\`${st.commit}\``, ...seeds.map((s) => ratio(st.cmp.bySeed.get(s)?.metrics.step_ns))]),
+    ),
+    '',
+  );
+  lines.push('### Czas kroku po etapie', '');
+  lines.push('Mediana kroku w µs po etapie; pierwszy wiersz to pomiar „przed” pierwszego etapu.', '');
+  const first = stages[0].cmp.bySeed;
+  lines.push(
+    table(
+      ['Po etapie', ...seeds.map((s) => `macierz ${s}`), 'iloczyn zmian (23 / 6 / 4)'],
+      [
+        ['(start)', ...seeds.map((s) => num(first.get(s).metrics.step_ns.before / 1e3, 0)), '—'],
+        ...stages.map((st, i) => [
+          st.name,
+          ...seeds.map((s) => num(st.cmp.bySeed.get(s).metrics.step_ns.after / 1e3, 0)),
+          seeds
+            .map((s) => num(stages.slice(0, i + 1).reduce((p, x) => p * x.cmp.bySeed.get(s).metrics.step_ns.ratio, 1)))
+            .join(' / '),
+        ]),
+      ],
+    ),
+    '',
+  );
+  lines.push('### Etapy trybu szybkiego', '');
+  for (const st of stages) {
+    lines.push(`#### ${st.name} (\`${st.commit}\`)`, '');
+    if (st.note) lines.push(st.note, '');
+    lines.push(
+      `${st.cmp.rounds} rund, przed \`${short(st.cmp.revisions.before)}\`, po \`${short(st.cmp.revisions.after)}\`; pliki: ` +
+        st.rounds.map((r) => `\`${r.before}\` → \`${r.after}\``).join(', ') + '.',
+      '',
+    );
+    for (const s of seeds) {
+      const x = st.cmp.bySeed.get(s);
+      lines.push(
+        `Macierz ${s}: kandydaci ${num(x.candidates.before, 1)} → ${num(x.candidates.after, 1)}, ` +
+          (x.sameStates ? 'te same stany.' : 'inne stany (trajektoria się zmieniła).'),
+        '',
+      );
+      lines.push(
+        table(
+          ['Metryka', 'przed µs', 'po µs', 'po/przed [95% CI]', 'rundy'],
+          Q.METRICS.filter(([c]) => x.metrics[c]).map(([c, label]) => {
+            const m = x.metrics[c];
+            return [label, num(m.before / 1e3, 1), num(m.after / 1e3, 1), ratio(m), m.perRound.map((r) => num(r)).join(' / ')];
+          }),
+        ),
+        '',
+      );
+    }
+  }
 }
