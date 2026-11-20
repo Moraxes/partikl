@@ -7,7 +7,12 @@ priority: now
 branch: main
 part_of: 12
 created: 2026-11-20T20:29:44
-worked: 2026-11-20T20:35:49
+worked: 2026-11-20T20:43:58
+links:
+- kind: commit
+  target: 975035d
+  at: 2026-11-20T20:43:58
+  note: 'perf: compute particle rotation from velocity without trigonometry'
 ---
 Cel: usunąć koszt `update_shape` (ok. 170 µs na krok, 34–39% kroku przy macierzach 23 i 6). Następny krok: kwaternion obrotu wprost z wektora prędkości: znormalizowane `(0, 0, v.y, |v| + v.x)` (osobno przypadek `v.x ≈ −|v|`: obrót o π), bez `angle_to` i `from_rotation_z`; zmierzyć `--quick`.
 
