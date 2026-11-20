@@ -15,6 +15,9 @@ links:
   target: 5e5331f
   at: 2026-11-20T23:39:27
   note: 'feat: optional force averaging by neighbour count'
+- kind: commit
+  target: 5e5331f
+  at: 2026-11-20T23:39:27
 ---
 Wynik: `--average-forces` / klawisz N, `AVERAGE_NEIGHBOURS = 64`. Chaos przy n=100000 znika przy każdym sprawdzonym N0; skupiska dalej gęstnieją (najpełniejsza komórka rośnie), ale bez wyrzutów.
 
