@@ -2,12 +2,12 @@
 id: 21
 title: Usypianie spokojnych cząstek
 summary: 'Bez zmian: po 4096 krokach żadna cząstka nie jest spokojna, skupiska ruchliwe w środku'
-status: doing
+status: done
 priority: later
 branch: main
 part_of: 12
 created: 2026-11-20T20:29:45
-worked: 2026-11-20T21:38:10
+worked: 2026-11-20T21:39:05
 edited: 2026-11-20T21:39:05
 ---
 Wynik: bez zmian w kodzie, nie ma czego usypiać. Po 4096 krokach przy n=9000 żadna cząstka nie ma prędkości poniżej `VELOCITY_THRESHOLD` ani poniżej 1 j/s, także w skupiskach; skupiska gęstych macierzy są ruchliwe w środku.
