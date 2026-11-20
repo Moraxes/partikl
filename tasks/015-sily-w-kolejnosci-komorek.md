@@ -16,6 +16,10 @@ links:
   target: 32c0e8c
   at: 2026-11-20T21:04:16
   note: 'perf: compute forces in grid order over particle ranges of balanced work'
+- kind: report
+  target: .artifacts/reports/perf-report.md
+  at: 2026-11-20T21:04:42
+  note: sekcja Tryb szybki
 ---
 Wynik: siły w kolejności siatki, zakresami cząstek o zbliżonej pracy (`32c0e8c`): `compute_forces` ×0,78 przy małej gęstości (macierz 23), bez zmian przy 6 i 4; krok ×0,86 / ×1,03 / ×1,00. Lokalność danych przy gęstych macierzach nic nie dała; zysk przy 23 to mniej zadań puli. Rayon odrzucony.
 
