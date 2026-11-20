@@ -8,8 +8,13 @@ branch: main
 blocked_by:
 - 22
 created: 2026-11-20T23:12:22
-worked: 2026-11-20T23:39:27
+worked: 2026-11-20T23:44:23
 edited: 2026-11-20T23:20:42
+links:
+- kind: commit
+  target: 00f9005
+  at: 2026-11-20T23:44:23
+  note: 'feat: overlap resolution by position correction as an overlap mode'
 ---
 Cel: tryb `Overlap::Resolve` (drugi z trzech trybów nakładania, obok sprężyny i zasięgu od gęstości 026, jeden klawisz cyklicznie). Po całkowaniu i zawinięciu pary bliżej niż `REPULSION_RADIUS` rozsuwane poprawką pozycji (po pół wnikania, poprawki sumowane, potem stosowane: wynik niezależny od kolejności); sprężyna odpychania wyłączona w jądrze. Następny krok: przebiegi 3×3 komórek w siatce (komórka 20 ≥ zasięg 10), system z run_if.
 
