@@ -35,6 +35,8 @@ pub struct SpatialGrid {
   /// Bufory `rebuild` używane ponownie między krokami.
   staged: Vec<Staged>,
   cursor: Vec<u32>,
+  /// `placed[k]`: miejsce w tablicach `k`-tej cząstki podanej ostatniemu `rebuild`.
+  placed: Vec<u32>,
   /// Sąsiedztwo każdej komórki policzone raz w `new`: indeksy komórek do przejrzenia (z
   /// zawijaniem) dla komórki `c` to `neighbour_cells[neighbour_starts[c]..neighbour_starts[c + 1]]`.
   neighbour_starts: Vec<u32>,
@@ -123,6 +125,7 @@ impl SpatialGrid {
       types: Vec::new(),
       staged: Vec::new(),
       cursor: Vec::new(),
+      placed: Vec::new(),
       neighbour_starts: Vec::new(),
       neighbour_cells: Vec::new(),
       run_starts: Vec::new(),
@@ -293,6 +296,13 @@ impl SpatialGrid {
     &self.types
   }
 
+  /// Miejsce w tablicach każdej cząstki w kolejności podania ostatniemu `rebuild`: `k`-ta
+  /// podana leży pod indeksem `placed()[k]`. Pozwala przepisać wyniki liczone w kolejności
+  /// siatki z powrotem do ECS przy iteracji w tej samej kolejności co przy budowaniu.
+  pub fn placed(&self) -> &[u32] {
+    &self.placed
+  }
+
   fn neighbour_at(&self, i: usize) -> Neighbour {
     Neighbour { entity: self.entities[i], position: Vec2::new(self.xs[i], self.ys[i]), interaction: self.types[i] }
   }
@@ -353,9 +363,11 @@ impl SpatialGrid {
     self.ys.resize(n + Self::PADDING, 0.0);
     self.xs[n..].fill(f32::NAN);
     self.ys[n..].fill(f32::NAN);
+    self.placed.clear();
     for p in &staged {
       let i = counts[p.cell as usize] as usize;
       counts[p.cell as usize] += 1;
+      self.placed.push(i as u32);
       self.entities[i] = p.entity;
       self.xs[i] = p.position.x;
       self.ys[i] = p.position.y;

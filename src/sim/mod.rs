@@ -1,5 +1,4 @@
 use bevy::app::{TaskPoolOptions, TaskPoolThreadAssignmentPolicy};
-use bevy::ecs::batching::BatchingStrategy;
 use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
 use bevy::tasks::available_parallelism;
@@ -45,14 +44,6 @@ pub fn task_pool_options() -> TaskPoolOptions {
     ..default()
   }
 }
-
-/// Podział `compute_forces` na partie: wiele małych partii na wątek, żeby wątki, które
-/// skończą wcześniej (rdzenie wydajne, cząstki poza skupiskami), przejmowały resztę pracy.
-/// Cząstka w skupisku ma kilkadziesiąt razy więcej par niż reszta.
-const FORCES_BATCHING: BatchingStrategy = BatchingStrategy {
-  batch_size_limits: 64..usize::MAX,
-  batches_per_thread: 16,
-};
 
 pub struct SimPlugin;
 
