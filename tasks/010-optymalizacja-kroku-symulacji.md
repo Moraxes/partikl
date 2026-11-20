@@ -12,5 +12,9 @@ links:
   target: .artifacts/reports/perf-report.md
   at: 2026-11-20T18:45:15
   note: etapy optymalizacji
+- kind: data
+  target: .artifacts/perf-stages.json
+  at: 2026-11-20T18:45:15
+  note: manifest etapów (pliki z .artifacts/bench)
 ---
 Wynik: płaska siatka, siły z danych siatki, tablica sąsiedztwa, wszystkie rdzenie, SIMD f32x8, stałe SIMD jako const, kopia siatki w jednym przejściu, przesunięcie przebiegów przez szew. Szczegóły i tabele w raporcie.
