@@ -5,6 +5,8 @@ summary: Dzielenie i sqrt na M5 tanie; zostaje wariant z 3 dzieleniami
 status: done
 priority: soon
 branch: main
+relates:
+- 10
 created: 2026-11-20T18:45:00
 worked: 2026-11-20T18:45:00
 links:
