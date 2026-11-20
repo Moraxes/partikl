@@ -1,24 +1,62 @@
 use bevy::prelude::*;
 
-use std::collections::HashMap;
-
 /// Siatka przestrzenna z zawijaniem (torus) do szukania sąsiadów cząstek.
 /// Świat obejmuje `[-half_size, half_size]` w obu osiach.
-#[derive(Default, Resource)]
+///
+/// Komórka `(ix, iy)` zawiera pozycje, dla których `round(x / granularity) == ix` (tak samo
+/// dla y). Skrajne komórki (`left`/`right`, `bottom`/`top`) leżą w połowie poza światem i
+/// razem tworzą jedną komórkę na szwie, dlatego zapytanie o komórkę przy krawędzi zagląda też
+/// do jej odpowiednika po drugiej stronie. Komórki są w płaskim `Vec`, wierszami.
+#[derive(Resource)]
 pub struct SpatialGrid {
   half_size: Vec2,
-  pub granularity: f32,
-  pub index: HashMap<(i32, i32), Vec<Entity>>,
+  granularity: f32,
+  left: i32,
+  right: i32,
+  bottom: i32,
+  top: i32,
+  columns: usize,
+  cells: Vec<Vec<Entity>>,
+}
+
+/// Komórki do przejrzenia dla jednej komórki sąsiedztwa: ona sama i do trzech odpowiedników
+/// po drugiej stronie szwu. `len` mówi, ile pozycji tablicy jest ważnych.
+#[derive(Clone, Copy)]
+struct Wrapped {
+  buckets: [(i32, i32); 4],
+  len: usize,
 }
 
 impl SpatialGrid {
-  const OFFSETS: [i32; 3] = [-1, 0, 1];
+  const OFFSETS: [(i32, i32); 9] = [
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+    (0, -1),
+    (0, 0),
+    (0, 1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+  ];
 
   pub fn new(width: f32, height: f32, granularity: f32) -> SpatialGrid {
+    let half_size = Vec2::new(width / 2.0, height / 2.0);
+    let right = (half_size.x / granularity).round() as i32;
+    let top = (half_size.y / granularity).round() as i32;
+    let left = (-half_size.x / granularity).round() as i32;
+    let bottom = (-half_size.y / granularity).round() as i32;
+    let columns = (right - left + 1) as usize;
+    let rows = (top - bottom + 1) as usize;
     SpatialGrid {
-      half_size: Vec2::new(width / 2.0, height / 2.0),
+      half_size,
       granularity,
-      ..Default::default()
+      left,
+      right,
+      bottom,
+      top,
+      columns,
+      cells: vec![Vec::new(); columns * rows],
     }
   }
 
@@ -42,53 +80,58 @@ impl SpatialGrid {
     2.0 * adjustment
   }
 
-  fn get_wrapped_buckets(&self, ix: i32, iy: i32) -> Vec<(i32, i32)> {
-    let right = (self.half_size.x / self.granularity).round() as i32;
-    let top = (self.half_size.y / self.granularity).round() as i32;
-    let left = (-self.half_size.x / self.granularity).round() as i32;
-    let bottom = (-self.half_size.y / self.granularity).round() as i32;
-    let mut result = vec![(ix, iy); 4];
-    let mut count = 1;
+  fn get_wrapped_buckets(&self, ix: i32, iy: i32) -> Wrapped {
+    let (left, right, bottom, top) = (self.left, self.right, self.bottom, self.top);
+    let mut buckets = [(ix, iy); 4];
+    let mut len = 1;
 
     if ix <= left {
-      result[count].0 += right - left;
-      count += 1;
+      buckets[len].0 += right - left;
+      len += 1;
     } else if ix >= right {
-      result[count].0 -= right - left;
-      count += 1;
+      buckets[len].0 -= right - left;
+      len += 1;
     }
 
     if iy <= bottom {
-      result[count].1 += top - bottom;
-      count += 1;
+      buckets[len].1 += top - bottom;
+      len += 1;
     } else if iy >= top {
-      result[count].1 -= top - bottom;
-      count += 1;
+      buckets[len].1 -= top - bottom;
+      len += 1;
     }
 
     if (ix <= left || ix >= right) && (iy <= bottom || iy >= top) {
-      result[count].0 = result[1].0;
-      result[count].1 = result[2].1;
-      count += 1;
+      buckets[len].0 = buckets[1].0;
+      buckets[len].1 = buckets[2].1;
+      len += 1;
     }
 
-    result.truncate(count);
-    result
+    Wrapped { buckets, len }
+  }
+
+  /// Indeks komórki w `cells`, albo `None` poza siatką (taka komórka jest zawsze pusta).
+  fn cell_index(&self, (ix, iy): (i32, i32)) -> Option<usize> {
+    if ix < self.left || ix > self.right || iy < self.bottom || iy > self.top {
+      return None;
+    }
+    Some((iy - self.bottom) as usize * self.columns + (ix - self.left) as usize)
+  }
+
+  fn cell_mut(&mut self, x: f32, y: f32) -> &mut Vec<Entity> {
+    let coords = self.bucket_coords(x, y);
+    let index = self
+      .cell_index(coords)
+      .unwrap_or_else(|| panic!("position ({x}, {y}) outside the world"));
+    &mut self.cells[index]
   }
 
   pub fn insert_entity(&mut self, entity: Entity, x: f32, y: f32) {
-    self
-      .index
-      .entry(self.bucket_coords(x, y))
-      .or_default()
-      .push(entity)
+    self.cell_mut(x, y).push(entity)
   }
 
   pub fn remove_entity(&mut self, entity: Entity, x_old: f32, y_old: f32) {
-    let bucket_old = self
-      .index
-      .get_mut(&self.bucket_coords(x_old, y_old))
-      .expect("no bucket");
+    let bucket_old = self.cell_mut(x_old, y_old);
     let idx = bucket_old
       .iter()
       .position(|&e| e == entity)
@@ -109,15 +152,12 @@ impl SpatialGrid {
   pub fn get_entities(&self, (ix, iy): (i32, i32)) -> impl Iterator<Item = Entity> + Clone + '_ {
     Self::OFFSETS
       .iter()
-      .cloned()
-      .flat_map(move |xoff| {
-        Self::OFFSETS
-          .iter()
-          .flat_map(move |&yoff| self.get_wrapped_buckets(ix + xoff, iy + yoff))
+      .flat_map(move |&(xoff, yoff)| {
+        let wrapped = self.get_wrapped_buckets(ix + xoff, iy + yoff);
+        wrapped.buckets.into_iter().take(wrapped.len)
       })
-      .flat_map(|offset| self.index.get(&offset))
-      .flatten()
-      .cloned()
+      .filter_map(|bucket| self.cell_index(bucket))
+      .flat_map(|index| self.cells[index].iter().copied())
   }
 
   pub fn get_entities_by_position(&self, x: f32, y: f32) -> impl Iterator<Item = Entity> + '_ {
