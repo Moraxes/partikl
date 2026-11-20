@@ -103,16 +103,22 @@ fn forces_reach_the_right_particles_when_grid_order_differs_from_ecs() {
 }
 
 #[test]
-fn dense_cluster_matches_reference() {
+fn dense_cluster_matches_reference_on_average_over_sampling_offsets() {
   let mut rng = StdRng::seed_from_u64(13);
   let spec = spec(&mut rng, 3);
-  // Skupisko przy rogu świata (pary przez szew) i trochę cząstek dookoła.
-  let mut points: Vec<(Vec2, usize)> = (0..300)
+  // Gęste skupisko przy rogu świata (pary przez szew, ponad `NEIGHBOUR_CAP` kandydatów, praca
+  // powyżej progu par liczonych raz w każdym kroku) i trochę cząstek dookoła.
+  let mut points: Vec<(Vec2, usize)> = (0..2000)
     .map(|_| (Vec2::new(SIZE.x / 2.0 - rng.random_range(0.0..30.0), SIZE.y / 2.0 - rng.random_range(0.0..30.0)), rng.random_range(0..3)))
     .collect();
   points.extend(random_points(&mut rng, 200, 3));
   let order: Vec<usize> = (0..points.len()).collect();
-  assert_close(&run_forces(&spec, &points, &order), &spec, &points);
+  // Co `n`-ty wektor (n ≤ 8) z przesunięciem co krok: po NWW(1..8) krokach każdy wektor
+  // policzony tyle samo razy z wagą `n`, więc średnia to pełna suma.
+  let steps = 840;
+  let total = run_forces_times(&spec, &points, &order, steps);
+  let mean: Vec<Vec2> = total.iter().map(|a| *a / steps as f32).collect();
+  assert_close(&mean, &spec, &points);
 }
 
 #[test]
