@@ -2,7 +2,7 @@
 id: 25
 title: Rozsuwanie nakładających się cząstek
 summary: Poprawka pozycji par bliżej niż zasięg odpychania zamiast sprężyny
-status: doing
+status: done
 priority: soon
 branch: main
 blocked_by:
