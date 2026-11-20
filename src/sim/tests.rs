@@ -2,7 +2,8 @@ use std::f32::consts::PI;
 
 use bevy::prelude::*;
 
-use super::rotation_from_velocity;
+use super::{friction_acceleration, rotation_from_velocity};
+use crate::config::{DELTA_TIME, FRICTION_COEFF};
 
 /// Dawny wzór: kąt z `angle_to` i `Quat::from_rotation_z`.
 fn reference(velocity: Vec2) -> Quat {
@@ -51,4 +52,47 @@ fn rotation_turns_x_axis_to_velocity_direction() {
     let expected = velocity.normalize().extend(0.0);
     assert!(turned.distance(expected) < 1e-6, "v = {velocity}: {turned} vs {expected}");
   }
+}
+
+/// Prędkość (j/s) w kolejnych krokach Verleta z samym tarciem i stałym przyspieszeniem.
+fn friction_velocities(velocity: Vec2, acceleration: Vec2, steps: usize) -> Vec<Vec2> {
+  let dt = DELTA_TIME as f32;
+  let mut displacement = velocity * dt;
+  (0..steps)
+    .map(|_| {
+      displacement += friction_acceleration(displacement, acceleration, dt * dt) * dt * dt;
+      displacement / dt
+    })
+    .collect()
+}
+
+#[test]
+fn friction_alone_matches_quadratic_drag_decay() {
+  let v0 = 500.0;
+  let velocities = friction_velocities(Vec2::new(v0, 0.0), Vec2::ZERO, 1000);
+  for (i, v) in velocities.iter().enumerate() {
+    let t = (i + 1) as f32 * DELTA_TIME as f32;
+    let expected = v0 / (1.0 + FRICTION_COEFF * v0 * t);
+    assert!((v.x / expected - 1.0).abs() < 1e-3, "krok {i}: {} vs {expected}", v.x);
+    assert_eq!(v.y, 0.0);
+  }
+}
+
+#[test]
+fn friction_never_reverses_direction() {
+  let direction = Vec2::new(3.0, -4.0).normalize();
+  let mut last = 1e7;
+  for v in friction_velocities(direction * 1e7, Vec2::ZERO, 100) {
+    assert!(v.normalize().dot(direction) > 0.9999, "{v}");
+    assert!(v.length() < last, "{v}");
+    last = v.length();
+  }
+}
+
+#[test]
+fn friction_under_constant_force_reaches_continuous_terminal_velocity() {
+  let acceleration = Vec2::new(0.0, 400.0);
+  let terminal = (acceleration.length() / FRICTION_COEFF).sqrt();
+  let v = *friction_velocities(Vec2::ZERO, acceleration, 5000).last().unwrap();
+  assert!((v.length() / terminal - 1.0).abs() < 0.01, "{v} vs {terminal}");
 }

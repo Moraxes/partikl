@@ -79,18 +79,38 @@ impl Plugin for SimPlugin {
   }
 }
 
+/// Tarcie kwadratowe (`v' = −c|v|v`) na prędkości, którą cząstka miałaby po tym kroku, a nie
+/// na różnicy pozycji z poprzedniego kroku. Wynik jako przyspieszenie zastępcze, więc
+/// `integrate` przesunie cząstkę o przemieszczenie po kroku już stłumione (szczegóły w
+/// `friction_acceleration`). Prędkość poniżej `VELOCITY_THRESHOLD` jest zerowana.
 pub fn compute_friction(
   mut particles: Query<(&Transform, &mut LastPosition, &mut Acceleration)>,
 ) {
+  let dt = DELTA_TIME as f32;
   for (transform, mut last_pos, mut acceleration) in particles.iter_mut() {
-    let velocity = (transform.translation.xy() - last_pos.0) / DELTA_TIME as f32;
+    let position = transform.translation.xy();
+    let velocity = (position - last_pos.0) / dt;
     if velocity.length_squared() < VELOCITY_THRESHOLD {
-      last_pos.0 = transform.translation.xy();
-    } else {
-      let velocity_length = velocity.length();
-      acceleration.0 -= FRICTION_COEFF * velocity * velocity_length;
+      last_pos.0 = position;
     }
+    acceleration.0 = friction_acceleration(position - last_pos.0, acceleration.0, dt * dt);
   }
+}
+
+/// Przyspieszenie zastępcze z tarciem dla cząstki o przemieszczeniu w poprzednim kroku
+/// `displacement` i przyspieszeniu od sił `acceleration`.
+///
+/// Bez tarcia Verlet przesunąłby cząstkę o `d̃ = displacement + acceleration·dt²`. Samo tarcie
+/// kwadratowe ma dokładne rozwiązanie `|v(t)| = |v₀| / (1 + c|v₀|t)`, więc po kroku
+/// przemieszczenie to `d̃ / (1 + c|d̃|)` (`|v₀|·dt = |d̃|`): nigdy nie zmienia kierunku, a pod
+/// stałą siłą prędkość dąży do `√(a/c)` jak w modelu ciągłym. Jawne `a −= c|v|v` z prędkości
+/// poprzedniego kroku mnożyło przemieszczenie przez `1 − c|d|`, co przy dużej prędkości
+/// zmienia znak przemieszczenia i wzbudza drgania, a siły z bieżącego kroku zostawiało
+/// nietłumione do następnego.
+fn friction_acceleration(displacement: Vec2, acceleration: Vec2, dt_sq: f32) -> Vec2 {
+  let free = displacement + acceleration * dt_sq;
+  let damped = free / (1.0 + FRICTION_COEFF * free.length());
+  (damped - displacement) / dt_sq
 }
 
 pub fn integrate(
