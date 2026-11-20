@@ -2,13 +2,7 @@ use bevy::prelude::*;
 use bevy::window::{WindowMode, WindowResolution};
 use clap::Parser;
 
-mod args;
-mod config;
-mod loading;
-mod render;
-mod sim;
-mod spec;
-mod ui;
+use partikl::{args, loading, render, sim, ui};
 
 fn main() {
   let program_args = args::ProgramArgs::parse();
