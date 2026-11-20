@@ -125,3 +125,19 @@ fn pair_and_one_sided_modes_both_match_reference() {
   let halves: Vec<Vec2> = twice.iter().map(|a| *a / 2.0).collect();
   assert_close(&halves, &spec, &points);
 }
+
+#[test]
+fn dense_forces_are_bit_identical_between_runs() {
+  let mut rng = StdRng::seed_from_u64(15);
+  let spec = spec(&mut rng, 3);
+  let mut points: Vec<(Vec2, usize)> = (0..3000)
+    .map(|_| (Vec2::new(rng.random_range(-60.0..60.0), rng.random_range(-60.0..60.0)), rng.random_range(0..3)))
+    .collect();
+  points.extend(random_points(&mut rng, 1000, 3));
+  let order: Vec<usize> = (0..points.len()).collect();
+  let first = run_forces_times(&spec, &points, &order, 3);
+  for _ in 0..3 {
+    let again = run_forces_times(&spec, &points, &order, 3);
+    assert!(first.iter().zip(&again).all(|(a, b)| a.x.to_bits() == b.x.to_bits() && a.y.to_bits() == b.y.to_bits()));
+  }
+}
