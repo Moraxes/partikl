@@ -17,7 +17,7 @@ links:
   target: f855ea1
   at: 2026-11-20T23:34:45
 ---
-Wynik (niezacommitowane, do przejrzenia): zmiana tylko w `compute_friction` + `friction_acceleration`, 3 testy w `src/sim/tests.rs`. Koszt: `compute_friction` 7 → 12 µs, krok ×1,016 / ×0,990 / ×1,032 (trajektorie inne). Stabilność przy n=100000: niższe maksima prędkości, odsetek szybkich cząstek bez wyraźnej zmiany: tarcie nie było przyczyną chaosu.
+Wynik: zmiana tylko w `compute_friction` + `friction_acceleration`, 3 testy w `src/sim/tests.rs`. Koszt: `compute_friction` 7 → 12 µs, krok ×1,016 / ×0,990 / ×1,032 (trajektorie inne). Stabilność przy n=100000: niższe maksima prędkości, odsetek szybkich cząstek bez wyraźnej zmiany: tarcie nie było przyczyną chaosu.
 
 ## Pomiar `--quick` (3 rundy, przed f2ea0ba)
 | macierz | krok | compute_friction | forces / kandydat |
