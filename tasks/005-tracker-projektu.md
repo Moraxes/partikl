@@ -1,7 +1,7 @@
 ---
 id: 5
 title: Tracker projektu
-summary: 'track, .track i .artifacts: stan projektu dla człowieka i agentów'
+summary: Tracker wdrożony w partikl; dalsza praca nad narzędziem w zadaniach ~/repos/track
 status: doing
 priority: now
 branch: main
