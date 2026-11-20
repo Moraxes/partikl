@@ -12,6 +12,10 @@ links:
   target: ffe6723
   at: 2026-11-20T18:45:00
   note: rewizja pomiaru
+- kind: commit
+  target: 1c07039
+  at: 2026-11-20T18:45:00
+  note: poprawka splat, przez którą pierwszy przebieg był nieważny
 ---
 Wynik: bez zmian w kodzie. B (1 dzielenie) daje ok. 2% `compute_forces` tylko przy małym n i nic w kroku ani w skupiskach; przybliżony `1/√x` (C1, C2) jest wolniejszy, a C1 też mniej dokładny. Zostaje A.
 
