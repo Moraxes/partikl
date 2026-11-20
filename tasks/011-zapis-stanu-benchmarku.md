@@ -2,11 +2,11 @@
 id: 11
 title: Zapis stanu benchmarku
 summary: 'sim --state i ab.sh --state: pomiar od zapisanego stanu, bit w bit; 0,8 s zamiast 4,2 s'
-status: doing
+status: done
 priority: later
 branch: main
 created: 2026-11-20T19:56:05
-worked: 2026-11-21T00:43:45
+worked: 2026-11-21T00:45:19
 edited: 2026-11-21T00:45:19
 links:
 - kind: commit
