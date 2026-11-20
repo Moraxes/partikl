@@ -145,7 +145,23 @@ fn scale_from_velocity(velocity_length_sq: f32) -> Vec3 {
   Vec3::new(coeff, 0.75 / coeff + 0.25, 1.0)
 }
 
+/// Obrót wokół osi z o kąt θ wektora prędkości `v`, bez funkcji trygonometrycznych (`sincos`
+/// był ok. 2/3 kosztu `update_shape`). Kwaternion to `(0, 0, sin θ/2, cos θ/2)`, a ta para
+/// jest równoległa do `(v.y, |v| + v.x)` (bo `v.y = 2|v| sin θ/2 cos θ/2`,
+/// `|v| + v.x = 2|v| cos² θ/2`) oraz, z dokładnością do znaku `v.y`, do `(|v| − v.x, v.y)`
+/// (`|v| − v.x = 2|v| sin² θ/2`). Pierwsza postać dla `v.x ≥ 0`, druga dla `v.x < 0`, żeby
+/// nie odejmować bliskich liczb; w obu pierwsza składowa ≥ |v| > 0, więc normalizacja jest
+/// bezpieczna. `v` przeciwne do osi x daje obrót o ±π.
 fn rotation_from_velocity(velocity: Vec2) -> Quat {
-  let angle = velocity.angle_to(Vec2::new(1.0, 0.0));
-  Quat::from_rotation_z(-angle)
+  let length = velocity.length();
+  let half = if velocity.x >= 0.0 {
+    Vec2::new(velocity.y, length + velocity.x)
+  } else {
+    velocity.y.signum() * Vec2::new(length - velocity.x, velocity.y)
+  };
+  let half = half / half.length();
+  Quat::from_xyzw(0.0, 0.0, half.x, half.y)
 }
+
+#[cfg(test)]
+mod tests;
