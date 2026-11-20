@@ -158,16 +158,13 @@ fn summary_rows(summary: &BTreeMap<(usize, usize, &str), Vec<f64>>) -> Vec<Vec<S
 }
 
 fn main() {
-  let args = GridArgs::parse();
-  let mut common_args = args.common.clone();
-  common_args.offsets.sort_unstable();
-  common_args.offsets.dedup();
-  let args = GridArgs { common: common_args, ..args };
+  let mut args = GridArgs::parse();
+  args.common.normalize();
   let c = &args.common;
 
   let mut output = Output::new("grid", c, GridRows::schema());
   let mut rows = GridRows::default();
-  let groups = c.n.iter().map(|&n| (format!("n={n}"), n as f64, c.matrices as usize)).collect();
+  let groups = c.n.iter().map(|&n| (format!("n={n}"), n as f64, c.seeds().len())).collect();
   let mut progress = Progress::new(&output, groups, &COLUMNS);
   let mut summary: BTreeMap<(usize, usize, &str), Vec<f64>> = BTreeMap::new();
   let mut world = World::new();
@@ -222,7 +219,7 @@ fn main() {
   }
   progress.finish();
 
-  println!("\nSiatka: rozkład median po macierzach ({} na n)", c.matrices);
+  println!("\nSiatka: rozkład median po macierzach ({} na n)", c.seeds().len());
   println!("{}", common::format_table(&COLUMNS, &summary_rows(&summary)));
   println!("\nWyniki: {}", output.path.display());
   output.finish();

@@ -59,7 +59,7 @@ fn main() {
   let args = BenchArgs::parse_sorted();
   let mut output = Output::new("sim", &args, SimRows::schema());
   let mut rows = SimRows::default();
-  let groups = args.n.iter().map(|&n| (format!("n={n}"), n as f64, args.matrices as usize)).collect();
+  let groups = args.n.iter().map(|&n| (format!("n={n}"), n as f64, args.seeds().len())).collect();
   let mut progress = Progress::new(&output, groups, &COLUMNS);
   let mut summary: BTreeMap<(usize, usize), Vec<MatrixResult>> = BTreeMap::new();
 
@@ -111,7 +111,7 @@ fn main() {
   println!(
     "\nKrok symulacji: rozkład median po macierzach ({} na n); kandydaci na sąsiada; \
      mediana udziału systemów w kroku",
-    args.matrices
+    args.seeds().len()
   );
   println!("{}", common::format_table(&COLUMNS, &summary_rows(&summary)));
   println!("\nWyniki: {}", output.path.display());

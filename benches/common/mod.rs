@@ -60,28 +60,74 @@ pub struct BenchArgs {
   /// Niemierzone powtórzenia przed pomiarem (zimny cache po zmianie stanu).
   #[arg(long, default_value_t = 3)]
   pub warmup: usize,
-  /// Mierzone powtórzenia w każdym punkcie.
-  #[arg(long, default_value_t = 10)]
+  /// Mierzone powtórzenia w każdym punkcie; domyślnie 10, w trybie szybkim `QUICK_MEASURED`.
+  #[arg(long = "measured")]
+  measured_arg: Option<usize>,
+  /// Mierzone powtórzenia po `normalize`.
+  #[arg(skip)]
   pub measured: usize,
   /// Katalog wyników.
   #[arg(long, default_value = ".artifacts/bench")]
   pub out_dir: PathBuf,
+  /// Tryb szybki do sprawdzania pomysłów: tylko `n` = 9000, tylko największy offset, trzy
+  /// macierze z `QUICK_SEEDS` i `QUICK_MEASURED` powtórzeń. Nadpisuje `--n`, `--matrices` i
+  /// `--seed-base`.
+  #[arg(long)]
+  pub quick: bool,
   /// Przekazywane przez `cargo bench`; ignorowane.
   #[arg(long, hide = true)]
   pub bench: bool,
 }
 
+/// `n` w trybie szybkim: optymalizujemy pod duże `n`.
+pub const QUICK_N: usize = 9000;
+
+/// Domyślne mierzone powtórzenia w trybie szybkim. Każda z trzech macierzy jest osobnym
+/// przypadkiem, więc wnioski opierają się na rozkładzie powtórzeń w jednym punkcie, a nie na
+/// rozrzucie między macierzami; 100 kroków to ok. 0,1 s przy n = 9000.
+pub const QUICK_MEASURED: usize = 100;
+
+/// Macierze trybu szybkiego (3 typy): wolny, typowy i szybki wzrost średniej liczby
+/// kandydatów na sąsiada przy n = 9000 między offsetem 256 a 4096. Wybrane z 18 przebiegów
+/// `sim` z 2026-11-20 (32 macierze, różne rewizje); kolejność macierzy według tego wzrostu
+/// prawie się nie zmienia między przebiegami (Spearman ≥ 0,97), choć trajektorie nie są
+/// identyczne co do bitu.
+/// - 23: ×1,0 (ok. 36 kandydatów na każdym offsecie), jak 7 z 32 macierzy;
+/// - 6: ×3,3 (42 → 140), mediana wzrostu;
+/// - 4: ×26 (46 → 1211), jedna z najszybszych, z małym rozrzutem między przebiegami.
+pub const QUICK_SEEDS: [u64; 3] = [23, 6, 4];
+
 impl BenchArgs {
   pub fn parse_sorted() -> Self {
     let mut args = Self::parse();
-    args.offsets.sort_unstable();
-    args.offsets.dedup();
+    args.normalize();
     args
   }
 
+  /// Sortuje offsety i stosuje `--quick`.
+  pub fn normalize(&mut self) {
+    self.offsets.sort_unstable();
+    self.offsets.dedup();
+    self.measured = self.measured_arg.unwrap_or(if self.quick { QUICK_MEASURED } else { 10 });
+    if self.quick {
+      self.n = vec![QUICK_N];
+      self.offsets = self.offsets.last().into_iter().copied().collect();
+    }
+  }
+
+  /// Ziarna macierzy, te same dla każdego `n`.
+  pub fn seeds(&self) -> Vec<u64> {
+    if self.quick {
+      QUICK_SEEDS.to_vec()
+    } else {
+      (0..self.matrices).map(|i| self.seed_base + i).collect()
+    }
+  }
+
   pub fn samples(&self) -> impl Iterator<Item = Sample> + '_ {
+    let seeds = self.seeds();
     self.n.iter().flat_map(move |&n| {
-      (0..self.matrices).map(move |i| Sample::new(n, self.types, self.seed_base + i))
+      seeds.clone().into_iter().map(move |seed| Sample::new(n, self.types, seed))
     })
   }
 }
