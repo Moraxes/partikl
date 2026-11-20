@@ -15,6 +15,9 @@
 //! `step_offset` u32, `interactions` list<f32> (macierz sił wierszami, `types × types`),
 //! `candidates_mean` f32, `rep` u16. Dalej `sim`: `candidates` f32 (kandydaci w tym kroku),
 //! `step_ns` i `<system>_ns` u64; `grid`: `op` tekst, `state_revision` tekst, `ns` u64.
+//!
+//! Historia wersji: 1.1 dodała `rebuild_grid_ns` (siatka budowana co krok od nowa); w `grid`
+//! od tej wersji operacja `rebuild` zamiast `move` (wartości `op`, nie kolumny).
 
 use std::fs::{self, File};
 use std::path::PathBuf;
@@ -31,10 +34,10 @@ use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::metadata::KeyValue;
 use parquet::file::properties::WriterProperties;
 
-use super::{SYSTEM_NAMES, Sample};
+use super::{SYSTEM_NAMES, SYSTEMS, Sample};
 
 pub const SCHEMA: &str = "partikl-bench";
-pub const SCHEMA_VERSION: &str = "1.0";
+pub const SCHEMA_VERSION: &str = "1.1";
 
 /// Metadane przebiegu zapisywane w stopce pliku.
 #[derive(Debug, Clone)]
@@ -188,7 +191,7 @@ pub struct SimRows {
   sample: SampleColumns,
   candidates: Vec<f32>,
   step_ns: Vec<u64>,
-  system_ns: [Vec<u64>; 5],
+  system_ns: [Vec<u64>; SYSTEMS],
 }
 
 impl SimRows {
@@ -202,7 +205,7 @@ impl SimRows {
     Arc::new(Schema::new(fields))
   }
 
-  pub fn push(&mut self, sample: &SampleKey, rep: usize, candidates: f64, step_ns: u64, system_ns: [u64; 5]) {
+  pub fn push(&mut self, sample: &SampleKey, rep: usize, candidates: f64, step_ns: u64, system_ns: [u64; SYSTEMS]) {
     self.sample.push(sample, rep);
     self.candidates.push(candidates as f32);
     self.step_ns.push(step_ns);

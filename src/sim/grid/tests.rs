@@ -54,54 +54,39 @@ fn corrected_delta_is_plain_difference_for_close_points() {
   assert_eq!(delta, Vec2::new(-30.0, 5.0));
 }
 
-// --- insert / remove / move ---
+// --- rebuild ---
+
+/// Siatka z cząstkami `(encja, x, y, typ)`.
+fn grid_with(width: f32, height: f32, cell: f32, particles: &[(Entity, f32, f32, usize)]) -> SpatialGrid {
+  let mut grid = SpatialGrid::new(width, height, cell);
+  grid.rebuild(particles.iter().map(|&(e, x, y, t)| (e, Vec2::new(x, y), InteractionId(t))));
+  grid
+}
 
 #[test]
-fn inserted_entity_is_found_near_its_position() {
+fn rebuilt_entity_is_found_near_its_position() {
   let e = entities(1);
-  let mut grid = SpatialGrid::new(200.0, 200.0, 20.0);
-  grid.insert_entity(e[0], 5.0, 5.0, InteractionId(0));
+  let grid = grid_with(200.0, 200.0, 20.0, &[(e[0], 5.0, 5.0, 0)]);
   assert_eq!(neighbours(&grid, 5.0, 5.0), vec![e[0]]);
   assert_eq!(neighbours(&grid, 25.0, 5.0), vec![e[0]]);
   assert!(neighbours(&grid, 60.0, 5.0).is_empty());
 }
 
 #[test]
-fn removed_entity_is_no_longer_found() {
+fn rebuild_replaces_previous_content() {
   let e = entities(2);
-  let mut grid = SpatialGrid::new(200.0, 200.0, 20.0);
-  grid.insert_entity(e[0], 5.0, 5.0, InteractionId(0));
-  grid.insert_entity(e[1], 6.0, 6.0, InteractionId(0));
-  grid.remove_entity(e[0], 5.0, 5.0);
-  assert_eq!(neighbours(&grid, 5.0, 5.0), vec![e[1]]);
+  let mut grid = grid_with(400.0, 400.0, 20.0, &[(e[0], 0.0, 0.0, 0), (e[1], 1.0, 1.0, 0)]);
+  grid.rebuild([(e[0], Vec2::new(100.0, 0.0), InteractionId(0))]);
+  assert!(neighbours(&grid, 0.0, 0.0).is_empty());
+  assert_eq!(neighbours(&grid, 100.0, 0.0), vec![e[0]]);
+  assert_eq!(grid.len(), 1);
 }
 
 #[test]
 #[should_panic]
-fn removing_unknown_entity_panics() {
-  let e = entities(2);
-  let mut grid = SpatialGrid::new(200.0, 200.0, 20.0);
-  grid.insert_entity(e[0], 5.0, 5.0, InteractionId(0));
-  grid.remove_entity(e[1], 5.0, 5.0);
-}
-
-#[test]
-fn move_within_same_bucket_keeps_entity_findable() {
+fn rebuild_with_position_outside_world_panics() {
   let e = entities(1);
-  let mut grid = SpatialGrid::new(200.0, 200.0, 20.0);
-  grid.insert_entity(e[0], 1.0, 1.0, InteractionId(0));
-  grid.move_entity(e[0], 1.0, 1.0, 2.0, 2.0);
-  assert_eq!(neighbours(&grid, 2.0, 2.0), vec![e[0]]);
-}
-
-#[test]
-fn move_across_buckets_updates_lookup() {
-  let e = entities(1);
-  let mut grid = SpatialGrid::new(400.0, 400.0, 20.0);
-  grid.insert_entity(e[0], 0.0, 0.0, InteractionId(0));
-  grid.move_entity(e[0], 0.0, 0.0, 100.0, 0.0);
-  assert!(neighbours(&grid, 0.0, 0.0).is_empty());
-  assert_eq!(neighbours(&grid, 100.0, 0.0), vec![e[0]]);
+  grid_with(200.0, 200.0, 20.0, &[(e[0], 500.0, 0.0, 0)]);
 }
 
 /// Jedyny sąsiad w okolicy `(x, y)`: (pozycja, typ).
@@ -112,29 +97,38 @@ fn stored(grid: &SpatialGrid, x: f32, y: f32) -> (Vec2, usize) {
 }
 
 #[test]
-fn inserted_entity_keeps_position_and_type() {
+fn rebuilt_entity_keeps_position_and_type() {
   let e = entities(1);
-  let mut grid = SpatialGrid::new(200.0, 200.0, 20.0);
-  grid.insert_entity(e[0], 5.0, -3.0, InteractionId(2));
+  let grid = grid_with(200.0, 200.0, 20.0, &[(e[0], 5.0, -3.0, 2)]);
   assert_eq!(stored(&grid, 5.0, -3.0), (Vec2::new(5.0, -3.0), 2));
 }
 
 #[test]
-fn move_within_same_bucket_updates_stored_position() {
-  let e = entities(1);
-  let mut grid = SpatialGrid::new(200.0, 200.0, 20.0);
-  grid.insert_entity(e[0], 1.0, 1.0, InteractionId(1));
-  grid.move_entity(e[0], 1.0, 1.0, 2.0, 3.0);
-  assert_eq!(stored(&grid, 2.0, 3.0), (Vec2::new(2.0, 3.0), 1));
+fn arrays_are_sorted_by_cell_and_padded_with_nan() {
+  let size = Vec2::new(500.0, 330.0);
+  let mut rng = StdRng::seed_from_u64(6);
+  let points = random_points(&mut rng, 300, size);
+  let ids = entities(points.len());
+  let grid = build_grid(&ids, &points, size);
+  assert_eq!(grid.len(), points.len());
+  let mut seen = 0;
+  for c in 0..grid.cell_count() {
+    for i in grid.cell_range(c) {
+      assert_eq!(grid.cell_at(grid.xs()[i], grid.ys()[i]), c);
+      seen += 1;
+    }
+  }
+  assert_eq!(seen, points.len());
+  assert_eq!(grid.xs().len(), points.len() + SpatialGrid::PADDING);
+  assert!(grid.xs()[points.len()..].iter().chain(&grid.ys()[points.len()..]).all(|x| x.is_nan()));
 }
 
 #[test]
-fn move_across_buckets_updates_stored_position_and_keeps_type() {
-  let e = entities(1);
-  let mut grid = SpatialGrid::new(400.0, 400.0, 20.0);
-  grid.insert_entity(e[0], 0.0, 0.0, InteractionId(1));
-  grid.move_entity(e[0], 0.0, 0.0, 100.0, 0.0);
-  assert_eq!(stored(&grid, 100.0, 0.0), (Vec2::new(100.0, 0.0), 1));
+fn rebuild_keeps_given_order_within_a_cell() {
+  let e = entities(3);
+  let grid = grid_with(200.0, 200.0, 20.0, &[(e[2], 1.0, 1.0, 0), (e[0], 2.0, 2.0, 0), (e[1], 3.0, 3.0, 0)]);
+  let c = grid.cell_at(1.0, 1.0);
+  assert_eq!(&grid.entities()[grid.cell_range(c)], &[e[2], e[0], e[1]]);
 }
 
 // --- sąsiedztwo przez krawędzie świata ---
@@ -142,9 +136,7 @@ fn move_across_buckets_updates_stored_position_and_keeps_type() {
 #[test]
 fn neighbours_wrap_across_edges() {
   let e = entities(2);
-  let mut grid = SpatialGrid::new(400.0, 400.0, 20.0);
-  grid.insert_entity(e[0], 195.0, 0.0, InteractionId(0));
-  grid.insert_entity(e[1], -195.0, 0.0, InteractionId(0));
+  let grid = grid_with(400.0, 400.0, 20.0, &[(e[0], 195.0, 0.0, 0), (e[1], -195.0, 0.0, 0)]);
   assert!(neighbours(&grid, 195.0, 0.0).contains(&e[1]));
   assert!(neighbours(&grid, -195.0, 0.0).contains(&e[0]));
 }
@@ -152,9 +144,7 @@ fn neighbours_wrap_across_edges() {
 #[test]
 fn neighbours_wrap_across_corners() {
   let e = entities(2);
-  let mut grid = SpatialGrid::new(400.0, 400.0, 20.0);
-  grid.insert_entity(e[0], 195.0, 195.0, InteractionId(0));
-  grid.insert_entity(e[1], -195.0, -195.0, InteractionId(0));
+  let grid = grid_with(400.0, 400.0, 20.0, &[(e[0], 195.0, 195.0, 0), (e[1], -195.0, -195.0, 0)]);
   assert!(neighbours(&grid, 195.0, 195.0).contains(&e[1]));
   assert!(neighbours(&grid, -195.0, -195.0).contains(&e[0]));
 }
@@ -207,9 +197,7 @@ fn assert_neighbours_match_brute_force(
 
 fn build_grid(ids: &[Entity], points: &[Vec2], size: Vec2) -> SpatialGrid {
   let mut grid = SpatialGrid::new(size.x, size.y, INTERACTION_RADIUS);
-  for (id, p) in ids.iter().zip(points) {
-    grid.insert_entity(*id, p.x, p.y, InteractionId(0));
-  }
+  grid.rebuild(ids.iter().zip(points).map(|(id, p)| (*id, *p, InteractionId(0))));
   grid
 }
 
@@ -262,13 +250,12 @@ fn match_brute_force_after_moves_across_edges() {
   let ids = entities(points.len());
   let mut grid = build_grid(&ids, &points, size);
   for _ in 0..50 {
-    for (id, p) in ids.iter().zip(points.iter_mut()) {
-      let old = *p;
-      let mut new = old + Vec2::new(rng.random_range(-60.0..60.0), rng.random_range(-60.0..60.0));
+    for p in points.iter_mut() {
+      let mut new = *p + Vec2::new(rng.random_range(-60.0..60.0), rng.random_range(-60.0..60.0));
       new += grid.get_wrap_around_adjustment(new);
-      grid.move_entity(*id, old.x, old.y, new.x, new.y);
       *p = new;
     }
+    grid.rebuild(ids.iter().zip(&points).map(|(id, p)| (*id, *p, InteractionId(0))));
   }
   assert_neighbours_match_brute_force(&grid, &ids, &points, size, INTERACTION_RADIUS);
   // Zapisane pozycje nadążają za ruchem, także bez zmiany komórki.
@@ -300,7 +287,7 @@ fn precomputed_neighbourhood_matches_computed_in_the_same_order() {
 fn neighbour_runs_cover_the_same_cells_once() {
   for (width, height) in [(400.0, 400.0), (500.0, 330.0), (2560.0, 1440.0)] {
     let grid = SpatialGrid::new(width, height, INTERACTION_RADIUS);
-    for c in 0..grid.cells().len() {
+    for c in 0..grid.cell_count() {
       let mut expected: Vec<u32> = grid.neighbour_cells_at(c).to_vec();
       expected.sort_unstable();
       let from_runs: Vec<u32> = grid.neighbour_runs(c).iter().flat_map(|r| r.first..r.last).collect();
@@ -320,9 +307,11 @@ fn run_shift_gives_the_same_delta_as_wrapping() {
     let mut shifted = 0;
     for p in &points {
       for run in grid.neighbour_runs(grid.cell_at(p.x, p.y)) {
-        for q in grid.cells()[run.first as usize..run.last as usize].iter().flatten() {
-          let delta = (q.position - *p) + run.shift;
-          assert_eq!(delta, grid.get_corrected_position_delta(*p, q.position), "{p} → {}", q.position);
+        let cells = grid.cell_starts()[run.first as usize] as usize..grid.cell_starts()[run.last as usize] as usize;
+        for i in cells {
+          let q = Vec2::new(grid.xs()[i], grid.ys()[i]);
+          let delta = (q - *p) + run.shift;
+          assert_eq!(delta, grid.get_corrected_position_delta(*p, q), "{p} → {q}");
           shifted += (run.shift != Vec2::ZERO) as usize;
         }
       }

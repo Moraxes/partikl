@@ -10,10 +10,10 @@ use super::InteractionId;
 /// razem tworzą jedną komórkę na szwie, dlatego zapytanie o komórkę przy krawędzi zagląda też
 /// do jej odpowiednika po drugiej stronie. Komórki są w płaskim `Vec`, wierszami.
 ///
-/// Oprócz encji komórka trzyma pozycję i typ cząstki ([`Neighbour`]), żeby liczenie sił nie
-/// musiało pytać ECS o każdą parę. Pozycja musi być aktualna: `move_entity` co krok dla każdej
-/// cząstki, także gdy nie zmienia komórki. Żeby to nie wymagało szukania w komórce, `slots`
-/// mówi, gdzie leży każda encja (indeksowane `Entity::index`).
+/// Cząstki leżą w tablicach posortowanych według komórek (encja, x, y, typ): komórka `c` to
+/// zakres `cell_range(c)`. Siatka nie jest aktualizowana przyrostowo: `rebuild` co krok
+/// układa wszystkie cząstki od nowa sortowaniem przez zliczanie (dwa przejścia), więc pozycje
+/// są zawsze aktualne, a liczenie sił czyta je wprost, bez pytania ECS o każdą parę.
 #[derive(Resource)]
 pub struct SpatialGrid {
   half_size: Vec2,
@@ -23,8 +23,18 @@ pub struct SpatialGrid {
   bottom: i32,
   top: i32,
   columns: usize,
-  cells: Vec<Vec<Neighbour>>,
-  slots: Vec<Slot>,
+  cell_count: usize,
+  /// Początek komórki `c` w tablicach cząstek to `starts[c]`, koniec `starts[c + 1]`.
+  starts: Vec<u32>,
+  entities: Vec<Entity>,
+  /// Pozycje z zapasem `PADDING` wartości NaN na końcu (odczyty wektorowe poza ostatnią
+  /// cząstką; NaN nigdy nie jest w zasięgu).
+  xs: Vec<f32>,
+  ys: Vec<f32>,
+  types: Vec<InteractionId>,
+  /// Bufory `rebuild` używane ponownie między krokami.
+  staged: Vec<Staged>,
+  cursor: Vec<u32>,
   /// Sąsiedztwo każdej komórki policzone raz w `new`: indeksy komórek do przejrzenia (z
   /// zawijaniem) dla komórki `c` to `neighbour_cells[neighbour_starts[c]..neighbour_starts[c + 1]]`.
   neighbour_starts: Vec<u32>,
@@ -47,19 +57,17 @@ pub struct NeighbourRun {
   pub shift: Vec2,
 }
 
-/// Miejsce encji w siatce: komórka i pozycja w niej. `Slot::EMPTY`, jeśli encji nie ma.
-#[derive(Clone, Copy, PartialEq)]
-struct Slot {
-  cell: u32,
-  index: u32,
-}
-
-impl Slot {
-  const EMPTY: Slot = Slot { cell: u32::MAX, index: u32::MAX };
-}
-
-/// Cząstka w komórce siatki.
+/// Cząstka przed rozłożeniem do komórek w `rebuild`.
 #[derive(Clone, Copy)]
+struct Staged {
+  cell: u32,
+  entity: Entity,
+  position: Vec2,
+  interaction: InteractionId,
+}
+
+/// Cząstka w komórce siatki (kopia danych z tablic).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Neighbour {
   pub entity: Entity,
   pub position: Vec2,
@@ -75,6 +83,10 @@ struct Wrapped {
 }
 
 impl SpatialGrid {
+  /// Zapas na końcu `xs()` i `ys()` (wartości NaN), żeby odczyt wektora do 8 liczb od
+  /// dowolnej cząstki nie wychodził poza tablicę.
+  pub const PADDING: usize = 8;
+
   const OFFSETS: [(i32, i32); 9] = [
     (-1, -1),
     (-1, 0),
@@ -103,8 +115,14 @@ impl SpatialGrid {
       bottom,
       top,
       columns,
-      cells: vec![Vec::new(); columns * rows],
-      slots: Vec::new(),
+      cell_count: columns * rows,
+      starts: vec![0; columns * rows + 1],
+      entities: Vec::new(),
+      xs: vec![f32::NAN; Self::PADDING],
+      ys: vec![f32::NAN; Self::PADDING],
+      types: Vec::new(),
+      staged: Vec::new(),
+      cursor: Vec::new(),
       neighbour_starts: Vec::new(),
       neighbour_cells: Vec::new(),
       run_starts: Vec::new(),
@@ -233,9 +251,50 @@ impl SpatialGrid {
     self.half_size
   }
 
-  /// Komórki w kolejności indeksów (wierszami).
-  pub fn cells(&self) -> &[Vec<Neighbour>] {
-    &self.cells
+  /// Liczba komórek (indeksy `0..cell_count()`, wierszami).
+  pub fn cell_count(&self) -> usize {
+    self.cell_count
+  }
+
+  /// Zakres cząstek komórki `c` w tablicach (`entities`, `xs`, `ys`, `types`).
+  pub fn cell_range(&self, c: usize) -> std::ops::Range<usize> {
+    self.starts[c] as usize..self.starts[c + 1] as usize
+  }
+
+  /// Początki komórek: komórka `c` to `starts[c]..starts[c + 1]`; długość `cell_count() + 1`.
+  pub fn cell_starts(&self) -> &[u32] {
+    &self.starts
+  }
+
+  /// Liczba cząstek w siatce.
+  pub fn len(&self) -> usize {
+    self.entities.len()
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.entities.is_empty()
+  }
+
+  pub fn entities(&self) -> &[Entity] {
+    &self.entities
+  }
+
+  /// Współrzędne x w kolejności komórek, z zapasem `PADDING` (NaN) na końcu.
+  pub fn xs(&self) -> &[f32] {
+    &self.xs
+  }
+
+  /// Współrzędne y, jak `xs`.
+  pub fn ys(&self) -> &[f32] {
+    &self.ys
+  }
+
+  pub fn types(&self) -> &[InteractionId] {
+    &self.types
+  }
+
+  fn neighbour_at(&self, i: usize) -> Neighbour {
+    Neighbour { entity: self.entities[i], position: Vec2::new(self.xs[i], self.ys[i]), interaction: self.types[i] }
   }
 
   /// Indeks komórki zawierającej pozycję ze świata.
@@ -251,7 +310,7 @@ impl SpatialGrid {
     &self.neighbour_runs[self.run_starts[c] as usize..self.run_starts[c + 1] as usize]
   }
 
-  /// Indeks komórki w `cells`, albo `None` poza siatką (taka komórka jest zawsze pusta).
+  /// Indeks komórki (wierszami), albo `None` poza siatką (taka komórka jest zawsze pusta).
   fn cell_index(&self, (ix, iy): (i32, i32)) -> Option<usize> {
     if ix < self.left || ix > self.right || iy < self.bottom || iy > self.top {
       return None;
@@ -260,71 +319,66 @@ impl SpatialGrid {
   }
 
 
-  fn slot_key(entity: Entity) -> usize {
-    entity.index_u32() as usize
-  }
-
-  /// Miejsce encji; panika, jeśli jej nie ma w siatce.
-  fn slot(&self, entity: Entity) -> Slot {
-    let slot = self.slots.get(Self::slot_key(entity)).copied().unwrap_or(Slot::EMPTY);
-    let found = slot != Slot::EMPTY
-      && self.cells[slot.cell as usize].get(slot.index as usize).map(|n| n.entity) == Some(entity);
-    assert!(found, "entity not in bucket");
-    slot
-  }
-
-  fn push(&mut self, cell: usize, neighbour: Neighbour) {
-    let key = Self::slot_key(neighbour.entity);
-    if self.slots.len() <= key {
-      self.slots.resize(key + 1, Slot::EMPTY);
+  /// Układa siatkę od nowa z podanych cząstek (poprzednia zawartość znika): indeks komórki
+  /// każdej cząstki, zliczanie, suma prefiksowa i rozłożenie do tablic. W komórce cząstki leżą
+  /// w kolejności podania. Panika, jeśli pozycja jest poza światem.
+  pub fn rebuild(&mut self, particles: impl IntoIterator<Item = (Entity, Vec2, InteractionId)>) {
+    let mut staged = std::mem::take(&mut self.staged);
+    staged.clear();
+    let mut counts = std::mem::take(&mut self.cursor);
+    counts.clear();
+    counts.resize(self.cell_count, 0);
+    for (entity, position, interaction) in particles {
+      let cell = self.cell_at(position.x, position.y) as u32;
+      counts[cell as usize] += 1;
+      staged.push(Staged { cell, entity, position, interaction });
     }
-    self.slots[key] = Slot { cell: cell as u32, index: self.cells[cell].len() as u32 };
-    self.cells[cell].push(neighbour);
-  }
 
-  pub fn insert_entity(&mut self, entity: Entity, x: f32, y: f32, interaction: InteractionId) {
-    let cell = self.cell_at(x, y);
-    self.push(cell, Neighbour { entity, position: Vec2::new(x, y), interaction });
-  }
-
-  /// Usuwa encję z siatki. `(x_old, y_old)` to jej zapisana pozycja.
-  pub fn remove_entity(&mut self, entity: Entity, x_old: f32, y_old: f32) -> Neighbour {
-    let slot = self.slot(entity);
-    debug_assert_eq!(slot.cell as usize, self.cell_at(x_old, y_old));
-    let cell = &mut self.cells[slot.cell as usize];
-    let removed = cell.swap_remove(slot.index as usize);
-    if let Some(moved) = cell.get(slot.index as usize) {
-      self.slots[Self::slot_key(moved.entity)] = slot;
+    // `starts` z liczności, `counts` staje się kursorem zapisu każdej komórki.
+    let mut total = 0;
+    for (start, count) in self.starts.iter_mut().zip(counts.iter_mut()) {
+      *start = total;
+      total += *count;
+      *count = *start;
     }
-    self.slots[Self::slot_key(entity)] = Slot::EMPTY;
-    removed
-  }
+    self.starts[self.cell_count] = total;
 
-  /// Przenosi cząstkę z `(x_old, y_old)` do `(x_new, y_new)`; zapisana pozycja zmienia się
-  /// zawsze, komórka tylko gdy trzeba.
-  pub fn move_entity(&mut self, entity: Entity, x_old: f32, y_old: f32, x_new: f32, y_new: f32) {
-    let position = Vec2::new(x_new, y_new);
-    let new_cell = self.cell_at(x_new, y_new);
-    let slot = self.slot(entity);
-    if slot.cell as usize == new_cell {
-      self.cells[new_cell][slot.index as usize].position = position;
-      return;
+    let n = staged.len();
+    let placeholder = Entity::PLACEHOLDER;
+    self.entities.clear();
+    self.entities.resize(n, placeholder);
+    self.types.clear();
+    self.types.resize(n, InteractionId(0));
+    self.xs.resize(n + Self::PADDING, 0.0);
+    self.ys.resize(n + Self::PADDING, 0.0);
+    self.xs[n..].fill(f32::NAN);
+    self.ys[n..].fill(f32::NAN);
+    for p in &staged {
+      let i = counts[p.cell as usize] as usize;
+      counts[p.cell as usize] += 1;
+      self.entities[i] = p.entity;
+      self.xs[i] = p.position.x;
+      self.ys[i] = p.position.y;
+      self.types[i] = p.interaction;
     }
-    let mut neighbour = self.remove_entity(entity, x_old, y_old);
-    neighbour.position = position;
-    self.push(new_cell, neighbour);
+    self.staged = staged;
+    self.cursor = counts;
   }
 
   /// Cząstki z komórki `(ix, iy)` i ośmiu sąsiednich, z zawijaniem. Zawiera też cząstkę, o
   /// którą pytamy, jeśli leży w tej komórce.
   ///
   /// Dla komórki w siatce sąsiedztwo jest z tablicy z `new`; poza siatką liczone na miejscu.
-  pub fn get_neighbours(&self, coords: (i32, i32)) -> impl Iterator<Item = &Neighbour> + Clone + '_ {
-    self.get_neighbour_cells(coords).flat_map(|cell| cell.iter())
+  pub fn get_neighbours(&self, coords: (i32, i32)) -> impl Iterator<Item = Neighbour> + Clone + '_ {
+    self.get_neighbour_cells(coords).flatten().map(|i| self.neighbour_at(i))
   }
 
-  /// Jak `get_neighbours`, ale po komórkach: każda jako wycinek, w tej samej kolejności.
-  pub fn get_neighbour_cells(&self, coords: (i32, i32)) -> impl Iterator<Item = &[Neighbour]> + Clone + '_ {
+  /// Jak `get_neighbours`, ale po komórkach: każda jako zakres w tablicach, w tej samej
+  /// kolejności.
+  pub fn get_neighbour_cells(
+    &self,
+    coords: (i32, i32),
+  ) -> impl Iterator<Item = std::ops::Range<usize>> + Clone + '_ {
     let (precomputed, computed) = match self.cell_index(coords) {
       Some(c) => {
         let range = self.neighbour_starts[c] as usize..self.neighbour_starts[c + 1] as usize;
@@ -336,10 +390,10 @@ impl SpatialGrid {
       .into_iter()
       .flatten()
       .chain(computed.into_iter().flatten())
-      .map(|index| self.cells[index].as_slice())
+      .map(|index| self.cell_range(index))
   }
 
-  pub fn get_neighbours_by_position(&self, x: f32, y: f32) -> impl Iterator<Item = &Neighbour> + '_ {
+  pub fn get_neighbours_by_position(&self, x: f32, y: f32) -> impl Iterator<Item = Neighbour> + '_ {
     self.get_neighbours(self.bucket_coords(x, y))
   }
 

@@ -84,6 +84,7 @@ pub fn init_particles(
 
   let circle_mesh = meshes.add(Mesh::try_from(Sphere::new(args.particle_size)).unwrap());
   let gizmo_mesh = meshes.add(Mesh::try_from(Sphere::new(args.particle_size + 3.0)).unwrap());
+  let mut placed = Vec::with_capacity(args.num_particles);
 
   for _ in 0..args.num_particles {
     let interaction = InteractionId(
@@ -132,8 +133,9 @@ pub fn init_particles(
     commands
       .entity(particle)
       .add_children(&[particle_selection, particle_highlight]);
-    grid.insert_entity(particle, position_x, position_y, interaction);
+    placed.push((particle, Vec2::new(position_x, position_y), interaction));
   }
+  grid.rebuild(placed);
   commands.insert_resource(grid);
 
   commands.spawn((

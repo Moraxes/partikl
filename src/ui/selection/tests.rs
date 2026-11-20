@@ -20,7 +20,7 @@ fn scene(positions: &[Vec2], camera: Transform) -> Scene {
   app.add_systems(Update, select_on_click);
   app.world_mut().spawn((MainCamera::default(), camera));
   let mut grid = SpatialGrid::new(2560.0, 1440.0, 40.0);
-  let (mut selections, mut highlights) = (vec![], vec![]);
+  let (mut selections, mut highlights, mut placed) = (vec![], vec![], vec![]);
   for p in positions {
     let particle = app
       .world_mut()
@@ -29,10 +29,11 @@ fn scene(positions: &[Vec2], camera: Transform) -> Scene {
     let selection = app.world_mut().spawn((Selection, Visibility::Hidden)).id();
     let highlight = app.world_mut().spawn((Highlight, Visibility::Hidden)).id();
     app.world_mut().entity_mut(particle).add_children(&[selection, highlight]);
-    grid.insert_entity(particle, p.x, p.y, InteractionId(0));
+    placed.push((particle, *p, InteractionId(0)));
     selections.push(selection);
     highlights.push(highlight);
   }
+  grid.rebuild(placed);
   app.insert_resource(grid);
   Scene { app, selections, highlights }
 }

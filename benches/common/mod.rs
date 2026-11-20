@@ -33,7 +33,7 @@ use partikl::config::{DELTA_TIME, INTERACTION_RADIUS};
 use partikl::sim::{
   Acceleration, InteractionId, LastPosition, ParticleBundle, SimPlugin, SpatialGrid, compute_forces,
   task_pool_options,
-  compute_friction, integrate, update_shape, wrap_around,
+  compute_friction, integrate, rebuild_grid, update_shape, wrap_around,
 };
 use partikl::spec::{Interaction, ParticleSpec};
 
@@ -172,11 +172,14 @@ pub fn particle_spec(types: usize, seed: u64) -> ParticleSpec {
 /// świecie, prędkość startowa ±125 na oś.
 pub struct Sim {
   pub app: App,
-  systems: [SystemId; 5],
+  systems: [SystemId; SYSTEMS],
 }
 
-pub const SYSTEM_NAMES: [&str; 5] =
-  ["compute_forces", "compute_friction", "integrate", "wrap_around", "update_shape"];
+/// Liczba systemów kroku (kolumny `<system>_ns` w wynikach).
+pub const SYSTEMS: usize = 6;
+
+pub const SYSTEM_NAMES: [&str; SYSTEMS] =
+  ["compute_forces", "compute_friction", "integrate", "wrap_around", "rebuild_grid", "update_shape"];
 
 impl Sim {
   pub fn new(sample: &Sample) -> Self {
@@ -190,6 +193,7 @@ impl Sim {
 
     let mut rng = rng(sample.placement_seed);
     let mut grid = SpatialGrid::new(WORLD.x, WORLD.y, INTERACTION_RADIUS);
+    let mut placed = Vec::with_capacity(sample.n);
     for _ in 0..sample.n {
       let position = Vec2::new(
         rng.random_range(-WORLD.x / 2.0..WORLD.x / 2.0),
@@ -208,8 +212,9 @@ impl Sim {
           Transform::from_translation(position.extend(0.0)),
         ))
         .id();
-      grid.insert_entity(entity, position.x, position.y, interaction);
+      placed.push((entity, position, interaction));
     }
+    grid.rebuild(placed);
     app.insert_resource(grid);
     app.finish();
     app.cleanup();
@@ -221,6 +226,7 @@ impl Sim {
       world.register_system(compute_friction),
       world.register_system(integrate),
       world.register_system(wrap_around),
+      world.register_system(rebuild_grid),
       world.register_system(update_shape),
     ];
     Sim { app, systems }
@@ -233,8 +239,8 @@ impl Sim {
   }
 
   /// Krok z czasem całego kroku i każdego systemu osobno.
-  pub fn step_timed(&mut self) -> (Duration, [Duration; 5]) {
-    let mut per_system = [Duration::ZERO; 5];
+  pub fn step_timed(&mut self) -> (Duration, [Duration; SYSTEMS]) {
+    let mut per_system = [Duration::ZERO; SYSTEMS];
     let start = Instant::now();
     for (i, id) in self.systems.into_iter().enumerate() {
       let t = Instant::now();

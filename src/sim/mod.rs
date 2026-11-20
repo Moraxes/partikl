@@ -29,6 +29,7 @@ pub enum SimSet {
   Friction,
   Integrate,
   Wrap,
+  Grid,
   Shape,
 }
 
@@ -67,6 +68,7 @@ impl Plugin for SimPlugin {
           SimSet::Friction,
           SimSet::Integrate,
           SimSet::Wrap,
+          SimSet::Grid,
           SimSet::Shape,
         )
           .chain()
@@ -79,6 +81,7 @@ impl Plugin for SimPlugin {
           compute_friction.in_set(SimSet::Friction),
           integrate.in_set(SimSet::Integrate),
           wrap_around.in_set(SimSet::Wrap),
+          rebuild_grid.in_set(SimSet::Grid),
           update_shape.in_set(SimSet::Shape),
         ),
       );
@@ -112,19 +115,26 @@ pub fn integrate(
 }
 
 pub fn wrap_around(
-  mut grid: ResMut<SpatialGrid>,
-  mut query: Query<(Entity, &mut Transform, &mut LastPosition)>,
+  grid: Res<SpatialGrid>,
+  mut query: Query<(&mut Transform, &mut LastPosition)>,
 ) {
-  for (entity, mut transform, mut last_pos) in query.iter_mut() {
-    let x_old = last_pos.0.x;
-    let y_old = last_pos.0.y;
+  for (mut transform, mut last_pos) in query.iter_mut() {
     let adjustment = grid.get_wrap_around_adjustment(transform.translation.xy());
-    transform.translation += adjustment.extend(0.0);
-    last_pos.0 += adjustment;
-    let x_new = transform.translation.x;
-    let y_new = transform.translation.y;
-    grid.move_entity(entity, x_old, y_old, x_new, y_new);
+    if adjustment != Vec2::ZERO {
+      transform.translation += adjustment.extend(0.0);
+      last_pos.0 += adjustment;
+    }
   }
+}
+
+/// Siatka z pozycji po kroku (po zawinięciu), dla sił w następnym kroku.
+pub fn rebuild_grid(
+  mut grid: ResMut<SpatialGrid>,
+  query: Query<(Entity, &Transform, &InteractionId)>,
+) {
+  grid.rebuild(query.iter().map(|(entity, transform, interaction)| {
+    (entity, transform.translation.xy(), *interaction)
+  }));
 }
 
 pub fn update_shape(

@@ -6,7 +6,7 @@ pub struct Acceleration(pub Vec2);
 pub struct LastPosition(pub Vec2);
 
 /// Typ cząstki: indeks wiersza/kolumny w macierzy sił z `ParticleSpec`.
-#[derive(Component, Default, Clone, Copy)]
+#[derive(Component, Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InteractionId(pub usize);
 
 #[derive(Bundle, Default)]

@@ -4,7 +4,8 @@
 'use strict';
 
 (function (root) {
-  const SIM_SYSTEMS = ['compute_forces', 'compute_friction', 'integrate', 'wrap_around', 'update_shape'];
+  // Systemy kroku; `rebuild_grid` od formatu 1.1 (w starszych plikach brak kolumny).
+  const SIM_SYSTEMS = ['compute_forces', 'compute_friction', 'integrate', 'wrap_around', 'rebuild_grid', 'update_shape'];
 
   function median(values) {
     const v = values.filter(Number.isFinite).sort((a, b) => a - b);
@@ -114,7 +115,7 @@
       p.values['sim: step'] = median(r.step_ns);
       metrics.add('sim: step');
       for (const s of SIM_SYSTEMS) {
-        if (!r[`${s}_ns`]) continue;
+        if (!r[`${s}_ns`]?.length) continue;
         p.values[`sim: ${s}`] = median(r[`${s}_ns`]);
         metrics.add(`sim: ${s}`);
       }

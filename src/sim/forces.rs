@@ -1,10 +1,10 @@
 //! Siły między cząstkami, liczone wektorowo (SIMD, `LANES` sąsiadów naraz).
 //!
-//! Co krok dane z siatki są kopiowane do osobnych tablic (struktura tablic) w kolejności
-//! komórek: x, y i współczynnik siły dla każdego typu cząstki pytającej. Komórki leżą
-//! wierszami, więc sąsiednie komórki wiersza są w pamięci obok siebie i sąsiedztwo to kilka
-//! ciągłych zakresów (`SpatialGrid::neighbour_runs`), a współczynnik ładuje się wektorowo,
-//! bez wybierania po typie sąsiada.
+//! Pozycje sąsiadów są czytane wprost z tablic siatki (x, y w kolejności komórek). Co krok
+//! obok nich powstaje tablica współczynnika siły dla każdego typu cząstki pytającej, więc
+//! współczynnik ładuje się wektorowo, bez wybierania po typie sąsiada. Komórki leżą wierszami,
+//! więc sąsiednie komórki wiersza są w pamięci obok siebie i sąsiedztwo to kilka ciągłych
+//! zakresów (`SpatialGrid::neighbour_runs`).
 
 use std::ops::Range;
 
@@ -19,61 +19,32 @@ use crate::spec::ParticleSpec;
 type Lanes = f32x8;
 const LANES: usize = 8;
 
-/// Kopia danych siatki na jeden krok, bufory używane ponownie między krokami.
+/// Współczynniki sił w kolejności siatki na jeden krok, bufory używane ponownie.
 #[derive(Default)]
 pub struct ForceData {
-  xs: Vec<f32>,
-  ys: Vec<f32>,
-  /// `coeffs[me * stride + j]`: siła, jaką cząstka `j` działa na cząstkę typu `me`.
+  /// `coeffs[me * stride + j]`: siła, jaką cząstka `j` siatki działa na cząstkę typu `me`.
   coeffs: Vec<f32>,
-  /// Początek komórki `c` w tablicach to `starts[c]`, koniec `starts[c + 1]`.
-  starts: Vec<u32>,
   stride: usize,
   /// `table[other * types + me]`: macierz sił spłaszczona.
   table: Vec<f32>,
 }
 
 impl ForceData {
-  /// Jedno przejście po siatce, zapis na miejsce: rozmiary znane z góry z sumy prefiksowej.
-  /// Wersja równoległa była wolniejsza (koszt uruchomienia zadań większy niż sama kopia).
   fn fill(&mut self, grid: &SpatialGrid, spec: &ParticleSpec) {
     let types = spec.interactions.len();
     self.table.clear();
     for other in &spec.interactions {
       self.table.extend_from_slice(&other.force_coeffs[..types]);
     }
-
-    self.starts.clear();
-    let mut total = 0;
-    for cell in grid.cells() {
-      self.starts.push(total);
-      total += cell.len() as u32;
-    }
-    self.starts.push(total);
-    let n = total as usize;
-    // Zapas na ostatni niepełny wektor: NaN nigdy nie jest w zasięgu.
-    self.stride = n + LANES;
-    self.xs.resize(self.stride, 0.0);
-    self.ys.resize(self.stride, 0.0);
-    self.xs[n..].fill(f32::NAN);
-    self.ys[n..].fill(f32::NAN);
+    let n = grid.len();
+    // Zapas jak w tablicach pozycji siatki; zero, bo tam i tak NaN poza zasięgiem.
+    self.stride = n + SpatialGrid::PADDING;
     self.coeffs.resize(types * self.stride, 0.0);
-    let mut rows: Vec<&mut [f32]> = self.coeffs.chunks_mut(self.stride).collect();
-    for row in &mut rows {
-      row[n..].fill(0.0);
-    }
-
-    let mut i = 0;
-    for cell in grid.cells() {
-      for neighbour in cell {
-        self.xs[i] = neighbour.position.x;
-        self.ys[i] = neighbour.position.y;
-        let coeffs = &self.table[neighbour.interaction.0 * types..][..types];
-        for (row, &coeff) in rows.iter_mut().zip(coeffs) {
-          row[i] = coeff;
-        }
-        i += 1;
+    for (me, row) in self.coeffs.chunks_mut(self.stride).enumerate() {
+      for (slot, other) in row.iter_mut().zip(grid.types()) {
+        *slot = self.table[other.0 * types + me];
       }
+      row[n..].fill(0.0);
     }
   }
 }
@@ -90,6 +61,7 @@ pub fn compute_forces(
 ) {
   data.fill(&grid, &particle_spec);
   let data = &*data;
+  let (xs, ys, starts) = (grid.xs(), grid.ys(), grid.cell_starts());
 
   particles
     .par_iter_mut()
@@ -99,13 +71,13 @@ pub fn compute_forces(
       let coeffs = &data.coeffs[interaction.0 * data.stride..(interaction.0 + 1) * data.stride];
       let mut sum = Kernel::new(position);
       for run in grid.neighbour_runs(grid.cell_at(position.x, position.y)) {
-        let start = data.starts[run.first as usize] as usize;
-        let end = data.starts[run.last as usize] as usize;
+        let start = starts[run.first as usize] as usize;
+        let end = starts[run.last as usize] as usize;
         // Przebiegi przez szew są tylko przy krawędziach świata; reszta bez dodawania.
         if run.shift == Vec2::ZERO {
-          sum.run::<false>(data, coeffs, start..end, Vec2::ZERO);
+          sum.run::<false>(xs, ys, coeffs, start..end, Vec2::ZERO);
         } else {
-          sum.run::<true>(data, coeffs, start..end, run.shift);
+          sum.run::<true>(xs, ys, coeffs, start..end, run.shift);
         }
       }
       acceleration.0 += sum.total();
@@ -138,12 +110,12 @@ impl Kernel {
   /// Siły od sąsiadów z zakresu tablic, jednego przebiegu komórek z przesunięciem `shift`
   /// (`NeighbourRun::shift`; `SHIFTED == false` tylko dla zerowego).
   #[inline(always)]
-  fn run<const SHIFTED: bool>(&mut self, data: &ForceData, coeffs: &[f32], range: Range<usize>, shift: Vec2) {
+  fn run<const SHIFTED: bool>(&mut self, xs: &[f32], ys: &[f32], coeffs: &[f32], range: Range<usize>, shift: Vec2) {
     let (shift_x, shift_y) = (Lanes::splat(shift.x), Lanes::splat(shift.y));
     let mut i = range.start;
     while i < range.end {
-      let mut dx = load(&data.xs[i..]) - self.x;
-      let mut dy = load(&data.ys[i..]) - self.y;
+      let mut dx = load(&xs[i..]) - self.x;
+      let mut dy = load(&ys[i..]) - self.y;
       if SHIFTED {
         dx += shift_x;
         dy += shift_y;

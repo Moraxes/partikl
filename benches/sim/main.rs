@@ -20,9 +20,9 @@ struct MatrixResult {
   systems: Vec<f64>,
 }
 
-const COLUMNS: [&str; 12] = [
+const COLUMNS: [&str; 13] = [
   "n", "offset", "p10 µs", "med µs", "p90 µs", "kand med", "kand p90", "forces", "friction",
-  "integrate", "wrap", "shape",
+  "integrate", "wrap", "grid", "shape",
 ];
 
 /// Rozkład po macierzach: kwantyle median kroku, kandydaci i mediana udziału każdego systemu.

@@ -45,10 +45,12 @@ const METRICS = [
   ['sim: compute_friction', 'compute_friction'],
   ['sim: integrate', 'integrate'],
   ['sim: wrap_around', 'wrap_around'],
+  ['sim: rebuild_grid', 'rebuild_grid'],
   ['sim: update_shape', 'update_shape'],
   ['grid: neighbours', 'grid: neighbours'],
   ['grid: build', 'grid: build'],
   ['grid: move', 'grid: move'],
+  ['grid: rebuild', 'grid: rebuild'],
 ];
 
 let parquet = null;

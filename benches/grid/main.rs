@@ -1,6 +1,7 @@
 //! Indeks przestrzenny na pozycjach ze stanów symulacji (te same `n`, offsety i macierze co
-//! w `sim`). Mierzy budowę, zapytania o sąsiadów dla każdej cząstki i przeniesienie cząstek
-//! o jeden krok symulacji. Tylko publiczne API `SpatialGrid`.
+//! w `sim`). Mierzy budowę (nowa siatka i ułożenie cząstek), zapytania o sąsiadów dla każdej
+//! cząstki i ponowne ułożenie istniejącej siatki z pozycji krok później (`rebuild`, jak co krok
+//! w symulacji). Tylko publiczne API `SpatialGrid`.
 //!
 //! Stany są zapisywane w `.cache/grid-states/` (poza gitem), więc kolejne przebiegi (np. przed
 //! i po zmianie siatki) mierzą identyczne dane. `--regenerate` wymusza ponowną symulację.
@@ -108,11 +109,13 @@ fn states(args: &GridArgs, sample: &Sample) -> Vec<State> {
   states
 }
 
+fn placed<'a>(entities: &'a [Entity], positions: &'a [Vec2]) -> impl Iterator<Item = (Entity, Vec2, InteractionId)> + 'a {
+  entities.iter().zip(positions).map(|(e, p)| (*e, *p, InteractionId(0)))
+}
+
 fn build(entities: &[Entity], positions: &[Vec2]) -> SpatialGrid {
   let mut grid = SpatialGrid::new(WORLD.x, WORLD.y, INTERACTION_RADIUS);
-  for (entity, p) in entities.iter().zip(positions) {
-    grid.insert_entity(*entity, p.x, p.y, InteractionId(0));
-  }
+  grid.rebuild(placed(entities, positions));
   grid
 }
 
@@ -136,7 +139,7 @@ fn measure<S>(
   times
 }
 
-const OPS: [&str; 3] = ["build", "neighbours", "move"];
+const OPS: [&str; 3] = ["build", "neighbours", "rebuild"];
 
 const COLUMNS: [&str; 6] = ["n", "offset", "op", "p10 µs", "med µs", "p90 µs"];
 
@@ -192,17 +195,13 @@ fn main() {
         }
         black_box(checksum);
       });
-      let move_ns = measure(
+      let rebuild_ns = measure(
         c,
         || build(&entities, &state.positions),
-        |grid| {
-          for ((e, old), new) in entities.iter().zip(&state.positions).zip(&state.next) {
-            grid.move_entity(*e, old.x, old.y, new.x, new.y);
-          }
-        },
+        |grid| grid.rebuild(placed(&entities, &state.next)),
       );
 
-      for (op, ns) in OPS.iter().zip([&build_ns, &neighbours_ns, &move_ns]) {
+      for (op, ns) in OPS.iter().zip([&build_ns, &neighbours_ns, &rebuild_ns]) {
         let key = SampleKey::new(&sample, offset, candidates_mean);
         for (rep, &x) in ns.iter().enumerate() {
           rows.push(&key, rep, op, &state.revision, x);

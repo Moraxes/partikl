@@ -17,6 +17,7 @@ const METRICS = [
   ['compute_friction_ns', 'compute_friction'],
   ['integrate_ns', 'integrate'],
   ['wrap_around_ns', 'wrap_around'],
+  ['rebuild_grid_ns', 'rebuild_grid'],
   ['update_shape_ns', 'update_shape'],
 ];
 
@@ -61,7 +62,14 @@ async function compareRounds(rounds, dir) {
     if (b.some((x) => !x) || a.some((x) => !x)) continue;
     const metrics = {};
     for (const [col] of METRICS) {
-      if (!b[0][col] || !a[0][col]) continue;
+      if (!b[0][col]?.length && !a[0][col]?.length) continue;
+      if (!b[0][col]?.length || !a[0][col]?.length) {
+        // Systemu nie ma po jednej stronie (np. nowy system): tylko mediana tam, gdzie jest.
+        const side = b[0][col]?.length ? b : a;
+        const m = D.median(side.flatMap((x) => x[col]));
+        metrics[col] = { before: side === b ? m : NaN, after: side === a ? m : NaN, ratio: NaN, lo: NaN, hi: NaN, perRound: [] };
+        continue;
+      }
       const before = b.flatMap((x) => x[col]);
       const after = a.flatMap((x) => x[col]);
       const [lo, hi] = bootstrap(before, after);
