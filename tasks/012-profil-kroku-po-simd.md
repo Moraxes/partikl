@@ -2,12 +2,13 @@
 id: 12
 title: Profil kroku po SIMD
 summary: 'Krok n=9000: ×0,64 / ×0,61 / ×0,33 (macierze 23 / 6 / 4) po zadaniach 013–019'
-status: todo
+status: done
 priority: soon
 branch: main
 relates:
 - 10
 created: 2026-11-20T20:29:07
+worked: 2026-11-20T22:44:36
 edited: 2026-11-20T22:44:36
 links:
 - kind: profile
