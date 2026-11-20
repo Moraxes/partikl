@@ -2,10 +2,11 @@
 id: 22
 title: Przełączniki opcji symulacji
 summary: 'SimOptions z flag CLI, klawisze w trakcie (nakładanie: 3 tryby cyklicznie); warianty jako osobne systemy z run_if'
-status: todo
+status: doing
 priority: soon
 branch: main
 created: 2026-11-20T23:12:14
+worked: 2026-11-20T23:34:45
 edited: 2026-11-20T23:20:42
 ---
 Cel: opcjonalne zachowania symulacji w zasobie `SimOptions` (boolean dla uśredniania sił 024, enum `Overlap { Spring, Resolve, AdaptiveRange }` dla nakładania 025/026, jeden klawisz przełącza cyklicznie), ustawiane flagami CLI i przełączane klawiszami w trakcie. Następny krok: zasób, flagi, klawisze w `ui`, schemat z run_if.
