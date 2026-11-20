@@ -97,8 +97,6 @@ pub struct ForceData {
   /// Przy zmiennym zasięgu (`Overlap::AdaptiveRange`): zasięg odpychania na cząstkę w
   /// kolejności siatki (z zapasem jak pozycje); inaczej pusty.
   radii: Vec<f32>,
-  /// Indeks siatki dla `k`-tej cząstki w kolejności zapytania ECS (`u32::MAX`: brak w siatce).
-  slots: Vec<u32>,
   /// Praca (pary plus stały koszt na cząstkę) zmierzona w poprzednim kroku; na start duża,
   /// więc pierwszy krok dzieli się drobno.
   last_work: u64,
@@ -123,7 +121,6 @@ impl Default for ForceData {
       counts: vec![],
       corrections: vec![],
       radii: vec![],
-      slots: vec![],
       last_work: u64::MAX,
       coeffs: vec![],
       stride: 0,
@@ -191,7 +188,12 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
   particle_spec: Res<ParticleSpec>,
   grid: Res<SpatialGrid>,
   mut data: ResMut<ForceData>,
-  mut particles: Query<(Entity, &mut Acceleration, &mut Transform, &mut Crowding)>,
+  mut particles: Query<(Entity, &mut Acceleration)>,
+  // Osobne zapytania, ruszane tylko w swoich wariantach: iteracja po zmiennym komponencie
+  // czyta też jego znaczniki zmian, co we wspólnym zapytaniu kosztowało ok. 50 µs na krok
+  // (n=9000) także w wariancie domyślnym.
+  mut positions: Query<(Entity, &mut Transform), With<Acceleration>>,
+  mut crowding: Query<(Entity, &mut Crowding)>,
 ) {
   let resolve = OVERLAP == RESOLVE;
   let adaptive = OVERLAP == ADAPTIVE_RANGE;
@@ -206,7 +208,7 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
   if symmetric && data.buffers.len() < parts {
     data.buffers.resize_with(parts, PairBuffer::default);
   }
-  let ForceData { coeffs, out_coeffs, stride, chunks, forces, counts, corrections, radii, slots, last_work, buffers, step, .. } =
+  let ForceData { coeffs, out_coeffs, stride, chunks, forces, counts, corrections, radii, last_work, buffers, step, .. } =
     &mut *data;
   let step = *step;
   forces.clear();
@@ -215,13 +217,13 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
   counts.resize(if counting { n } else { 0 }, 0.0);
   corrections.clear();
   corrections.resize(if resolve { n } else { 0 }, Vec3::ZERO);
-  grid_slots(&grid, particles.iter().map(|(entity, ..)| entity), slots);
+  let mut slots = Slots::new(&grid);
   radii.clear();
   if adaptive {
     radii.resize(n + SpatialGrid::PADDING, REPULSION_RADIUS);
-    for (&i, (.., crowding)) in slots.iter().zip(particles.iter()) {
-      if let Some(radius) = radii.get_mut(i as usize) {
-        *radius = adaptive_radius(crowding.0);
+    for (k, (entity, crowding)) in crowding.iter().enumerate() {
+      if let Some(i) = slots.get(k, entity) {
+        radii[i] = adaptive_radius(crowding.0);
       }
     }
   }
@@ -294,27 +296,34 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
     }
   }
 
-  // Z powrotem do ECS przez `slots`.
+  // Z powrotem do ECS.
+  let slots = &mut slots;
+  for (k, (entity, mut acceleration)) in particles.iter_mut().enumerate() {
+    if let Some(i) = slots.get(k, entity) {
+      acceleration.0 += forces[i];
+    }
+  }
   // Rozsuwanie: poprawka pozycji przed całkowaniem, uśredniona po nakładających się parach
   // cząstki (Jacobi z uśrednianiem: wiele nakładań naraz się nie sumuje w przestrzał).
   // Tylko pozycja, bez `LastPosition`, więc poprawka staje się prędkością `poprawka / dt`, jak
   // w dynamice opartej na pozycjach: prędkość zbliżania się pary znika (przesuwanie też
   // `LastPosition` dawało gęstsze skupiska, sonda w zadaniu 025).
-  // Zmienny zasięg: wygładzona liczba sąsiadów na następny krok.
-  for (&i, (_, mut acceleration, mut transform, mut crowding)) in slots.iter().zip(particles.iter_mut()) {
-    let i = i as usize;
-    if i >= n {
-      continue;
-    }
-    acceleration.0 += forces[i];
-    if resolve {
-      let c = corrections[i];
-      if c.z > 0.0 {
-        transform.translation += (c.xy() / c.z).extend(0.0);
+  if resolve {
+    for (k, (entity, mut transform)) in positions.iter_mut().enumerate() {
+      if let Some(i) = slots.get(k, entity) {
+        let c = corrections[i];
+        if c.z > 0.0 {
+          transform.translation += (c.xy() / c.z).extend(0.0);
+        }
       }
     }
-    if adaptive {
-      crowding.0 += CROWDING_SMOOTHING * (counts[i] - crowding.0);
+  }
+  // Zmienny zasięg: wygładzona liczba sąsiadów na następny krok.
+  if adaptive {
+    for (k, (entity, mut crowding)) in crowding.iter_mut().enumerate() {
+      if let Some(i) = slots.get(k, entity) {
+        crowding.0 += CROWDING_SMOOTHING * (counts[i] - crowding.0);
+      }
     }
   }
 }
@@ -324,22 +333,37 @@ fn adaptive_radius(crowding: f32) -> f32 {
   (REPULSION_RADIUS * (crowding / ADAPTIVE_NEIGHBOURS).sqrt()).clamp(REPULSION_RADIUS, ADAPTIVE_RANGE_MAX)
 }
 
-/// `slots[k]`: indeks siatki `k`-tej encji z `entities` (kolejność zapytania ECS), `u32::MAX`
-/// dla encji spoza siatki. Zwykle ta sama kolejność co w `rebuild_grid` (ten sam zestaw encji,
-/// bez zmian struktury między systemami), sprawdzana encja po encji; inaczej przez szukanie.
-fn grid_slots(grid: &SpatialGrid, entities: impl Iterator<Item = Entity>, slots: &mut Vec<u32>) {
-  let (placed, grid_entities) = (grid.placed(), grid.entities());
-  let mut index: Option<std::collections::HashMap<Entity, u32>> = None;
-  slots.clear();
-  for (k, entity) in entities.enumerate() {
-    let slot = match placed.get(k) {
-      Some(&i) if grid_entities[i as usize] == entity => i,
-      _ => {
-        let index = index.get_or_insert_with(|| grid_entities.iter().enumerate().map(|(i, e)| (*e, i as u32)).collect());
-        index.get(&entity).copied().unwrap_or(u32::MAX)
-      }
-    };
-    slots.push(slot);
+/// Indeks siatki encji z zapytania ECS. Zwykle `k`-ta encja zapytania to `k`-ta z
+/// `rebuild_grid` (ten sam zestaw encji, bez zmian struktury między systemami), co sprawdza
+/// porównanie encji; inaczej szukanie w mapie budowanej przy pierwszej potrzebie.
+struct Slots<'a> {
+  placed: &'a [u32],
+  entities: &'a [Entity],
+  index: Option<std::collections::HashMap<Entity, usize>>,
+}
+
+impl<'a> Slots<'a> {
+  fn new(grid: &'a SpatialGrid) -> Self {
+    Slots { placed: grid.placed(), entities: grid.entities(), index: None }
+  }
+
+  /// Indeks siatki `k`-tej encji zapytania (`entity`); `None` dla encji spoza siatki.
+  #[inline(always)]
+  fn get(&mut self, k: usize, entity: Entity) -> Option<usize> {
+    if let Some(&i) = self.placed.get(k)
+      && self.entities[i as usize] == entity
+    {
+      return Some(i as usize);
+    }
+    self.search(entity)
+  }
+
+  #[cold]
+  #[inline(never)]
+  fn search(&mut self, entity: Entity) -> Option<usize> {
+    let entities = self.entities;
+    let index = self.index.get_or_insert_with(|| entities.iter().enumerate().map(|(i, e)| (*e, i)).collect());
+    index.get(&entity).copied()
   }
 }
 
@@ -364,14 +388,13 @@ struct Out<'a> {
 }
 
 impl Out<'_> {
-  fn cell(&mut self, range: Range<usize>) -> Out<'_> {
-    let part = |len: usize| if len == 0 { 0..0 } else { range.clone() };
-    let (counts, corrections) = (part(self.counts.len()), part(self.corrections.len()));
-    Out {
-      counts: &mut self.counts[counts],
-      corrections: &mut self.corrections[corrections],
-      forces: &mut self.forces[range],
-    }
+  /// Wyniki jednej komórki; tablice nieużywane w wariancie zostają puste bez wycinania (przy
+  /// rzadkich stanach komórka ma ok. jednej cząstki, więc to się liczy).
+  #[inline(always)]
+  fn cell<const AVERAGE: bool, const OVERLAP: u8>(&mut self, range: Range<usize>) -> Out<'_> {
+    let counts: &mut [f32] = if AVERAGE || OVERLAP == ADAPTIVE_RANGE { &mut self.counts[range.clone()] } else { &mut [] };
+    let corrections: &mut [Vec3] = if OVERLAP == RESOLVE { &mut self.corrections[range.clone()] } else { &mut [] };
+    Out { counts, corrections, forces: &mut self.forces[range] }
   }
 
   fn set<const AVERAGE: bool, const OVERLAP: u8>(&mut self, k: usize, sum: &Kernel) {
@@ -402,7 +425,7 @@ fn forces_in_range<const AVERAGE: bool, const OVERLAP: u8>(inputs: &Inputs, part
     work += (cell_end - i) as u64 * (candidates as u64 + 8);
     let every = Sample::every(candidates);
     let cell = OneSidedCell { inputs, runs, every };
-    let out = out.cell(i - particles.start..cell_end - particles.start);
+    let out = out.cell::<AVERAGE, OVERLAP>(i - particles.start..cell_end - particles.start);
     // Wariant bez próbkowania osobno: ten sam kod co bez ograniczenia sąsiadów.
     if every == 1 {
       cell.forces::<false, AVERAGE, OVERLAP>(i..cell_end, out);
@@ -518,7 +541,7 @@ fn pair_forces_in_range<const AVERAGE: bool, const OVERLAP: u8>(
     let (forward, seam) = grid.half_runs(c);
     let every = Sample::every(candidates);
     let cell = PairCell { inputs, forward, seam, full_end, every };
-    let out = out.cell(i - particles.start..cell_end - particles.start);
+    let out = out.cell::<AVERAGE, OVERLAP>(i - particles.start..cell_end - particles.start);
     // Wariant bez próbkowania osobno: ten sam kod co bez ograniczenia sąsiadów.
     if every == 1 {
       cell.forces::<false, AVERAGE, OVERLAP>(i..cell_end, out, buffer);
@@ -609,7 +632,9 @@ impl Kernel {
   /// Zasięg odpychania par z sąsiadami od indeksu `i` siatki.
   #[inline(always)]
   fn reach<const OVERLAP: u8>(&self, radii: &[f32], i: usize) -> Lanes {
-    if OVERLAP == ADAPTIVE_RANGE { load(&radii[i..]).max(self.radius) } else { self.radius }
+    // Poza zmiennym zasięgiem stała (`const`, patrz `add`), nie pole.
+    const REPULSION_R: Lanes = Lanes::splat(REPULSION_RADIUS);
+    if OVERLAP == ADAPTIVE_RANGE { load(&radii[i..]).max(self.radius) } else { REPULSION_R }
   }
 
   /// Dodaje siły od `remaining.min(LANES)` sąsiadów z wektorów (różnice już przez szew);
