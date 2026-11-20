@@ -1,5 +1,5 @@
 //! Gorąca ścieżka symulacji: czas kroku i każdego systemu w stanach po `step_offset` krokach,
-//! dla wielu macierzy sił. Wyniki: JSONL w `target/bench-results/`, postęp w pliku
+//! dla wielu macierzy sił. Wyniki: JSONL w `.data/bench-results/`, postęp w pliku
 //! `.progress.json` obok, podsumowanie na stdout.
 //!
 //! `cargo bench --bench sim -- --help` pokazuje parametry.

@@ -56,7 +56,7 @@ pub struct BenchArgs {
   #[arg(long, default_value_t = 10)]
   pub measured: usize,
   /// Katalog wyników.
-  #[arg(long, default_value = "target/bench-results")]
+  #[arg(long, default_value = ".data/bench-results")]
   pub out_dir: PathBuf,
   /// Przekazywane przez `cargo bench`; ignorowane.
   #[arg(long, hide = true)]
