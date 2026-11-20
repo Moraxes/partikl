@@ -7,6 +7,8 @@
 #
 #   tools/bench-ab/ab.sh [rundy=3] [dodatkowe argumenty benchu sim…]
 #
+# `AB_BASE=<rewizja>`: „przed” z tej rewizji zamiast HEAD (np. porównanie kilku commitów naraz).
+#
 # „Przed” budowane w osobnym worktree `.cache/ab/worktree` z własnym katalogiem `target`
 # (wspólny `target` z innym worktree myli cargo: biblioteka z innej ścieżki uchodzi za
 # aktualną). Pierwsze budowanie trwa kilka minut, kolejne tylko `partikl`.
@@ -19,7 +21,7 @@ shift || true
 base="$root/.cache/ab/worktree"
 target="$root/.cache/ab/target"
 out="$root/.artifacts/bench"
-rev=$(git rev-parse HEAD)
+rev=$(git rev-parse "${AB_BASE:-HEAD}")
 
 if [ ! -d "$base" ]; then
   git worktree add -q --detach "$base" "$rev"
