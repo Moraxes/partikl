@@ -6,8 +6,13 @@ status: doing
 priority: soon
 branch: main
 created: 2026-11-20T23:12:14
-worked: 2026-11-20T23:34:45
+worked: 2026-11-20T23:37:09
 edited: 2026-11-20T23:20:42
+links:
+- kind: commit
+  target: 1ee24f1
+  at: 2026-11-20T23:37:09
+  note: 'feat: simulation options toggled at runtime with force variants per option'
 ---
 Cel: opcjonalne zachowania symulacji w zasobie `SimOptions` (boolean dla uśredniania sił 024, enum `Overlap { Spring, Resolve, AdaptiveRange }` dla nakładania 025/026, jeden klawisz przełącza cyklicznie), ustawiane flagami CLI i przełączane klawiszami w trakcie. Następny krok: zasób, flagi, klawisze w `ui`, schemat z run_if.
 
