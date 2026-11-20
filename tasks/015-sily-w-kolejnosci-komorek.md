@@ -2,14 +2,14 @@
 id: 15
 title: Siły w kolejności komórek
 summary: 'Siły w kolejności siatki, zakresy o równej pracy: compute_forces ×0,78 przy małej gęstości, bez zmian przy dużej'
-status: doing
+status: done
 priority: soon
 branch: main
 part_of: 12
 blocked_by:
 - 14
 created: 2026-11-20T20:29:45
-worked: 2026-11-20T21:04:16
+worked: 2026-11-20T21:04:42
 edited: 2026-11-20T21:04:42
 links:
 - kind: commit
