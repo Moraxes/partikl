@@ -3,15 +3,48 @@
 //! `common::results`), postęp w pliku
 //! `.progress.json` obok, podsumowanie na stdout.
 //!
+//! `--state`: stany po każdym offsecie z `.cache/sim-states/` (poza gitem) zamiast symulacji
+//! od początku; brakujące są symulowane i zapisywane, `--regenerate` symuluje wszystkie od nowa.
+//! Pomiar od zapisanego stanu jest bit w bit taki jak po symulacji bez przerwy z tej samej
+//! rewizji; z innej rewizji mierzy nowy kod na stanie starej dynamiki (porównanie przed/po na
+//! tym samym stanie, `ab.sh --state`), więc nie wykryje zmian samej dynamiki.
+//!
 //! `cargo bench --bench sim -- --help` pokazuje parametry.
 
 #[path = "../common/mod.rs"]
 mod common;
 
 use std::collections::BTreeMap;
+use std::fs;
+use std::path::PathBuf;
+
+use clap::Parser;
+use serde_json::Value;
 
 use common::results::{SampleKey, SimRows};
-use common::{BenchArgs, Output, Progress, SYSTEM_NAMES, Sim, median, nanos, quantile};
+use common::{BenchArgs, Output, Progress, SYSTEM_NAMES, Sample, Sim, median, nanos, quantile};
+
+#[derive(Parser, Debug)]
+struct SimArgs {
+  #[command(flatten)]
+  common: BenchArgs,
+  /// Stany po offsetach z katalogu `--state-dir` (brakujące symulowane i zapisywane).
+  #[arg(long)]
+  state: bool,
+  /// Z `--state`: symuluje i zapisuje wszystkie stany od nowa.
+  #[arg(long)]
+  regenerate: bool,
+  /// Z `--state`: kroki rozgrzewające od wczytanego stanu przed powrotem do niego.
+  #[arg(long, default_value_t = 500)]
+  prewarm: usize,
+  /// Katalog zapisanych stanów.
+  #[arg(long, default_value = ".cache/sim-states")]
+  state_dir: PathBuf,
+}
+
+fn state_path(dir: &PathBuf, s: &Sample, offset: usize) -> PathBuf {
+  dir.join(format!("n{}-t{}-s{}-p{}-o{offset}.json", s.n, s.types, s.spec_seed, s.placement_seed))
+}
 
 /// Mediany jednej macierzy w jednym punkcie `(n, offset)`.
 struct MatrixResult {
@@ -56,8 +89,14 @@ fn to_f64(values: &[u64]) -> Vec<f64> {
 }
 
 fn main() {
-  let args = BenchArgs::parse_sorted();
-  let mut output = Output::new("sim", &args, SimRows::schema());
+  let mut sim_args = SimArgs::parse();
+  sim_args.common.normalize();
+  let args = &sim_args.common;
+  if sim_args.state {
+    fs::create_dir_all(&sim_args.state_dir).expect("nie da się utworzyć katalogu stanów");
+  }
+  let revision = common::git_revision();
+  let mut output = Output::new("sim", args, SimRows::schema());
   let mut rows = SimRows::default();
   let groups = args.n.iter().map(|&n| (format!("n={n}"), n as f64, args.seeds().len())).collect();
   let mut progress = Progress::new(&output, groups, &COLUMNS);
@@ -69,9 +108,30 @@ fn main() {
     let mut sim = Sim::new(&sample);
     let mut steps_done = 0;
     for &offset in &args.offsets {
-      while steps_done < offset {
-        sim.step();
-        steps_done += 1;
+      let path = state_path(&sim_args.state_dir, &sample, offset);
+      let saved: Option<Value> = (sim_args.state && !sim_args.regenerate)
+        .then(|| fs::read(&path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()))
+        .flatten();
+      if let Some(state) = saved {
+        // Rozgrzanie procesora i puli wątków jak po symulacji do offsetu, potem powrót do
+        // stanu (te same mierzone kroki co bez `--state`).
+        sim.restore(&state);
+        for _ in 0..sim_args.prewarm {
+          sim.step();
+        }
+        sim.restore(&state);
+        steps_done = offset;
+        eprintln!("stan z {} ({})", path.display(), state["revision"].as_str().unwrap_or("?"));
+      } else {
+        while steps_done < offset {
+          sim.step();
+          steps_done += 1;
+        }
+        if sim_args.state {
+          let mut state = sim.snapshot();
+          state["revision"] = revision.clone().into();
+          fs::write(&path, serde_json::to_vec(&state).unwrap()).expect("nie da się zapisać stanu");
+        }
       }
       for _ in 0..args.warmup {
         sim.step();

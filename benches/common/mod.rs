@@ -31,6 +31,7 @@ use results::{ResultsFile, Run};
 
 use partikl::config::{DELTA_TIME, INTERACTION_RADIUS};
 use partikl::sim::{
+  ForceData,
   Acceleration, InteractionId, LastPosition, ParticleBundle, SimOptions, SimPlugin, SpatialGrid,
   register_forces, task_pool_options,
   compute_friction, integrate, rebuild_grid, update_shape, wrap_around,
@@ -236,6 +237,40 @@ impl Sim {
     for id in self.systems {
       self.app.world_mut().run_system(id).unwrap();
     }
+  }
+
+  /// Pełny stan do odtworzenia (`restore`): cząstki w kolejności ECS (pozycja, poprzednia
+  /// pozycja, typ) i stan `ForceData` przechodzący między krokami. Siatka nie: powstaje z
+  /// pozycji tak samo jak na końcu kroku.
+  pub fn snapshot(&mut self) -> Value {
+    let world = self.app.world_mut();
+    let particles: Vec<[f32; 5]> = world
+      .query::<(&Transform, &LastPosition, &InteractionId)>()
+      .iter(world)
+      .map(|(t, l, i)| [t.translation.x, t.translation.y, l.0.x, l.0.y, i.0 as f32])
+      .collect();
+    let (last_work, step) = world.resource::<ForceData>().carried();
+    json!({ "particles": particles, "last_work": last_work, "step": step })
+  }
+
+  /// Odtwarza stan z `snapshot` (ta sama liczba cząstek, encje w tej samej kolejności ECS).
+  /// Dalsze kroki są bit w bit takie jak w symulacji bez przerwy.
+  pub fn restore(&mut self, state: &Value) {
+    let particles = state["particles"].as_array().expect("stan bez cząstek");
+    let world = self.app.world_mut();
+    let mut query = world.query::<(Entity, &mut Transform, &mut LastPosition, &mut InteractionId)>();
+    assert_eq!(query.iter(world).count(), particles.len(), "inna liczba cząstek w stanie");
+    let f = |v: &Value, k: usize| v[k].as_f64().unwrap() as f32;
+    let mut placed = Vec::with_capacity(particles.len());
+    for ((entity, mut transform, mut last, mut interaction), p) in query.iter_mut(world).zip(particles) {
+      transform.translation = Vec3::new(f(p, 0), f(p, 1), 0.0);
+      last.0 = Vec2::new(f(p, 2), f(p, 3));
+      interaction.0 = f(p, 4) as usize;
+      placed.push((entity, transform.translation.truncate(), *interaction));
+    }
+    world.resource_mut::<SpatialGrid>().rebuild(placed);
+    let carried = (state["last_work"].as_u64().unwrap(), state["step"].as_u64().unwrap());
+    world.resource_mut::<ForceData>().restore_carried(carried);
   }
 
   /// Krok z czasem całego kroku i każdego systemu osobno.

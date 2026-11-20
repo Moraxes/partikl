@@ -9,6 +9,11 @@
 #
 # `AB_BASE=<rewizja>`: „przed” z tej rewizji zamiast HEAD (np. porównanie kilku commitów naraz).
 #
+# `--state` (przekazywane do benchu): obie strony mierzą od stanów zapisanych w
+# `.cache/ab/states`, wygenerowanych na starcie kodem „przed”. Przebieg trwa ok. 0,8 s zamiast
+# ok. 4,5 s, a stany są te same po obu stronach także przy zmianie trajektorii; zmiany samej
+# dynamiki (np. inny wygląd skupisk po zmianie fizyki) w ten sposób nie widać.
+#
 # „Przed” budowane w osobnym worktree `.cache/ab/worktree` z własnym katalogiem `target`
 # (wspólny `target` z innym worktree myli cargo: biblioteka z innej ścieżki uchodzi za
 # aktualną). Pierwsze budowanie trwa kilka minut, kolejne tylko `partikl`.
@@ -40,16 +45,26 @@ after=$(bench_bin "$root" "$root/target")
 # Ostatni plik przebiegu sim w katalogu wyników (nazwy z czasem startu rosną).
 latest() { ls "$out"/sim-*.parquet | sort | tail -1 | xargs basename; }
 
+bench_args=("$@")
+if [[ " $* " == *" --state "* ]]; then
+  states="$root/.cache/ab/states"
+  bench_args+=(--state-dir "$states")
+  (cd "$base" && "$before" --quick --state --regenerate --state-dir "$states" --measured 1 \
+    --out-dir "$root/.cache/ab/generate" >/dev/null 2>&1) \
+    || { echo "„przed” ($(git rev-parse --short "$rev")) nie generuje stanów: --state wymaga rewizji z zapisem stanu (011)" >&2; exit 1; }
+  echo "stany z $(git rev-parse --short "$rev") w $states" >&2
+fi
+
 json="["
 for ((r = 1; r <= rounds; r++)); do
   # Kolejność w rundzie na zmianę, żeby żadna strona nie szła stale pierwsza.
   if ((r % 2)); then order="before after"; else order="after before"; fi
   for side in $order; do
     if [ "$side" = before ]; then
-      (cd "$base" && "$before" --quick --out-dir "$out" "$@" >/dev/null 2>&1)
+      (cd "$base" && "$before" --quick --out-dir "$out" "${bench_args[@]}" >/dev/null 2>&1)
       b=$(latest)
     else
-      "$after" --quick --out-dir "$out" "$@" >/dev/null 2>&1
+      "$after" --quick --out-dir "$out" "${bench_args[@]}" >/dev/null 2>&1
       a=$(latest)
     fi
     sleep 1 # osobne sekundy w nazwach plików

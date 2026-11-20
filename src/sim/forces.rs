@@ -133,6 +133,18 @@ impl Default for ForceData {
 }
 
 impl ForceData {
+  /// Stan przechodzący do następnego kroku: praca (wybór trybu par i podział na zakresy, od
+  /// których zależy kolejność sumowania) i numer kroku (przesunięcie próbkowania). Do zapisu
+  /// stanu symulacji w benchu: po odtworzeniu kolejne kroki są bit w bit jak bez przerwy.
+  pub fn carried(&self) -> (u64, u64) {
+    (self.last_work, self.step)
+  }
+
+  pub fn restore_carried(&mut self, (last_work, step): (u64, u64)) {
+    self.last_work = last_work;
+    self.step = step;
+  }
+
   fn fill(&mut self, grid: &SpatialGrid, spec: &ParticleSpec, symmetric: bool) {
     let types = spec.interactions.len();
     self.table.clear();
