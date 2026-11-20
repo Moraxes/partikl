@@ -6,8 +6,9 @@ status: todo
 priority: soon
 branch: main
 created: 2026-11-20T23:12:14
+edited: 2026-11-20T23:20:42
 ---
-Cel: opcjonalne zachowania symulacji jako booleany w zasobie `SimOptions`, ustawiane flagami CLI i przełączane klawiszami w trakcie. Następny krok: zasób, flagi, klawisze w `ui`, schemat z run_if.
+Cel: opcjonalne zachowania symulacji w zasobie `SimOptions` (boolean dla uśredniania sił 024, enum `Overlap { Spring, Resolve, AdaptiveRange }` dla nakładania 025/026, jeden klawisz przełącza cyklicznie), ustawiane flagami CLI i przełączane klawiszami w trakcie. Następny krok: zasób, flagi, klawisze w `ui`, schemat z run_if.
 
 ## Kształt
 - Osobny system per wariant z `run_if` na `SimOptions` (np. `compute_forces::<Averaged>` i `compute_forces::<Plain>`, `resolve_overlaps` tylko przy włączonej opcji). Wariant widać w schemacie i w profilu.
