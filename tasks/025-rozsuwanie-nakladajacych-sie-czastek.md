@@ -15,6 +15,9 @@ links:
   target: 00f9005
   at: 2026-11-20T23:44:23
   note: 'feat: overlap resolution by position correction as an overlap mode'
+- kind: commit
+  target: 00f9005
+  at: 2026-11-20T23:44:23
 ---
 Wynik: `--overlap resolve` / klawisz O. Samo rozsuwanie chaosu nie usuwa (bez sprężyny prędkości dalej rosną: sztywne jest też przyciąganie sumowane po tysiącach sąsiadów, nachylenie coeff/10 na sąsiada). Z uśrednianiem (024) stabilne i skupiska wyraźnie luźniejsze niż sprężyna z uśrednianiem.
 
