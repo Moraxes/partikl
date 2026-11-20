@@ -1,4 +1,5 @@
 use super::*;
+use crate::sim::Overlap;
 use crate::ui::test_util::*;
 use bevy::camera::{OrthographicProjection, Projection};
 use bevy::input::mouse::MouseScrollUnit;
@@ -64,6 +65,29 @@ fn unrelated_key_does_not_change_sim_state() {
   app.add_systems(Update, handle_keyboard_input);
   tap_key(&mut app, KeyCode::KeyA);
   assert_eq!(*app.world().resource::<State<SimState>>().get(), SimState::Running);
+}
+
+#[test]
+fn n_toggles_force_averaging() {
+  let mut app = input_app();
+  app.add_systems(Update, handle_keyboard_input);
+  tap_key(&mut app, KeyCode::KeyN);
+  assert!(app.world().resource::<SimOptions>().average_forces);
+  tap_key(&mut app, KeyCode::KeyN);
+  assert!(!app.world().resource::<SimOptions>().average_forces);
+}
+
+#[test]
+fn o_cycles_overlap_modes() {
+  let mut app = input_app();
+  app.add_systems(Update, handle_keyboard_input);
+  let mut modes = vec![];
+  for _ in 0..3 {
+    tap_key(&mut app, KeyCode::KeyO);
+    modes.push(app.world().resource::<SimOptions>().overlap);
+  }
+  assert_eq!(modes, [Overlap::Resolve, Overlap::AdaptiveRange, Overlap::Spring]);
+  assert!(!app.world().resource::<SimOptions>().average_forces);
 }
 
 #[test]
