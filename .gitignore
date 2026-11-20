@@ -2,3 +2,4 @@
 /.idea
 *.iml
 rust-toolchain.toml
+/.notes
