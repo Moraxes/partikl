@@ -24,39 +24,54 @@ pub struct ForceData {
   ys: Vec<f32>,
   /// `coeffs[me * stride + j]`: siła, jaką cząstka `j` działa na cząstkę typu `me`.
   coeffs: Vec<f32>,
-  kinds: Vec<usize>,
   /// Początek komórki `c` w tablicach to `starts[c]`, koniec `starts[c + 1]`.
   starts: Vec<u32>,
   stride: usize,
+  /// `table[other * types + me]`: macierz sił spłaszczona.
+  table: Vec<f32>,
 }
 
 impl ForceData {
+  /// Jedno przejście po siatce, zapis na miejsce: rozmiary znane z góry z sumy prefiksowej.
+  /// Wersja równoległa była wolniejsza (koszt uruchomienia zadań większy niż sama kopia).
   fn fill(&mut self, grid: &SpatialGrid, spec: &ParticleSpec) {
-    self.xs.clear();
-    self.ys.clear();
-    self.kinds.clear();
-    self.starts.clear();
-    for cell in grid.cells() {
-      self.starts.push(self.xs.len() as u32);
-      for n in cell {
-        self.xs.push(n.position.x);
-        self.ys.push(n.position.y);
-        self.kinds.push(n.interaction.0);
-      }
-    }
-    self.starts.push(self.xs.len() as u32);
-    // Zapas na ostatni niepełny wektor: NaN nigdy nie jest w zasięgu.
-    self.xs.extend([f32::NAN; LANES]);
-    self.ys.extend([f32::NAN; LANES]);
-
     let types = spec.interactions.len();
-    self.stride = self.xs.len();
-    self.coeffs.clear();
-    for me in 0..types {
-      self
-        .coeffs
-        .extend(self.kinds.iter().map(|&other| spec.interactions[other].force_coeffs[me]));
-      self.coeffs.extend([0.0; LANES]);
+    self.table.clear();
+    for other in &spec.interactions {
+      self.table.extend_from_slice(&other.force_coeffs[..types]);
+    }
+
+    self.starts.clear();
+    let mut total = 0;
+    for cell in grid.cells() {
+      self.starts.push(total);
+      total += cell.len() as u32;
+    }
+    self.starts.push(total);
+    let n = total as usize;
+    // Zapas na ostatni niepełny wektor: NaN nigdy nie jest w zasięgu.
+    self.stride = n + LANES;
+    self.xs.resize(self.stride, 0.0);
+    self.ys.resize(self.stride, 0.0);
+    self.xs[n..].fill(f32::NAN);
+    self.ys[n..].fill(f32::NAN);
+    self.coeffs.resize(types * self.stride, 0.0);
+    let mut rows: Vec<&mut [f32]> = self.coeffs.chunks_mut(self.stride).collect();
+    for row in &mut rows {
+      row[n..].fill(0.0);
+    }
+
+    let mut i = 0;
+    for cell in grid.cells() {
+      for neighbour in cell {
+        self.xs[i] = neighbour.position.x;
+        self.ys[i] = neighbour.position.y;
+        let coeffs = &self.table[neighbour.interaction.0 * types..][..types];
+        for (row, &coeff) in rows.iter_mut().zip(coeffs) {
+          row[i] = coeff;
+        }
+        i += 1;
+      }
     }
   }
 }
