@@ -278,8 +278,18 @@ async function quickSection(quick, lines, { num, table, short }) {
   lines.push(
     table(
       ['Etap', 'Commit', ...seeds.map((s) => `macierz ${s}`)],
-      stages.map((st) => [st.name, `\`${st.commit}\``, ...seeds.map((s) => ratio(st.cmp.bySeed.get(s)?.metrics.step_ns))]),
+      stages.map((st) => [
+        st.name,
+        `\`${st.commit}\``,
+        ...seeds.map((s) => {
+          const x = st.cmp.bySeed.get(s);
+          return ratio(x?.metrics.step_ns) + (x && !x.sameStates ? ' †' : '');
+        }),
+      ]),
     ),
+    '',
+    '† inne stany po zmianie (trajektoria się zmieniła, np. kolejność sumowania): stosunek miesza',
+    'zmianę kodu ze zmianą liczby kandydatów, porównać z kandydatami w szczegółach etapu.',
     '',
   );
   lines.push('### Czas kroku po etapie', '');
