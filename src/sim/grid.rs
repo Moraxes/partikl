@@ -29,6 +29,11 @@ pub struct SpatialGrid {
   /// zawijaniem) dla komórki `c` to `neighbour_cells[neighbour_starts[c]..neighbour_starts[c + 1]]`.
   neighbour_starts: Vec<u32>,
   neighbour_cells: Vec<u32>,
+  /// To samo sąsiedztwo jako posortowane przebiegi kolejnych komórek `[od, do)`: komórki
+  /// leżą wierszami, więc trzy komórki jednego wiersza to zwykle jeden przebieg. Dla komórki
+  /// `c`: `neighbour_runs[run_starts[c]..run_starts[c + 1]]`.
+  run_starts: Vec<u32>,
+  neighbour_runs: Vec<(u32, u32)>,
 }
 
 /// Miejsce encji w siatce: komórka i pozycja w niej. `Slot::EMPTY`, jeśli encji nie ma.
@@ -91,6 +96,8 @@ impl SpatialGrid {
       slots: Vec::new(),
       neighbour_starts: Vec::new(),
       neighbour_cells: Vec::new(),
+      run_starts: Vec::new(),
+      neighbour_runs: Vec::new(),
     };
     let mut starts = Vec::with_capacity(columns * rows + 1);
     let mut cells = Vec::with_capacity(columns * rows * 9 + 64);
@@ -103,6 +110,26 @@ impl SpatialGrid {
     }
     grid.neighbour_starts = starts;
     grid.neighbour_cells = cells;
+
+    let mut run_starts = Vec::with_capacity(columns * rows + 1);
+    let mut runs = Vec::with_capacity(columns * rows * 3 + 64);
+    let mut sorted = Vec::with_capacity(36);
+    run_starts.push(0);
+    for c in 0..columns * rows {
+      sorted.clear();
+      sorted.extend_from_slice(grid.neighbour_cells_at(c));
+      sorted.sort_unstable();
+      let first = runs.len();
+      for &cell in &sorted {
+        match runs[first..].last_mut() {
+          Some((_, end)) if *end == cell => *end += 1,
+          _ => runs.push((cell, cell + 1)),
+        }
+      }
+      run_starts.push(runs.len() as u32);
+    }
+    grid.run_starts = run_starts;
+    grid.neighbour_runs = runs;
     grid
   }
 
@@ -167,6 +194,32 @@ impl SpatialGrid {
     Wrapped { buckets, len }
   }
 
+  fn neighbour_cells_at(&self, c: usize) -> &[u32] {
+    &self.neighbour_cells[self.neighbour_starts[c] as usize..self.neighbour_starts[c + 1] as usize]
+  }
+
+  pub fn half_size(&self) -> Vec2 {
+    self.half_size
+  }
+
+  /// Komórki w kolejności indeksów (wierszami).
+  pub fn cells(&self) -> &[Vec<Neighbour>] {
+    &self.cells
+  }
+
+  /// Indeks komórki zawierającej pozycję ze świata.
+  pub fn cell_at(&self, x: f32, y: f32) -> usize {
+    self
+      .cell_index(self.bucket_coords(x, y))
+      .unwrap_or_else(|| panic!("position ({x}, {y}) outside the world"))
+  }
+
+  /// Sąsiedztwo komórki `c` jako przebiegi indeksów komórek `[od, do)`, rosnąco. Te same
+  /// komórki co w `get_neighbour_cells`, w innej kolejności.
+  pub fn neighbour_runs(&self, c: usize) -> &[(u32, u32)] {
+    &self.neighbour_runs[self.run_starts[c] as usize..self.run_starts[c + 1] as usize]
+  }
+
   /// Indeks komórki w `cells`, albo `None` poza siatką (taka komórka jest zawsze pusta).
   fn cell_index(&self, (ix, iy): (i32, i32)) -> Option<usize> {
     if ix < self.left || ix > self.right || iy < self.bottom || iy > self.top {
@@ -175,11 +228,6 @@ impl SpatialGrid {
     Some((iy - self.bottom) as usize * self.columns + (ix - self.left) as usize)
   }
 
-  fn cell_at(&self, x: f32, y: f32) -> usize {
-    self
-      .cell_index(self.bucket_coords(x, y))
-      .unwrap_or_else(|| panic!("position ({x}, {y}) outside the world"))
-  }
 
   fn slot_key(entity: Entity) -> usize {
     entity.index_u32() as usize

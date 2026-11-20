@@ -295,3 +295,16 @@ fn precomputed_neighbourhood_matches_computed_in_the_same_order() {
     }
   }
 }
+
+#[test]
+fn neighbour_runs_cover_the_same_cells_once() {
+  for (width, height) in [(400.0, 400.0), (500.0, 330.0), (2560.0, 1440.0)] {
+    let grid = SpatialGrid::new(width, height, INTERACTION_RADIUS);
+    for c in 0..grid.cells().len() {
+      let mut expected: Vec<u32> = grid.neighbour_cells_at(c).to_vec();
+      expected.sort_unstable();
+      let from_runs: Vec<u32> = grid.neighbour_runs(c).iter().flat_map(|&(a, b)| a..b).collect();
+      assert_eq!(from_runs, expected, "komórka {c} w świecie {width}x{height}");
+    }
+  }
+}

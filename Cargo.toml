@@ -7,6 +7,7 @@ edition = "2024"
 ron = "0.12.3"
 clap = { version = "4.6.8", features = [ "derive" ] }
 bevy = "0.20"
+wide = "1.7.1"
 
 [dependencies.chrono]
 version = "0.4.45"
