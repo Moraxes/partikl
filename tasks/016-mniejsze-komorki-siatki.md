@@ -2,14 +2,14 @@
 id: 16
 title: Mniejsze komórki siatki
 summary: 'Komórki R/2, sąsiedztwo 5×5: krok ×1,07 / ×0,91 / ×0,85; tańszy podział sił ×0,93 przy małej gęstości'
-status: doing
+status: done
 priority: later
 branch: main
 part_of: 12
 blocked_by:
 - 14
 created: 2026-11-20T20:29:45
-worked: 2026-11-20T21:15:37
+worked: 2026-11-20T21:17:16
 edited: 2026-11-20T21:17:16
 links:
 - kind: commit
