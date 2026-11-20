@@ -40,6 +40,11 @@ name = "grid"
 path = "benches/grid/main.rs"
 harness = false
 
+[[bench]]
+name = "probe"
+path = "benches/probe/main.rs"
+harness = false
+
 [profile.bench]
 inherits = "release"
 debug = "line-tables-only"
