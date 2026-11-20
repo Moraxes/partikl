@@ -11,6 +11,10 @@ links:
   target: .artifacts/profiles/sim-quick-6808821-m23.json.gz
   at: 2026-11-20T20:29:44
   note: macierz 23
+- kind: profile
+  target: .artifacts/profiles/sim-quick-6808821-m6.json.gz
+  at: 2026-11-20T20:29:44
+  note: macierz 6
 ---
 Zadanie zbiorcze dla optymalizacji z profilu kroku przy n=9000 (tryb `--quick`, commit 6808821, samply 4 kHz, osobno macierze 23, 6 i 4). Następny krok: zacząć od zadania z kształtem bez trygonometrii (najtańsze, największy zysk przy typowych macierzach), potem przebudowa siatki i kolejność sił.
 
