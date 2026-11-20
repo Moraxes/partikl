@@ -9,12 +9,16 @@ part_of: 12
 blocked_by:
 - 14
 created: 2026-11-20T20:29:45
-worked: 2026-11-20T21:14:19
+worked: 2026-11-20T21:15:37
 links:
 - kind: commit
   target: 7c69d0c
   at: 2026-11-20T21:14:19
   note: 'perf: split forces into equal particle ranges sized by last step''s work'
+- kind: commit
+  target: 5ac5374
+  at: 2026-11-20T21:15:37
+  note: 'perf: grid cells of half the interaction radius with a 5×5 neighbourhood'
 ---
 Cel: mniej kandydatów poza zasięgiem. Dziś 3×3 komórki o boku R to obszar 9R² przy zasięgu πR² ≈ 3,1R² (ok. 35% trafień). Komórki R/2 z 5×5 to 6,25R², bez czterech narożnych ok. 5,25R². Następny krok: po przebudowie siatki parametr rozmiaru komórki i porównanie `--quick`; przebiegi w wierszu dalej ciągłe (5 komórek wiersza to jeden przebieg).
 
