@@ -6,7 +6,7 @@ status: done
 priority: soon
 branch: main
 created: 2026-11-20T23:12:14
-worked: 2026-11-20T23:48:30
+worked: 2026-11-20T23:50:39
 edited: 2026-11-20T23:20:42
 links:
 - kind: commit
@@ -20,6 +20,10 @@ links:
   target: '6745838'
   at: 2026-11-20T23:48:30
   note: 'test: cover force averaging, overlap modes and their keys'
+- kind: commit
+  target: c7a5200
+  at: 2026-11-20T23:50:39
+  note: 'test: include the simulation options tests module'
 ---
 Cel: opcjonalne zachowania symulacji w zasobie `SimOptions` (boolean dla uśredniania sił 024, enum `Overlap { Spring, Resolve, AdaptiveRange }` dla nakładania 025/026, jeden klawisz przełącza cyklicznie), ustawiane flagami CLI i przełączane klawiszami w trakcie. Następny krok: zasób, flagi, klawisze w `ui`, schemat z run_if.
 
