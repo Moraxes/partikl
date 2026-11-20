@@ -23,13 +23,12 @@ pub fn get_particle_spec(program_args: &args::ProgramArgs) -> core::ParticleSpec
     use rand::SeedableRng;
 
     let mut rng = if let Some(seed) = program_args.interaction_seed {
-      let b = seed.to_le_bytes();
-      let more_bytes = [
-        b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[0], b[1], b[2], b[3], b[4], b[5], b[6],
-        b[7], b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[0], b[1], b[2], b[3], b[4], b[5],
-        b[6], b[7],
-      ];
-      rand::rngs::SmallRng::from_seed(more_bytes)
+      // Ziarno u64 powtórzone na całą długość seeda (zachowuje dotychczasowe wyniki).
+      let mut full_seed = [0u8; 32];
+      full_seed
+        .chunks_exact_mut(8)
+        .for_each(|chunk| chunk.copy_from_slice(&seed.to_le_bytes()));
+      rand::rngs::SmallRng::from_seed(full_seed)
     } else {
       rand::rngs::SmallRng::from_rng(&mut rand::rng())
     };
@@ -48,24 +47,21 @@ pub fn get_particle_spec(program_args: &args::ProgramArgs) -> core::ParticleSpec
 
 fn validate_interaction_list(
   interactions: Vec<core::Interaction>,
-) -> Result<core::ParticleSpec, impl Error> {
+) -> Result<core::ParticleSpec, MalformedInteractionError> {
   let total_interactions = interactions.len();
   interactions
     .iter()
-    .map(|interaction| validate_single_interaction(interaction, total_interactions))
-    .fold(Ok(()), |acc, r| acc.and(r))
-    .and_then(|_| {
-      Ok(core::ParticleSpec {
-        interactions,
-        ..Default::default()
-      })
-    })
+    .try_for_each(|interaction| validate_single_interaction(interaction, total_interactions))?;
+  Ok(core::ParticleSpec {
+    interactions,
+    ..Default::default()
+  })
 }
 
 fn validate_single_interaction(
   interaction: &core::Interaction,
   total_interactions: usize,
-) -> Result<(), impl Error> {
+) -> Result<(), MalformedInteractionError> {
   let total_coeffs = interaction.force_coeffs.len();
   if total_coeffs == total_interactions {
     Ok(())
@@ -80,10 +76,7 @@ fn validate_single_interaction(
 fn generate_particle_spec(rng: &mut impl Rng, type_count: usize) -> core::ParticleSpec {
   let interactions = (0..type_count)
     .map(|_| generate_single_interaction(rng, type_count))
-    .fold(vec![], |mut acc, i| {
-      acc.push(i);
-      acc
-    });
+    .collect();
   core::ParticleSpec {
     interactions,
     ..Default::default()

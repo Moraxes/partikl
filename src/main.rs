@@ -1,4 +1,5 @@
-use core::{SimState, DELTA_TIME};
+use config::DELTA_TIME;
+use core::SimState;
 
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
@@ -6,6 +7,7 @@ use bevy::window::{WindowMode, WindowResolution};
 use clap::Parser;
 
 mod args;
+mod config;
 mod core;
 mod loading;
 mod render;

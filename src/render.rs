@@ -4,6 +4,7 @@ use bevy::camera::{ClearColorConfig, Hdr, ScalingMode};
 use bevy::window::PrimaryWindow;
 use rand::prelude::*;
 
+use crate::config::{DELTA_TIME, INTERACTION_RADIUS};
 use crate::core;
 
 fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
@@ -53,7 +54,7 @@ pub fn init_particles(
   let window = windows.single().expect("no primary window");
   let width = window.width();
   let height = window.height();
-  let mut sim_region = core::SimRegion::new(width, height, 40.0);
+  let mut sim_region = core::SimRegion::new(width, height, INTERACTION_RADIUS);
 
   let circle_mesh = meshes.add(Mesh::try_from(Sphere::new(args.particle_size)).unwrap());
   let gizmo_mesh = meshes.add(Mesh::try_from(Sphere::new(args.particle_size + 3.0)).unwrap());
@@ -77,7 +78,7 @@ pub fn init_particles(
         core::ParticleBundle {
           acceleration: core::Acceleration(Vec2::new(0.0, 0.0)),
           last_pos: core::LastPosition(
-            (translation - core::DELTA_TIME as f32 * starting_velocity).truncate(),
+            (translation - DELTA_TIME as f32 * starting_velocity).truncate(),
           ),
           interaction,
         },

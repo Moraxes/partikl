@@ -4,11 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 
-pub use crate::args::*;
-
-pub const DELTA_TIME: f64 = 0.01;
-pub const VELOCITY_THRESHOLD: f32 = 0.0001;
-
 #[derive(Component, Default, Debug)]
 pub struct Acceleration(pub Vec2);
 #[derive(Component, Default, Debug)]

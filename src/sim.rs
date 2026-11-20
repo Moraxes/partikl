@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy::utils::Parallel;
 use bevy::window::PrimaryWindow;
 
+use crate::config::*;
 use crate::core::*;
 
 pub fn compute_forces(
@@ -35,20 +36,20 @@ pub fn compute_forces(
               other_transform.translation.xy(),
             );
             let distance_sq: f32 = delta.length_squared();
-            if distance_sq > 1600.0 {
+            if distance_sq > INTERACTION_RADIUS * INTERACTION_RADIUS {
               return acceleration;
             }
             let distance = distance_sq.sqrt();
             let distance_unit_vector = delta / distance;
-            if distance < 10.0 {
+            if distance < REPULSION_RADIUS {
               let safety_margin_repulsion_force =
-                (1000.0 - 100.0 * distance) * distance_unit_vector;
+                REPULSION_STRENGTH * (REPULSION_RADIUS - distance) * distance_unit_vector;
               acceleration -= safety_margin_repulsion_force;
             } else {
               acceleration += triangular_kernel(
                 particle_spec.interactions[other_interaction.0].force_coeffs[interaction.0],
-                30.0,
-                10.0,
+                KERNEL_MIDDLE,
+                KERNEL_WIDTH,
                 distance,
               ) * distance_unit_vector;
             }
@@ -79,19 +80,9 @@ pub fn compute_friction(
       last_pos.0 = transform.translation.xy();
     } else {
       let velocity_length = velocity.length();
-      acceleration.0 -= 0.01 * velocity * velocity_length;
+      acceleration.0 -= FRICTION_COEFF * velocity * velocity_length;
     }
   }
-}
-
-#[allow(dead_code)]
-fn zigzag_kernel(magnitude: f32, middle: f32, width: f32, x: f32) -> f32 {
-  magnitude * unit_zigzag((x - middle) / width)
-}
-
-#[allow(dead_code)]
-fn unit_zigzag(x: f32) -> f32 {
-  triangular_kernel(-1.0, -1.0, 2.0, 3.0 * x) + triangular_kernel(1.0, 1.0, 2.0, 3.0 * x)
 }
 
 fn triangular_kernel(magnitude: f32, middle: f32, width: f32, x: f32) -> f32 {

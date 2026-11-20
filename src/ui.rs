@@ -5,6 +5,7 @@ use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowMode};
 
+use crate::args::ProgramArgs;
 use crate::core::*;
 
 #[derive(Component)]

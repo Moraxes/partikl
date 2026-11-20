@@ -26,15 +26,15 @@ pub struct ProgramArgs {
   ///
   /// This file contains the force coefficient matrix and other parameters of
   /// the simulation that are considered "interesting", meaning they influence
-  /// large-scale patterns that emerge during the simulation. Definitions of
-  /// particle color, arrangement, initial velocity, and dish size or shape can
-  /// be specified by the <scene> file.
+  /// large-scale patterns that emerge during the simulation. Particle color,
+  /// arrangement, initial velocity, and dish size are not configurable yet.
   ///
-  /// If present, --no-dump-interaction spec is assumed, and --num-types is
+  /// If present, --no-dump-interaction-spec is assumed, and --num-types is
   /// ignored.
   #[arg()]
   pub interaction_spec: Option<PathBuf>,
 
+  /// Number of particle types, used when generating the interaction spec.
   #[arg(short = 't', long, default_value_t = 3)]
   pub num_types: usize,
 
@@ -46,6 +46,7 @@ pub struct ProgramArgs {
   #[arg(long)]
   pub no_dump_interaction_spec: bool,
 
-  #[arg(short = 's', default_value_t = 2.0)]
+  /// Radius of each particle.
+  #[arg(short = 's', long, default_value_t = 2.0)]
   pub particle_size: f32,
 }
