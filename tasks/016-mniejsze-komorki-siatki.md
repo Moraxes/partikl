@@ -20,6 +20,10 @@ links:
   target: 5ac5374
   at: 2026-11-20T21:15:37
   note: 'perf: grid cells of half the interaction radius with a 5×5 neighbourhood'
+- kind: report
+  target: .artifacts/reports/perf-report.md
+  at: 2026-11-20T21:17:16
+  note: sekcja Tryb szybki
 ---
 Wynik: komórki R/2 i sąsiedztwo 5×5 (`5ac5374`): krok ×1,07 / ×0,91 / ×0,85 (macierze 23 / 6 / 4; +15 µs, −31 µs, −162 µs). Po drodze tańszy podział pracy sił (`7c69d0c`): krok ×0,93 przy macierzy 23, bez zmian przy 6 i 4. Zasięg 3 (komórki R/3, 7×7) odrzucony.
 
