@@ -1,7 +1,7 @@
 ---
 id: 11
 title: Zapis stanu benchmarku
-summary: Stan symulacji po offsecie z cache zamiast symulowania 4096 kroków; pomiar przed/po na tym samym stanie
+summary: 'sim --state i ab.sh --state: pomiar od zapisanego stanu, bit w bit; 0,8 s zamiast 4,2 s'
 status: doing
 priority: later
 branch: main
