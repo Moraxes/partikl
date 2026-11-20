@@ -71,6 +71,8 @@ struct PairBuffer {
   first: usize,
   xs: Vec<f32>,
   ys: Vec<f32>,
+  /// Liczba sąsiadów „do przodu” (tylko przy uśrednianiu sił).
+  counts: Vec<f32>,
 }
 
 /// Współczynniki sił w kolejności siatki na jeden krok, podział pracy i wyniki; bufory
@@ -82,6 +84,9 @@ pub struct ForceData {
   chunks: Vec<Range<usize>>,
   /// Siła na cząstkę w kolejności siatki.
   forces: Vec<Vec2>,
+  /// Liczba sąsiadów w zasięgu na cząstkę w kolejności siatki (z wagą próbkowania); tylko przy
+  /// uśrednianiu sił, inaczej pusta.
+  counts: Vec<f32>,
   /// Praca (pary plus stały koszt na cząstkę) zmierzona w poprzednim kroku; na start duża,
   /// więc pierwszy krok dzieli się drobno.
   last_work: u64,
@@ -103,6 +108,7 @@ impl Default for ForceData {
     ForceData {
       chunks: vec![],
       forces: vec![],
+      counts: vec![],
       last_work: u64::MAX,
       coeffs: vec![],
       stride: 0,
@@ -182,32 +188,41 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
   if symmetric && data.buffers.len() < parts {
     data.buffers.resize_with(parts, PairBuffer::default);
   }
-  let ForceData { coeffs, out_coeffs, stride, chunks, forces, last_work, buffers, step, .. } = &mut *data;
+  let ForceData { coeffs, out_coeffs, stride, chunks, forces, counts, last_work, buffers, step, .. } = &mut *data;
   let step = *step;
   forces.clear();
   forces.resize(n, Vec2::ZERO);
+  counts.clear();
+  counts.resize(if AVERAGE { n } else { 0 }, 0.0);
   let (coeffs, out_coeffs, stride, grid) = (&coeffs[..], &out_coeffs[..], *stride, &*grid);
 
   let work = pool.scope(|scope| {
     let mut rest = &mut forces[..];
+    let mut rest_counts = &mut counts[..];
     let mut buffers = buffers.iter_mut();
     for particles in chunks.iter() {
       let (chunk, tail) = rest.split_at_mut(particles.len());
       rest = tail;
+      let (chunk_counts, tail) = rest_counts.split_at_mut(if AVERAGE { particles.len() } else { 0 });
+      rest_counts = tail;
+      let out = Out { forces: chunk, counts: chunk_counts };
       let particles = particles.clone();
       if symmetric {
         let buffer = buffers.next().unwrap();
         scope.spawn(async move {
           let window = forward_window(grid, &particles);
+          let len = window.len() + SpatialGrid::PADDING;
           buffer.first = particles.start;
           buffer.xs.clear();
-          buffer.xs.resize(window.len() + SpatialGrid::PADDING, 0.0);
+          buffer.xs.resize(len, 0.0);
           buffer.ys.clear();
-          buffer.ys.resize(window.len() + SpatialGrid::PADDING, 0.0);
-          pair_forces_in_range(grid, coeffs, out_coeffs, stride, particles, chunk, buffer, step)
+          buffer.ys.resize(len, 0.0);
+          buffer.counts.clear();
+          buffer.counts.resize(if AVERAGE { len } else { 0 }, 0.0);
+          pair_forces_in_range::<AVERAGE>(grid, coeffs, out_coeffs, stride, particles, out, buffer, step)
         });
       } else {
-        scope.spawn(async move { forces_in_range(grid, coeffs, stride, particles, chunk, step) });
+        scope.spawn(async move { forces_in_range::<AVERAGE>(grid, coeffs, stride, particles, out, step) });
       }
     }
   });
@@ -219,6 +234,17 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
       for ((force, x), y) in window.iter_mut().zip(&buffer.xs).zip(&buffer.ys) {
         *force += Vec2::new(*x, *y);
       }
+      if AVERAGE {
+        for (count, c) in counts[buffer.first..buffer.first + len].iter_mut().zip(&buffer.counts) {
+          *count += c;
+        }
+      }
+    }
+  }
+  if AVERAGE {
+    // Bez sąsiadów `AVERAGE_NEIGHBOURS / 0 = ∞`, więc skala 1.
+    for (force, count) in forces.iter_mut().zip(counts.iter()) {
+      *force *= (AVERAGE_NEIGHBOURS / count).min(1.0);
     }
   }
 
@@ -245,10 +271,24 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
   }
 }
 
-/// Siły dla cząstek `particles` (indeksy siatki); `out[i - particles.start]` dla cząstki `i`.
+/// Wyniki dla zakresu cząstek (indeks względem początku zakresu): siły i, przy uśrednianiu,
+/// liczby sąsiadów (inaczej `counts` puste).
+struct Out<'a> {
+  forces: &'a mut [Vec2],
+  counts: &'a mut [f32],
+}
+
+impl Out<'_> {
+  fn cell(&mut self, range: Range<usize>, average: bool) -> Out<'_> {
+    let counts = if average { &mut self.counts[range.clone()] } else { &mut [][..] };
+    Out { forces: &mut self.forces[range], counts }
+  }
+}
+
+/// Siły dla cząstek `particles` (indeksy siatki); `out` od cząstki `particles.start`.
 /// Zwraca pracę: liczbę kandydatów plus stały koszt na cząstkę (dla podziału w następnym
 /// kroku).
-fn forces_in_range(grid: &SpatialGrid, coeffs: &[f32], stride: usize, particles: Range<usize>, out: &mut [Vec2], step: u64) -> u64 {
+fn forces_in_range<const AVERAGE: bool>(grid: &SpatialGrid, coeffs: &[f32], stride: usize, particles: Range<usize>, mut out: Out, step: u64) -> u64 {
   let mut work = 0u64;
   let starts = grid.cell_starts();
   // Pierwsza komórka zakresu: ostatnia, która zaczyna się nie dalej niż `particles.start`.
@@ -261,12 +301,12 @@ fn forces_in_range(grid: &SpatialGrid, coeffs: &[f32], stride: usize, particles:
     work += (cell_end - i) as u64 * (candidates as u64 + 8);
     let every = Sample::every(candidates);
     let cell = OneSidedCell { grid, coeffs, stride, runs, every, step };
-    let out = &mut out[i - particles.start..cell_end - particles.start];
+    let out = out.cell(i - particles.start..cell_end - particles.start, AVERAGE);
     // Wariant bez próbkowania osobno: ten sam kod co bez ograniczenia sąsiadów.
     if every == 1 {
-      cell.forces::<false>(i..cell_end, out);
+      cell.forces::<false, AVERAGE>(i..cell_end, out);
     } else {
-      cell.forces::<true>(i..cell_end, out);
+      cell.forces::<true, AVERAGE>(i..cell_end, out);
     }
     i = cell_end;
     c += 1;
@@ -290,7 +330,7 @@ struct PairCell<'a> {
 
 impl PairCell<'_> {
   #[inline(always)]
-  fn forces<const SAMPLED: bool>(&self, particles: Range<usize>, out: &mut [Vec2], bx: &mut [f32], by: &mut [f32], first: usize) {
+  fn forces<const SAMPLED: bool, const AVERAGE: bool>(&self, particles: Range<usize>, out: Out, buffer: &mut PairBuffer) {
     let (xs, ys, starts, types) = (self.grid.xs(), self.grid.ys(), self.grid.cell_starts(), self.grid.types());
     let stride = self.stride;
     for (k, i) in particles.enumerate() {
@@ -299,16 +339,19 @@ impl PairCell<'_> {
       let cout = &self.out_coeffs[me * stride..(me + 1) * stride];
       let sample = if SAMPLED { Sample::new(self.every, i, self.step) } else { Sample::ALL };
       let mut sum = Kernel::new(Vec2::new(xs[i], ys[i]));
-      sum.pair_run::<SAMPLED>(xs, ys, cin, cout, i + 1..self.full_end, bx, by, first, sample);
+      sum.pair_run::<SAMPLED, AVERAGE>(xs, ys, cin, cout, i + 1..self.full_end, buffer, sample);
       for run in self.forward {
         let range = starts[run.first as usize] as usize..starts[run.last as usize] as usize;
-        sum.pair_run::<SAMPLED>(xs, ys, cin, cout, range, bx, by, first, sample);
+        sum.pair_run::<SAMPLED, AVERAGE>(xs, ys, cin, cout, range, buffer, sample);
       }
       for run in self.seam {
         let range = starts[run.first as usize] as usize..starts[run.last as usize] as usize;
-        sum.run::<true, SAMPLED>(xs, ys, cin, range, run.shift, sample);
+        sum.run::<true, SAMPLED, AVERAGE>(xs, ys, cin, range, run.shift, sample);
       }
-      out[k] = sum.total();
+      out.forces[k] = sum.total();
+      if AVERAGE {
+        out.counts[k] = sum.count();
+      }
     }
   }
 }
@@ -325,7 +368,7 @@ struct OneSidedCell<'a> {
 
 impl OneSidedCell<'_> {
   #[inline(always)]
-  fn forces<const SAMPLED: bool>(&self, particles: Range<usize>, out: &mut [Vec2]) {
+  fn forces<const SAMPLED: bool, const AVERAGE: bool>(&self, particles: Range<usize>, out: Out) {
     let (xs, ys, starts, types) = (self.grid.xs(), self.grid.ys(), self.grid.cell_starts(), self.grid.types());
     for (k, i) in particles.enumerate() {
       let me = types[i].0;
@@ -337,12 +380,15 @@ impl OneSidedCell<'_> {
         let end = starts[run.last as usize] as usize;
         // Przebiegi przez szew są tylko przy krawędziach świata; reszta bez dodawania.
         if run.shift == Vec2::ZERO {
-          sum.run::<false, SAMPLED>(xs, ys, coeffs, start..end, Vec2::ZERO, sample);
+          sum.run::<false, SAMPLED, AVERAGE>(xs, ys, coeffs, start..end, Vec2::ZERO, sample);
         } else {
-          sum.run::<true, SAMPLED>(xs, ys, coeffs, start..end, run.shift, sample);
+          sum.run::<true, SAMPLED, AVERAGE>(xs, ys, coeffs, start..end, run.shift, sample);
         }
       }
-      out[k] = sum.total();
+      out.forces[k] = sum.total();
+      if AVERAGE {
+        out.counts[k] = sum.count();
+      }
     }
   }
 }
@@ -364,20 +410,19 @@ fn forward_window(grid: &SpatialGrid, particles: &Range<usize>) -> Range<usize> 
 /// Jak `forces_in_range`, ale każda para raz: pary w tej samej komórce (dalsze cząstki) i z
 /// komórek „do przodu” (`SpatialGrid::half_runs`) dają siłę obu cząstkom, druga trafia do
 /// `buffer` (indeksy siatki); pary przez szew jednostronnie, jak zawsze.
-fn pair_forces_in_range(
+#[allow(clippy::too_many_arguments)]
+fn pair_forces_in_range<const AVERAGE: bool>(
   grid: &SpatialGrid,
   coeffs: &[f32],
   out_coeffs: &[f32],
   stride: usize,
   particles: Range<usize>,
-  out: &mut [Vec2],
+  mut out: Out,
   buffer: &mut PairBuffer,
   step: u64,
 ) -> u64 {
   let mut work = 0u64;
   let starts = grid.cell_starts();
-  let PairBuffer { first, xs: bx, ys: by } = buffer;
-  let first = *first;
   let mut c = starts.partition_point(|&s| s as usize <= particles.start) - 1;
   let mut i = particles.start;
   while i < particles.end {
@@ -388,12 +433,12 @@ fn pair_forces_in_range(
     let (forward, seam) = grid.half_runs(c);
     let every = Sample::every(candidates);
     let cell = PairCell { grid, coeffs, out_coeffs, stride, forward, seam, full_end, every, step };
-    let out = &mut out[i - particles.start..cell_end - particles.start];
+    let out = out.cell(i - particles.start..cell_end - particles.start, AVERAGE);
     // Wariant bez próbkowania osobno: ten sam kod co bez ograniczenia sąsiadów.
     if every == 1 {
-      cell.forces::<false>(i..cell_end, out, bx, by, first);
+      cell.forces::<false, AVERAGE>(i..cell_end, out, buffer);
     } else {
-      cell.forces::<true>(i..cell_end, out, bx, by, first);
+      cell.forces::<true, AVERAGE>(i..cell_end, out, buffer);
     }
     i = cell_end;
     c += 1;
@@ -412,6 +457,8 @@ struct Kernel {
   y: Lanes,
   sum_x: Lanes,
   sum_y: Lanes,
+  /// Sąsiedzi w zasięgu (z wagą próbkowania); liczeni tylko przy uśrednianiu sił.
+  count: Lanes,
 }
 
 impl Kernel {
@@ -421,6 +468,7 @@ impl Kernel {
       y: Lanes::splat(position.y),
       sum_x: Lanes::ZERO,
       sum_y: Lanes::ZERO,
+      count: Lanes::ZERO,
     }
   }
 
@@ -428,7 +476,8 @@ impl Kernel {
   /// (`NeighbourRun::shift`; `SHIFTED == false` tylko dla zerowego).
   #[inline(always)]
   /// `SAMPLED`: tylko wektory z `sample` (z wagą); bez tego wszystkie, `sample` pomijane.
-  fn run<const SHIFTED: bool, const SAMPLED: bool>(&mut self, xs: &[f32], ys: &[f32], coeffs: &[f32], range: Range<usize>, shift: Vec2, sample: Sample) {
+  /// `AVERAGE`: także liczba sąsiadów (`count`).
+  fn run<const SHIFTED: bool, const SAMPLED: bool, const AVERAGE: bool>(&mut self, xs: &[f32], ys: &[f32], coeffs: &[f32], range: Range<usize>, shift: Vec2, sample: Sample) {
     let (shift_x, shift_y) = (Lanes::splat(shift.x), Lanes::splat(shift.y));
     let (offset, every) = if SAMPLED { (sample.offset, sample.every) } else { (0, 1) };
     let mut i = range.start + offset * LANES;
@@ -440,9 +489,9 @@ impl Kernel {
         dy += shift_y;
       }
       if SAMPLED {
-        self.add::<true>(dx, dy, load(&coeffs[i..]) * sample.weight, sample.weight, range.end - i);
+        self.add::<true, AVERAGE>(dx, dy, load(&coeffs[i..]) * sample.weight, sample.weight, range.end - i);
       } else {
-        self.add::<false>(dx, dy, load(&coeffs[i..]), Lanes::ONE, range.end - i);
+        self.add::<false, AVERAGE>(dx, dy, load(&coeffs[i..]), Lanes::ONE, range.end - i);
       }
       i += every * LANES;
     }
@@ -453,7 +502,7 @@ impl Kernel {
   /// Stałe wektory muszą być `const`: `Lanes::splat` ze stałą w pętli kompiluje się do
   /// `memcpy` z puli stałych przy każdym użyciu, co podwajało czas pętli.
   #[inline(always)]
-  fn add<const SAMPLED: bool>(&mut self, dx: Lanes, dy: Lanes, coeffs: Lanes, weight: Lanes, remaining: usize) {
+  fn add<const SAMPLED: bool, const AVERAGE: bool>(&mut self, dx: Lanes, dy: Lanes, coeffs: Lanes, weight: Lanes, remaining: usize) {
     const LANE_INDEX: Lanes = Lanes::new([0., 1., 2., 3., 4., 5., 6., 7.]);
     const RADIUS_SQ: Lanes = Lanes::splat(INTERACTION_RADIUS * INTERACTION_RADIUS);
     const REPULSION: Lanes = Lanes::splat(-REPULSION_STRENGTH);
@@ -471,25 +520,28 @@ impl Kernel {
     // Poza zasięgiem `dx / distance` może być NaN, więc maska na samym wkładzie.
     self.sum_x += valid.select(magnitude * (dx / distance), Lanes::ZERO);
     self.sum_y += valid.select(magnitude * (dy / distance), Lanes::ZERO);
+    if AVERAGE {
+      self.count += valid.select(weight, Lanes::ZERO);
+    }
   }
 
   /// Pary z zakresu tablic (bez przesunięcia) liczone raz: siła od sąsiadów do sumy tej
   /// cząstki, siła od tej cząstki na sąsiadów odjęta (przeciwny kierunek) w `bx`, `by`
-  /// (okno od indeksu `first`).
+  /// (okno od indeksu `buffer.first`); przy `AVERAGE` para liczy się jako sąsiad obu cząstek.
   #[inline(always)]
   #[allow(clippy::too_many_arguments)]
-  fn pair_run<const SAMPLED: bool>(
+  fn pair_run<const SAMPLED: bool, const AVERAGE: bool>(
     &mut self,
     xs: &[f32],
     ys: &[f32],
     cin: &[f32],
     cout: &[f32],
     range: Range<usize>,
-    bx: &mut [f32],
-    by: &mut [f32],
-    first: usize,
+    buffer: &mut PairBuffer,
     sample: Sample,
   ) {
+    let PairBuffer { first, xs: bx, ys: by, counts: bc } = buffer;
+    let first = *first;
     const LANE_INDEX: Lanes = Lanes::new([0., 1., 2., 3., 4., 5., 6., 7.]);
     const RADIUS_SQ: Lanes = Lanes::splat(INTERACTION_RADIUS * INTERACTION_RADIUS);
     const REPULSION: Lanes = Lanes::splat(-REPULSION_STRENGTH);
@@ -523,12 +575,23 @@ impl Kernel {
       let out_y = load(&by[k..]) - valid.select(mag_out * uy, Lanes::ZERO);
       bx[k..k + LANES].copy_from_slice(&out_x.to_array());
       by[k..k + LANES].copy_from_slice(&out_y.to_array());
+      if AVERAGE {
+        let weight = if SAMPLED { sample.weight } else { Lanes::ONE };
+        let counted = valid.select(weight, Lanes::ZERO);
+        self.count += counted;
+        let out_count = load(&bc[k..]) + counted;
+        bc[k..k + LANES].copy_from_slice(&out_count.to_array());
+      }
       j += every * LANES;
     }
   }
 
   fn total(&self) -> Vec2 {
     Vec2::new(self.sum_x.reduce_add(), self.sum_y.reduce_add())
+  }
+
+  fn count(&self) -> f32 {
+    self.count.reduce_add()
   }
 }
 

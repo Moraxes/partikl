@@ -21,5 +21,11 @@ pub const REPULSION_RADIUS: f32 = 10.0;
 /// Siła twardego odpychania na jednostkę wnikania w `REPULSION_RADIUS`.
 pub const REPULSION_STRENGTH: f32 = 100.0;
 
+/// Przy uśrednianiu sił (`SimOptions::average_forces`): siła cząstki z więcej sąsiadami w
+/// zasięgu niż tyle jest mnożona przez `AVERAGE_NEIGHBOURS / sąsiedzi`, więc nie rośnie z
+/// gęstością. Sztywność odpychania jest wtedy co najwyżej `AVERAGE_NEIGHBOURS ·
+/// REPULSION_STRENGTH`, stabilna przy `DELTA_TIME` dla wartości poniżej ok. 400.
+pub const AVERAGE_NEIGHBOURS: f32 = 64.0;
+
 /// Współczynnik tarcia kwadratowego (proporcjonalnego do |v|·v).
 pub const FRICTION_COEFF: f32 = 0.01;
