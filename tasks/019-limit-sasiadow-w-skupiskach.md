@@ -14,6 +14,10 @@ links:
   target: f2ea0ba
   at: 2026-11-20T21:37:16
   note: 'perf: sample neighbours of particles with more than 512 candidates'
+- kind: image
+  target: .artifacts/reports/img/019-m4-przed-vs-limit512.png
+  at: 2026-11-20T21:38:09
+  note: m4 przed/po, limit 512
 ---
 Wynik: próbkowanie sąsiadów powyżej 512 kandydatów (`f2ea0ba`): krok ×1,01 / ×0,97 / ×0,47 (macierze 23 / 6 / 4); 23 i 6 nie są próbkowane. Gęste skupiska bardziej zaszumione. Do decyzji użytkownika: limit (`NEIGHBOUR_CAP` w `src/sim/forces.rs`) albo wycofanie.
 
