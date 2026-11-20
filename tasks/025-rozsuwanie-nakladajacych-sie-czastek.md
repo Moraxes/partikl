@@ -2,12 +2,13 @@
 id: 25
 title: Rozsuwanie nakładających się cząstek
 summary: Poprawka pozycji par bliżej niż zasięg odpychania zamiast sprężyny
-status: todo
+status: doing
 priority: soon
 branch: main
 blocked_by:
 - 22
 created: 2026-11-20T23:12:22
+worked: 2026-11-20T23:39:27
 edited: 2026-11-20T23:20:42
 ---
 Cel: tryb `Overlap::Resolve` (drugi z trzech trybów nakładania, obok sprężyny i zasięgu od gęstości 026, jeden klawisz cyklicznie). Po całkowaniu i zawinięciu pary bliżej niż `REPULSION_RADIUS` rozsuwane poprawką pozycji (po pół wnikania, poprawki sumowane, potem stosowane: wynik niezależny od kolejności); sprężyna odpychania wyłączona w jądrze. Następny krok: przebiegi 3×3 komórek w siatce (komórka 20 ≥ zasięg 10), system z run_if.
