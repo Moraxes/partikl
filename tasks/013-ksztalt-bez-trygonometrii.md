@@ -2,12 +2,12 @@
 id: 13
 title: Kształt bez trygonometrii
 summary: 'Obrót z wektora prędkości: update_shape ×0,15–0,19, krok ×0,72–0,87; równoległość odrzucona'
-status: doing
+status: done
 priority: now
 branch: main
 part_of: 12
 created: 2026-11-20T20:29:44
-worked: 2026-11-20T20:43:58
+worked: 2026-11-20T20:45:52
 edited: 2026-11-20T20:45:52
 links:
 - kind: commit
