@@ -2,7 +2,7 @@
 id: 24
 title: Uśrednianie sił gęstością
 summary: 'Siła razy min(1, N0/N): ograniczona sztywność i przyciąganie w skupiskach'
-status: todo
+status: doing
 priority: soon
 branch: main
 blocked_by:
