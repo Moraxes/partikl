@@ -23,6 +23,10 @@ links:
   target: .artifacts/profiles/sim-quick-6808821-m4.json.gz
   at: 2026-11-20T20:29:44
   note: macierz 4
+- kind: report
+  target: .artifacts/reports/perf-report.md
+  at: 2026-11-20T22:44:36
+  note: sekcja Tryb szybki
 ---
 Wynik: krok przy n=9000 (tryb `--quick`, iloczyn etapów) ×0,64 / ×0,61 / ×0,33 dla macierzy 23 / 6 / 4: z 392 / 478 / 1329 µs do ok. 223 / 290 / 426 µs. Bez próbkowania sąsiadów (zadanie 019, zmienia wygląd gęstych skupisk) macierz 4 ×0,70 (ok. 890 µs). Etapy i tabele w raporcie, sekcja „Tryb szybki”.
 
