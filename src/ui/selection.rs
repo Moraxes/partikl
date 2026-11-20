@@ -84,3 +84,6 @@ pub fn select_on_click(
     }
   }
 }
+
+#[cfg(test)]
+mod tests;

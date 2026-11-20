@@ -131,3 +131,6 @@ impl SpatialGrid {
     )
   }
 }
+
+#[cfg(test)]
+mod tests;

@@ -167,3 +167,8 @@ pub fn handle_mouse_input(
     }
   }
 }
+
+#[cfg(test)]
+pub(crate) mod test_util;
+#[cfg(test)]
+mod tests;
