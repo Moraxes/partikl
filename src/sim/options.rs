@@ -57,3 +57,6 @@ impl SimOptions {
     self.average_forces == average && self.overlap as u8 == overlap
   }
 }
+
+#[cfg(test)]
+mod tests;
