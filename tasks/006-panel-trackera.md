@@ -13,4 +13,8 @@ links:
   target: /Users/maciej/.claude/dev-mods/fa14590a-abb5-46d2-9f9c-614cae415ac1/track-panel
   at: 2026-11-20T18:51:45
   note: mod (poza repo)
+- kind: code
+  target: /Users/maciej/repos/track/claude-plugin
+  at: 2026-11-20T18:54:57
+  note: wtyczka w repo track (marketplace lokalny)
 ---
