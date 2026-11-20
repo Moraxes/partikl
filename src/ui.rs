@@ -8,6 +8,27 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowMode};
 use crate::args::ProgramArgs;
 use crate::core::*;
 
+pub struct UiPlugin;
+
+impl Plugin for UiPlugin {
+  fn build(&self, app: &mut App) {
+    app
+      .add_plugins(FrameTimeDiagnosticsPlugin::default())
+      .add_systems(Startup, init_ui)
+      .add_systems(
+        Update,
+        (
+          crate::sim::select_on_click,
+          update_text,
+          exit_after_time,
+          handle_keyboard_input,
+          handle_mouse_input,
+          close_on_esc,
+        ),
+      );
+  }
+}
+
 #[derive(Component)]
 pub struct FpsText;
 

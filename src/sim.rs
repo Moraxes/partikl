@@ -6,16 +6,55 @@ use bevy::window::PrimaryWindow;
 use crate::config::*;
 use crate::core::*;
 
+/// Kolejność etapów kroku symulacji w `FixedUpdate`. Wykonują się tylko w stanie
+/// `SimState::Running`.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SimSet {
+  Forces,
+  Friction,
+  Integrate,
+  Wrap,
+  Shape,
+}
+
+pub struct SimPlugin;
+
+impl Plugin for SimPlugin {
+  fn build(&self, app: &mut App) {
+    app
+      .insert_resource(Time::<Fixed>::from_seconds(DELTA_TIME))
+      .init_state::<SimState>()
+      .configure_sets(
+        FixedUpdate,
+        (
+          SimSet::Forces,
+          SimSet::Friction,
+          SimSet::Integrate,
+          SimSet::Wrap,
+          SimSet::Shape,
+        )
+          .chain()
+          .run_if(in_state(SimState::Running)),
+      )
+      .add_systems(
+        FixedUpdate,
+        (
+          compute_forces.in_set(SimSet::Forces),
+          compute_friction.in_set(SimSet::Friction),
+          integrate.in_set(SimSet::Integrate),
+          wrap_around.in_set(SimSet::Wrap),
+          update_shape.in_set(SimSet::Shape),
+        ),
+      );
+  }
+}
+
 pub fn compute_forces(
   particle_spec: Res<ParticleSpec>,
   sim_region: Res<SimRegion>,
-  state: Res<State<SimState>>,
   mut particles_out: Query<(Entity, &Transform, &mut Acceleration, &InteractionId)>,
   particles_in: Query<(Entity, &Transform, &InteractionId)>,
 ) {
-  if state.get() == &SimState::Paused {
-    return;
-  }
   let mut queue: Parallel<Vec<(Entity, Vec2)>> = Parallel::default();
   particles_out.par_iter_mut().for_each_init(
     || queue.borrow_local_mut(),
@@ -68,12 +107,8 @@ pub fn compute_forces(
 }
 
 pub fn compute_friction(
-  state: Res<State<SimState>>,
   mut particles: Query<(&Transform, &mut LastPosition, &mut Acceleration)>,
 ) {
-  if state.get() == &SimState::Paused {
-    return;
-  }
   for (transform, mut last_pos, mut acceleration) in particles.iter_mut() {
     let velocity = (transform.translation.xy() - last_pos.0) / DELTA_TIME as f32;
     if velocity.length_squared() < VELOCITY_THRESHOLD {
@@ -94,12 +129,8 @@ fn unit_triangle(x: f32) -> f32 {
 }
 
 pub fn integrate(
-  state: Res<State<SimState>>,
   mut query: Query<(&mut Acceleration, &mut Transform, &mut LastPosition)>,
 ) {
-  if state.get() == &SimState::Paused {
-    return;
-  }
   let dt_sq = (DELTA_TIME * DELTA_TIME) as f32;
   for (mut acceleration, mut transform, mut last_pos) in query.iter_mut() {
     let new_pos = 2.0 * transform.translation.xy() - last_pos.0 + acceleration.0 * dt_sq;
@@ -110,13 +141,9 @@ pub fn integrate(
 }
 
 pub fn wrap_around(
-  state: Res<State<SimState>>,
   mut sim_region: ResMut<SimRegion>,
   mut query: Query<(Entity, &mut Transform, &mut LastPosition)>,
 ) {
-  if state.get() == &SimState::Paused {
-    return;
-  }
   for (entity, mut transform, mut last_pos) in query.iter_mut() {
     let x_old = last_pos.0.x;
     let y_old = last_pos.0.y;
@@ -130,12 +157,8 @@ pub fn wrap_around(
 }
 
 pub fn update_shape(
-  state: Res<State<SimState>>,
   mut query: Query<(&mut Transform, &LastPosition)>,
 ) {
-  if state.get() == &SimState::Paused {
-    return;
-  }
   for (mut transform, last_pos) in query.iter_mut() {
     let velocity = transform.translation.xy() - last_pos.0;
     let velocity_length_sq = velocity.length_squared();

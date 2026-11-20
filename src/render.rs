@@ -7,6 +7,14 @@ use rand::prelude::*;
 use crate::config::{DELTA_TIME, INTERACTION_RADIUS};
 use crate::core;
 
+pub struct RenderPlugin;
+
+impl Plugin for RenderPlugin {
+  fn build(&self, app: &mut App) {
+    app.add_systems(Startup, (init_materials, init_particles).chain());
+  }
+}
+
 fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
   let phase = 360.0 * rng.random::<f32>();
   let spread = 60.0 + 300.0 * rng.random::<f32>();
