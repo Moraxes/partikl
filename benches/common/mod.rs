@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
+use bevy::app::TaskPoolPlugin;
 use bevy::ecs::system::SystemId;
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
@@ -25,6 +26,7 @@ use serde_json::{Value, json};
 use partikl::config::{DELTA_TIME, INTERACTION_RADIUS};
 use partikl::sim::{
   Acceleration, InteractionId, LastPosition, ParticleBundle, SimPlugin, SpatialGrid, compute_forces,
+  task_pool_options,
   compute_friction, integrate, update_shape, wrap_around,
 };
 use partikl::spec::{Interaction, ParticleSpec};
@@ -136,7 +138,12 @@ pub const SYSTEM_NAMES: [&str; 5] =
 impl Sim {
   pub fn new(sample: &Sample) -> Self {
     let mut app = App::new();
-    app.add_plugins((MinimalPlugins, StatesPlugin, SimPlugin)).insert_resource(sample.spec());
+    app
+      .add_plugins((
+        MinimalPlugins.set(TaskPoolPlugin { task_pool_options: task_pool_options() }),
+        StatesPlugin,
+        SimPlugin,
+      )).insert_resource(sample.spec());
 
     let mut rng = rng(sample.placement_seed);
     let mut grid = SpatialGrid::new(WORLD.x, WORLD.y, INTERACTION_RADIUS);

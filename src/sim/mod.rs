@@ -1,5 +1,8 @@
+use bevy::app::{TaskPoolOptions, TaskPoolThreadAssignmentPolicy};
+use bevy::ecs::batching::BatchingStrategy;
 use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
+use bevy::tasks::available_parallelism;
 
 mod components;
 mod grid;
@@ -27,6 +30,27 @@ pub enum SimSet {
   Wrap,
   Shape,
 }
+
+/// Pule wątków dla `TaskPoolPlugin`: pula obliczeniowa na wszystkie rdzenie. Domyślnie Bevy
+/// oddaje część rdzeni pulom IO i async (na 10 rdzeniach zostają 4 na obliczenia), a z nich
+/// korzysta tylko `compute_forces`; pule IO i async zostają domyślne i prawie nie pracują.
+pub fn task_pool_options() -> TaskPoolOptions {
+  TaskPoolOptions {
+    compute: TaskPoolThreadAssignmentPolicy {
+      min_threads: available_parallelism(),
+      ..TaskPoolOptions::default().compute
+    },
+    ..default()
+  }
+}
+
+/// Podział `compute_forces` na partie: wiele małych partii na wątek, żeby wątki, które
+/// skończą wcześniej (rdzenie wydajne, cząstki poza skupiskami), przejmowały resztę pracy.
+/// Cząstka w skupisku ma kilkadziesiąt razy więcej par niż reszta.
+const FORCES_BATCHING: BatchingStrategy = BatchingStrategy {
+  batch_size_limits: 64..usize::MAX,
+  batches_per_thread: 16,
+};
 
 pub struct SimPlugin;
 
@@ -81,6 +105,7 @@ pub fn compute_forces(
 
   particles
     .par_iter_mut()
+    .batching_strategy(FORCES_BATCHING)
     .for_each(|(entity, transform, mut acceleration, interaction)| {
       let position = transform.translation.xy();
       let row = &coeffs[interaction.0 * types..(interaction.0 + 1) * types];
