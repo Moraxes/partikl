@@ -279,3 +279,19 @@ fn match_brute_force_after_moves_across_edges() {
     }
   }
 }
+
+#[test]
+fn precomputed_neighbourhood_matches_computed_in_the_same_order() {
+  for (width, height) in [(400.0, 400.0), (500.0, 330.0), (2560.0, 1440.0)] {
+    let grid = SpatialGrid::new(width, height, INTERACTION_RADIUS);
+    for iy in grid.bottom..=grid.top {
+      for ix in grid.left..=grid.right {
+        let c = grid.cell_index((ix, iy)).unwrap();
+        let range = grid.neighbour_starts[c] as usize..grid.neighbour_starts[c + 1] as usize;
+        let precomputed: Vec<usize> = grid.neighbour_cells[range].iter().map(|&i| i as usize).collect();
+        let computed: Vec<usize> = grid.neighbour_cells_of((ix, iy)).collect();
+        assert_eq!(precomputed, computed, "komórka ({ix}, {iy}) w świecie {width}x{height}");
+      }
+    }
+  }
+}

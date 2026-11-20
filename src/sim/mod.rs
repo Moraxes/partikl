@@ -67,37 +67,45 @@ pub fn compute_forces(
   grid: Res<SpatialGrid>,
   mut particles: Query<(Entity, &Transform, &mut Acceleration, &InteractionId)>,
 ) {
+  // Współczynniki w płaskiej tablicy: wiersz typu cząstki `me` to siły, jakimi działają na
+  // nią typy kolejnych sąsiadów (`coeffs[me * types + other]`).
+  let types = particle_spec.interactions.len();
+  let coeffs: Vec<f32> = (0..types)
+    .flat_map(|me| {
+      particle_spec
+        .interactions
+        .iter()
+        .map(move |other| other.force_coeffs[me])
+    })
+    .collect();
+
   particles
     .par_iter_mut()
     .for_each(|(entity, transform, mut acceleration, interaction)| {
       let position = transform.translation.xy();
-      acceleration.0 += grid
-        .get_neighbours_by_position(position.x, position.y)
-        .fold(Vec2::ZERO, |mut acceleration, other| {
+      let row = &coeffs[interaction.0 * types..(interaction.0 + 1) * types];
+      let mut sum = Vec2::ZERO;
+      for cell in grid.get_neighbour_cells(grid.bucket_coords(position.x, position.y)) {
+        for other in cell {
           if other.entity == entity {
-            return acceleration;
+            continue;
           }
           let delta = grid.get_corrected_position_delta(position, other.position);
           let distance_sq: f32 = delta.length_squared();
           if distance_sq > INTERACTION_RADIUS * INTERACTION_RADIUS {
-            return acceleration;
+            continue;
           }
           let distance = distance_sq.sqrt();
           let distance_unit_vector = delta / distance;
           if distance < REPULSION_RADIUS {
-            let safety_margin_repulsion_force =
-              REPULSION_STRENGTH * (REPULSION_RADIUS - distance) * distance_unit_vector;
-            acceleration -= safety_margin_repulsion_force;
+            sum -= REPULSION_STRENGTH * (REPULSION_RADIUS - distance) * distance_unit_vector;
           } else {
-            acceleration += triangular_kernel(
-              particle_spec.interactions[other.interaction.0].force_coeffs[interaction.0],
-              KERNEL_MIDDLE,
-              KERNEL_WIDTH,
-              distance,
-            ) * distance_unit_vector;
+            sum += triangular_kernel(row[other.interaction.0], KERNEL_MIDDLE, KERNEL_WIDTH, distance)
+              * distance_unit_vector;
           }
-          acceleration
-        });
+        }
+      }
+      acceleration.0 += sum;
     });
 }
 

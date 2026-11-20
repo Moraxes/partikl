@@ -25,6 +25,10 @@ pub struct SpatialGrid {
   columns: usize,
   cells: Vec<Vec<Neighbour>>,
   slots: Vec<Slot>,
+  /// Sąsiedztwo każdej komórki policzone raz w `new`: indeksy komórek do przejrzenia (z
+  /// zawijaniem) dla komórki `c` to `neighbour_cells[neighbour_starts[c]..neighbour_starts[c + 1]]`.
+  neighbour_starts: Vec<u32>,
+  neighbour_cells: Vec<u32>,
 }
 
 /// Miejsce encji w siatce: komórka i pozycja w niej. `Slot::EMPTY`, jeśli encji nie ma.
@@ -75,7 +79,7 @@ impl SpatialGrid {
     let bottom = (-half_size.y / granularity).round() as i32;
     let columns = (right - left + 1) as usize;
     let rows = (top - bottom + 1) as usize;
-    SpatialGrid {
+    let mut grid = SpatialGrid {
       half_size,
       granularity,
       left,
@@ -85,7 +89,32 @@ impl SpatialGrid {
       columns,
       cells: vec![Vec::new(); columns * rows],
       slots: Vec::new(),
+      neighbour_starts: Vec::new(),
+      neighbour_cells: Vec::new(),
+    };
+    let mut starts = Vec::with_capacity(columns * rows + 1);
+    let mut cells = Vec::with_capacity(columns * rows * 9 + 64);
+    starts.push(0);
+    for iy in bottom..=top {
+      for ix in left..=right {
+        cells.extend(grid.neighbour_cells_of((ix, iy)).map(|c| c as u32));
+        starts.push(cells.len() as u32);
+      }
     }
+    grid.neighbour_starts = starts;
+    grid.neighbour_cells = cells;
+    grid
+  }
+
+  /// Indeksy komórek sąsiedztwa `(ix, iy)` z zawijaniem, w stałej kolejności (`OFFSETS`).
+  fn neighbour_cells_of(&self, (ix, iy): (i32, i32)) -> impl Iterator<Item = usize> + Clone + '_ {
+    Self::OFFSETS
+      .iter()
+      .flat_map(move |&(xoff, yoff)| {
+        let wrapped = self.get_wrapped_buckets(ix + xoff, iy + yoff);
+        wrapped.buckets.into_iter().take(wrapped.len)
+      })
+      .filter_map(|bucket| self.cell_index(bucket))
   }
 
   pub fn get_corrected_position_delta(&self, origin: Vec2, target: Vec2) -> Vec2 {
@@ -209,15 +238,26 @@ impl SpatialGrid {
 
   /// Cząstki z komórki `(ix, iy)` i ośmiu sąsiednich, z zawijaniem. Zawiera też cząstkę, o
   /// którą pytamy, jeśli leży w tej komórce.
-  pub fn get_neighbours(&self, (ix, iy): (i32, i32)) -> impl Iterator<Item = &Neighbour> + Clone + '_ {
-    Self::OFFSETS
-      .iter()
-      .flat_map(move |&(xoff, yoff)| {
-        let wrapped = self.get_wrapped_buckets(ix + xoff, iy + yoff);
-        wrapped.buckets.into_iter().take(wrapped.len)
-      })
-      .filter_map(|bucket| self.cell_index(bucket))
-      .flat_map(|index| self.cells[index].iter())
+  ///
+  /// Dla komórki w siatce sąsiedztwo jest z tablicy z `new`; poza siatką liczone na miejscu.
+  pub fn get_neighbours(&self, coords: (i32, i32)) -> impl Iterator<Item = &Neighbour> + Clone + '_ {
+    self.get_neighbour_cells(coords).flat_map(|cell| cell.iter())
+  }
+
+  /// Jak `get_neighbours`, ale po komórkach: każda jako wycinek, w tej samej kolejności.
+  pub fn get_neighbour_cells(&self, coords: (i32, i32)) -> impl Iterator<Item = &[Neighbour]> + Clone + '_ {
+    let (precomputed, computed) = match self.cell_index(coords) {
+      Some(c) => {
+        let range = self.neighbour_starts[c] as usize..self.neighbour_starts[c + 1] as usize;
+        (Some(self.neighbour_cells[range].iter().map(|&i| i as usize)), None)
+      }
+      None => (None, Some(self.neighbour_cells_of(coords))),
+    };
+    precomputed
+      .into_iter()
+      .flatten()
+      .chain(computed.into_iter().flatten())
+      .map(|index| self.cells[index].as_slice())
   }
 
   pub fn get_neighbours_by_position(&self, x: f32, y: f32) -> impl Iterator<Item = &Neighbour> + '_ {
