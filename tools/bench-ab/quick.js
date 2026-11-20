@@ -19,7 +19,20 @@ const METRICS = [
   ['wrap_around_ns', 'wrap_around'],
   ['rebuild_grid_ns', 'rebuild_grid'],
   ['update_shape_ns', 'update_shape'],
+  // Pochodna: czas sił na kandydata w tym samym kroku (porównanie, gdy trajektorie się
+  // rozjechały i stany mają inną liczbę kandydatów).
+  ['forces_per_candidate', 'forces / kandydat'],
 ];
+
+/** Kolumna przebiegu albo pochodna (`forces_per_candidate`, ns na kandydata na krok). */
+function series(rec, col) {
+  if (col === 'forces_per_candidate') {
+    const f = rec.compute_forces_ns;
+    const c = rec.candidates_per_step;
+    return f?.length && c?.length ? f.map((x, i) => x / c[i]) : undefined;
+  }
+  return rec[col];
+}
 
 let parquet = null;
 async function loadRun(file) {
@@ -62,16 +75,17 @@ async function compareRounds(rounds, dir) {
     if (b.some((x) => !x) || a.some((x) => !x)) continue;
     const metrics = {};
     for (const [col] of METRICS) {
-      if (!b[0][col]?.length && !a[0][col]?.length) continue;
-      if (!b[0][col]?.length || !a[0][col]?.length) {
+      const has = (x) => series(x, col)?.length;
+      if (!has(b[0]) && !has(a[0])) continue;
+      if (!has(b[0]) || !has(a[0])) {
         // Systemu nie ma po jednej stronie (np. nowy system): tylko mediana tam, gdzie jest.
-        const side = b[0][col]?.length ? b : a;
-        const m = D.median(side.flatMap((x) => x[col]));
+        const side = has(b[0]) ? b : a;
+        const m = D.median(side.flatMap((x) => series(x, col)));
         metrics[col] = { before: side === b ? m : NaN, after: side === a ? m : NaN, ratio: NaN, lo: NaN, hi: NaN, perRound: [] };
         continue;
       }
-      const before = b.flatMap((x) => x[col]);
-      const after = a.flatMap((x) => x[col]);
+      const before = b.flatMap((x) => series(x, col));
+      const after = a.flatMap((x) => series(x, col));
       const [lo, hi] = bootstrap(before, after);
       metrics[col] = {
         before: D.median(before),
@@ -79,7 +93,7 @@ async function compareRounds(rounds, dir) {
         ratio: D.median(after) / D.median(before),
         lo,
         hi,
-        perRound: b.map((x, i) => D.median(a[i][col]) / D.median(x[col])),
+        perRound: b.map((x, i) => D.median(series(a[i], col)) / D.median(series(x, col))),
       };
     }
     const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
@@ -115,8 +129,9 @@ function formatComparison(cmp) {
     for (const [col, label] of METRICS) {
       const m = s.metrics[col];
       if (!m) continue;
+      const value = (x) => (col === 'forces_per_candidate' ? `${x.toFixed(2).padStart(7)} ns` : `${(x / 1e3).toFixed(1).padStart(7)} µs`);
       lines.push(
-        `  ${label.padEnd(17)} ${(m.before / 1e3).toFixed(1).padStart(7)} → ${(m.after / 1e3).toFixed(1).padStart(7)} µs  ×${num(m.ratio)} [${num(m.lo)}, ${num(m.hi)}]  rundy ${m.perRound.map((x) => num(x)).join(' ')}`,
+        `  ${label.padEnd(17)} ${value(m.before)} → ${value(m.after)}  ×${num(m.ratio)} [${num(m.lo)}, ${num(m.hi)}]  rundy ${m.perRound.map((x) => num(x)).join(' ')}`,
       );
     }
   }

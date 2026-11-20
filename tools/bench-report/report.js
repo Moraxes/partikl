@@ -329,10 +329,11 @@ async function quickSection(quick, lines, { num, table, short }) {
       );
       lines.push(
         table(
-          ['Metryka', 'przed µs', 'po µs', 'po/przed [95% CI]', 'rundy'],
+          ['Metryka', 'przed µs (na kandydata ns)', 'po', 'po/przed [95% CI]', 'rundy'],
           Q.METRICS.filter(([c]) => x.metrics[c]).map(([c, label]) => {
             const m = x.metrics[c];
-            return [label, num(m.before / 1e3, 1), num(m.after / 1e3, 1), ratio(m), m.perRound.map((r) => num(r)).join(' / ')];
+            const scale = c === 'forces_per_candidate' ? 1 : 1e3;
+            return [label, num(m.before / scale, 1), num(m.after / scale, 1), ratio(m), m.perRound.map((r) => num(r)).join(' / ')];
           }),
         ),
         '',
