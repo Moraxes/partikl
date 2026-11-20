@@ -13,7 +13,7 @@ use wide::f32x8;
 
 use bevy::tasks::ComputeTaskPool;
 
-use super::{Acceleration, SpatialGrid};
+use super::{Acceleration, RESOLVE, SpatialGrid};
 use crate::config::*;
 use crate::spec::ParticleSpec;
 
@@ -73,6 +73,10 @@ struct PairBuffer {
   ys: Vec<f32>,
   /// Liczba sąsiadów „do przodu” (tylko przy uśrednianiu sił).
   counts: Vec<f32>,
+  /// Poprawki pozycji „do przodu” i liczba nakładających się par (tylko przy rozsuwaniu).
+  cx: Vec<f32>,
+  cy: Vec<f32>,
+  cn: Vec<f32>,
 }
 
 /// Współczynniki sił w kolejności siatki na jeden krok, podział pracy i wyniki; bufory
@@ -87,6 +91,9 @@ pub struct ForceData {
   /// Liczba sąsiadów w zasięgu na cząstkę w kolejności siatki (z wagą próbkowania); tylko przy
   /// uśrednianiu sił, inaczej pusta.
   counts: Vec<f32>,
+  /// Przy rozsuwaniu (`Overlap::Resolve`): suma poprawek pozycji (x, y) i liczba nakładających
+  /// się par (z) na cząstkę w kolejności siatki; inaczej pusta.
+  corrections: Vec<Vec3>,
   /// Praca (pary plus stały koszt na cząstkę) zmierzona w poprzednim kroku; na start duża,
   /// więc pierwszy krok dzieli się drobno.
   last_work: u64,
@@ -109,6 +116,7 @@ impl Default for ForceData {
       chunks: vec![],
       forces: vec![],
       counts: vec![],
+      corrections: vec![],
       last_work: u64::MAX,
       coeffs: vec![],
       stride: 0,
@@ -176,8 +184,9 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
   particle_spec: Res<ParticleSpec>,
   grid: Res<SpatialGrid>,
   mut data: ResMut<ForceData>,
-  mut particles: Query<(Entity, &mut Acceleration)>,
+  mut particles: Query<(Entity, &mut Acceleration, &mut Transform)>,
 ) {
+  let resolve = OVERLAP == RESOLVE;
   let symmetric = data.last_work >= SYMMETRIC_WORK;
   data.fill(&grid, &particle_spec, symmetric);
   let pool = ComputeTaskPool::get();
@@ -188,24 +197,29 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
   if symmetric && data.buffers.len() < parts {
     data.buffers.resize_with(parts, PairBuffer::default);
   }
-  let ForceData { coeffs, out_coeffs, stride, chunks, forces, counts, last_work, buffers, step, .. } = &mut *data;
+  let ForceData { coeffs, out_coeffs, stride, chunks, forces, counts, corrections, last_work, buffers, step, .. } = &mut *data;
   let step = *step;
   forces.clear();
   forces.resize(n, Vec2::ZERO);
   counts.clear();
   counts.resize(if AVERAGE { n } else { 0 }, 0.0);
+  corrections.clear();
+  corrections.resize(if resolve { n } else { 0 }, Vec3::ZERO);
   let (coeffs, out_coeffs, stride, grid) = (&coeffs[..], &out_coeffs[..], *stride, &*grid);
 
   let work = pool.scope(|scope| {
     let mut rest = &mut forces[..];
     let mut rest_counts = &mut counts[..];
+    let mut rest_corrections = &mut corrections[..];
     let mut buffers = buffers.iter_mut();
     for particles in chunks.iter() {
       let (chunk, tail) = rest.split_at_mut(particles.len());
       rest = tail;
       let (chunk_counts, tail) = rest_counts.split_at_mut(if AVERAGE { particles.len() } else { 0 });
       rest_counts = tail;
-      let out = Out { forces: chunk, counts: chunk_counts };
+      let (chunk_corrections, tail) = rest_corrections.split_at_mut(if resolve { particles.len() } else { 0 });
+      rest_corrections = tail;
+      let out = Out { forces: chunk, counts: chunk_counts, corrections: chunk_corrections };
       let particles = particles.clone();
       if symmetric {
         let buffer = buffers.next().unwrap();
@@ -219,10 +233,14 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
           buffer.ys.resize(len, 0.0);
           buffer.counts.clear();
           buffer.counts.resize(if AVERAGE { len } else { 0 }, 0.0);
-          pair_forces_in_range::<AVERAGE>(grid, coeffs, out_coeffs, stride, particles, out, buffer, step)
+          for values in [&mut buffer.cx, &mut buffer.cy, &mut buffer.cn] {
+            values.clear();
+            values.resize(if resolve { len } else { 0 }, 0.0);
+          }
+          pair_forces_in_range::<AVERAGE, OVERLAP>(grid, coeffs, out_coeffs, stride, particles, out, buffer, step)
         });
       } else {
-        scope.spawn(async move { forces_in_range::<AVERAGE>(grid, coeffs, stride, particles, out, step) });
+        scope.spawn(async move { forces_in_range::<AVERAGE, OVERLAP>(grid, coeffs, stride, particles, out, step) });
       }
     }
   });
@@ -239,6 +257,12 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
           *count += c;
         }
       }
+      if resolve {
+        let window = &mut corrections[buffer.first..buffer.first + len];
+        for (k, correction) in window.iter_mut().enumerate() {
+          *correction += Vec3::new(buffer.cx[k], buffer.cy[k], buffer.cn[k]);
+        }
+      }
     }
   }
   if AVERAGE {
@@ -250,11 +274,25 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
 
   // Z powrotem do ECS: iteracja w tej samej kolejności co w `rebuild_grid` (ten sam zestaw
   // encji, bez zmian struktury między systemami), sprawdzana encja po encji.
+  // Rozsuwanie: poprawka pozycji przed całkowaniem, uśredniona po nakładających się parach
+  // cząstki (Jacobi z uśrednianiem: wiele nakładań naraz się nie sumuje w przestrzał).
+  // Tylko pozycja, bez `LastPosition`, więc poprawka staje się prędkością `poprawka / dt`, jak
+  // w dynamice opartej na pozycjach: prędkość zbliżania się pary znika (przesuwanie też
+  // `LastPosition` dawało gęstsze skupiska, sonda w zadaniu 025).
+  let apply = |i: usize, acceleration: &mut Acceleration, transform: &mut Transform| {
+    acceleration.0 += forces[i];
+    if resolve {
+      let c = corrections[i];
+      if c.z > 0.0 {
+        transform.translation += (c.xy() / c.z).extend(0.0);
+      }
+    }
+  };
   let (placed, entities) = (grid.placed(), grid.entities());
   let mut lost = false;
-  for (k, (entity, mut acceleration)) in particles.iter_mut().enumerate() {
+  for (k, (entity, mut acceleration, mut transform)) in particles.iter_mut().enumerate() {
     match placed.get(k).map(|&i| i as usize) {
-      Some(i) if entities[i] == entity => acceleration.0 += forces[i],
+      Some(i) if entities[i] == entity => apply(i, &mut acceleration, &mut transform),
       _ => lost = true,
     }
   }
@@ -262,33 +300,49 @@ pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
     // Inna kolejność niż przy budowaniu siatki: wolniej, przez szukanie encji.
     let index: std::collections::HashMap<Entity, usize> =
       entities.iter().enumerate().map(|(i, e)| (*e, i)).collect();
-    for (k, (entity, mut acceleration)) in particles.iter_mut().enumerate() {
+    for (k, (entity, mut acceleration, mut transform)) in particles.iter_mut().enumerate() {
       let ok = placed.get(k).is_some_and(|&i| entities[i as usize] == entity);
       if !ok && let Some(&i) = index.get(&entity) {
-        acceleration.0 += forces[i];
+        apply(i, &mut acceleration, &mut transform);
       }
     }
   }
 }
 
-/// Wyniki dla zakresu cząstek (indeks względem początku zakresu): siły i, przy uśrednianiu,
-/// liczby sąsiadów (inaczej `counts` puste).
+/// Wyniki dla zakresu cząstek (indeks względem początku zakresu): siły, przy uśrednianiu
+/// liczby sąsiadów, przy rozsuwaniu poprawki pozycji (nieużywane puste).
 struct Out<'a> {
   forces: &'a mut [Vec2],
   counts: &'a mut [f32],
+  corrections: &'a mut [Vec3],
 }
 
 impl Out<'_> {
-  fn cell(&mut self, range: Range<usize>, average: bool) -> Out<'_> {
-    let counts = if average { &mut self.counts[range.clone()] } else { &mut [][..] };
-    Out { forces: &mut self.forces[range], counts }
+  fn cell(&mut self, range: Range<usize>) -> Out<'_> {
+    let part = |len: usize| if len == 0 { 0..0 } else { range.clone() };
+    let (counts, corrections) = (part(self.counts.len()), part(self.corrections.len()));
+    Out {
+      counts: &mut self.counts[counts],
+      corrections: &mut self.corrections[corrections],
+      forces: &mut self.forces[range],
+    }
+  }
+
+  fn set<const AVERAGE: bool, const OVERLAP: u8>(&mut self, k: usize, sum: &Kernel) {
+    self.forces[k] = sum.total();
+    if AVERAGE {
+      self.counts[k] = sum.count();
+    }
+    if OVERLAP == RESOLVE {
+      self.corrections[k] = sum.correction();
+    }
   }
 }
 
 /// Siły dla cząstek `particles` (indeksy siatki); `out` od cząstki `particles.start`.
 /// Zwraca pracę: liczbę kandydatów plus stały koszt na cząstkę (dla podziału w następnym
 /// kroku).
-fn forces_in_range<const AVERAGE: bool>(grid: &SpatialGrid, coeffs: &[f32], stride: usize, particles: Range<usize>, mut out: Out, step: u64) -> u64 {
+fn forces_in_range<const AVERAGE: bool, const OVERLAP: u8>(grid: &SpatialGrid, coeffs: &[f32], stride: usize, particles: Range<usize>, mut out: Out, step: u64) -> u64 {
   let mut work = 0u64;
   let starts = grid.cell_starts();
   // Pierwsza komórka zakresu: ostatnia, która zaczyna się nie dalej niż `particles.start`.
@@ -301,12 +355,12 @@ fn forces_in_range<const AVERAGE: bool>(grid: &SpatialGrid, coeffs: &[f32], stri
     work += (cell_end - i) as u64 * (candidates as u64 + 8);
     let every = Sample::every(candidates);
     let cell = OneSidedCell { grid, coeffs, stride, runs, every, step };
-    let out = out.cell(i - particles.start..cell_end - particles.start, AVERAGE);
+    let out = out.cell(i - particles.start..cell_end - particles.start);
     // Wariant bez próbkowania osobno: ten sam kod co bez ograniczenia sąsiadów.
     if every == 1 {
-      cell.forces::<false, AVERAGE>(i..cell_end, out);
+      cell.forces::<false, AVERAGE, OVERLAP>(i..cell_end, out);
     } else {
-      cell.forces::<true, AVERAGE>(i..cell_end, out);
+      cell.forces::<true, AVERAGE, OVERLAP>(i..cell_end, out);
     }
     i = cell_end;
     c += 1;
@@ -330,7 +384,7 @@ struct PairCell<'a> {
 
 impl PairCell<'_> {
   #[inline(always)]
-  fn forces<const SAMPLED: bool, const AVERAGE: bool>(&self, particles: Range<usize>, out: Out, buffer: &mut PairBuffer) {
+  fn forces<const SAMPLED: bool, const AVERAGE: bool, const OVERLAP: u8>(&self, particles: Range<usize>, mut out: Out, buffer: &mut PairBuffer) {
     let (xs, ys, starts, types) = (self.grid.xs(), self.grid.ys(), self.grid.cell_starts(), self.grid.types());
     let stride = self.stride;
     for (k, i) in particles.enumerate() {
@@ -339,19 +393,16 @@ impl PairCell<'_> {
       let cout = &self.out_coeffs[me * stride..(me + 1) * stride];
       let sample = if SAMPLED { Sample::new(self.every, i, self.step) } else { Sample::ALL };
       let mut sum = Kernel::new(Vec2::new(xs[i], ys[i]));
-      sum.pair_run::<SAMPLED, AVERAGE>(xs, ys, cin, cout, i + 1..self.full_end, buffer, sample);
+      sum.pair_run::<SAMPLED, AVERAGE, OVERLAP>(xs, ys, cin, cout, i + 1..self.full_end, buffer, sample);
       for run in self.forward {
         let range = starts[run.first as usize] as usize..starts[run.last as usize] as usize;
-        sum.pair_run::<SAMPLED, AVERAGE>(xs, ys, cin, cout, range, buffer, sample);
+        sum.pair_run::<SAMPLED, AVERAGE, OVERLAP>(xs, ys, cin, cout, range, buffer, sample);
       }
       for run in self.seam {
         let range = starts[run.first as usize] as usize..starts[run.last as usize] as usize;
-        sum.run::<true, SAMPLED, AVERAGE>(xs, ys, cin, range, run.shift, sample);
+        sum.run::<true, SAMPLED, AVERAGE, OVERLAP>(xs, ys, cin, range, run.shift, sample);
       }
-      out.forces[k] = sum.total();
-      if AVERAGE {
-        out.counts[k] = sum.count();
-      }
+      out.set::<AVERAGE, OVERLAP>(k, &sum);
     }
   }
 }
@@ -368,7 +419,7 @@ struct OneSidedCell<'a> {
 
 impl OneSidedCell<'_> {
   #[inline(always)]
-  fn forces<const SAMPLED: bool, const AVERAGE: bool>(&self, particles: Range<usize>, out: Out) {
+  fn forces<const SAMPLED: bool, const AVERAGE: bool, const OVERLAP: u8>(&self, particles: Range<usize>, mut out: Out) {
     let (xs, ys, starts, types) = (self.grid.xs(), self.grid.ys(), self.grid.cell_starts(), self.grid.types());
     for (k, i) in particles.enumerate() {
       let me = types[i].0;
@@ -380,15 +431,12 @@ impl OneSidedCell<'_> {
         let end = starts[run.last as usize] as usize;
         // Przebiegi przez szew są tylko przy krawędziach świata; reszta bez dodawania.
         if run.shift == Vec2::ZERO {
-          sum.run::<false, SAMPLED, AVERAGE>(xs, ys, coeffs, start..end, Vec2::ZERO, sample);
+          sum.run::<false, SAMPLED, AVERAGE, OVERLAP>(xs, ys, coeffs, start..end, Vec2::ZERO, sample);
         } else {
-          sum.run::<true, SAMPLED, AVERAGE>(xs, ys, coeffs, start..end, run.shift, sample);
+          sum.run::<true, SAMPLED, AVERAGE, OVERLAP>(xs, ys, coeffs, start..end, run.shift, sample);
         }
       }
-      out.forces[k] = sum.total();
-      if AVERAGE {
-        out.counts[k] = sum.count();
-      }
+      out.set::<AVERAGE, OVERLAP>(k, &sum);
     }
   }
 }
@@ -411,7 +459,7 @@ fn forward_window(grid: &SpatialGrid, particles: &Range<usize>) -> Range<usize> 
 /// komórek „do przodu” (`SpatialGrid::half_runs`) dają siłę obu cząstkom, druga trafia do
 /// `buffer` (indeksy siatki); pary przez szew jednostronnie, jak zawsze.
 #[allow(clippy::too_many_arguments)]
-fn pair_forces_in_range<const AVERAGE: bool>(
+fn pair_forces_in_range<const AVERAGE: bool, const OVERLAP: u8>(
   grid: &SpatialGrid,
   coeffs: &[f32],
   out_coeffs: &[f32],
@@ -433,12 +481,12 @@ fn pair_forces_in_range<const AVERAGE: bool>(
     let (forward, seam) = grid.half_runs(c);
     let every = Sample::every(candidates);
     let cell = PairCell { grid, coeffs, out_coeffs, stride, forward, seam, full_end, every, step };
-    let out = out.cell(i - particles.start..cell_end - particles.start, AVERAGE);
+    let out = out.cell(i - particles.start..cell_end - particles.start);
     // Wariant bez próbkowania osobno: ten sam kod co bez ograniczenia sąsiadów.
     if every == 1 {
-      cell.forces::<false, AVERAGE>(i..cell_end, out, buffer);
+      cell.forces::<false, AVERAGE, OVERLAP>(i..cell_end, out, buffer);
     } else {
-      cell.forces::<true, AVERAGE>(i..cell_end, out, buffer);
+      cell.forces::<true, AVERAGE, OVERLAP>(i..cell_end, out, buffer);
     }
     i = cell_end;
     c += 1;
@@ -459,6 +507,11 @@ struct Kernel {
   sum_y: Lanes,
   /// Sąsiedzi w zasięgu (z wagą próbkowania); liczeni tylko przy uśrednianiu sił.
   count: Lanes,
+  /// Przy rozsuwaniu: suma poprawek pozycji od nakładających się par i ich liczba (bez wagi
+  /// próbkowania: pominięte pary dojdą w kolejnych krokach, a waga dawałaby przestrzał).
+  cor_x: Lanes,
+  cor_y: Lanes,
+  cor_n: Lanes,
 }
 
 impl Kernel {
@@ -469,6 +522,9 @@ impl Kernel {
       sum_x: Lanes::ZERO,
       sum_y: Lanes::ZERO,
       count: Lanes::ZERO,
+      cor_x: Lanes::ZERO,
+      cor_y: Lanes::ZERO,
+      cor_n: Lanes::ZERO,
     }
   }
 
@@ -477,7 +533,8 @@ impl Kernel {
   #[inline(always)]
   /// `SAMPLED`: tylko wektory z `sample` (z wagą); bez tego wszystkie, `sample` pomijane.
   /// `AVERAGE`: także liczba sąsiadów (`count`).
-  fn run<const SHIFTED: bool, const SAMPLED: bool, const AVERAGE: bool>(&mut self, xs: &[f32], ys: &[f32], coeffs: &[f32], range: Range<usize>, shift: Vec2, sample: Sample) {
+  /// `OVERLAP == RESOLVE`: zamiast sprężyny poprawka pozycji.
+  fn run<const SHIFTED: bool, const SAMPLED: bool, const AVERAGE: bool, const OVERLAP: u8>(&mut self, xs: &[f32], ys: &[f32], coeffs: &[f32], range: Range<usize>, shift: Vec2, sample: Sample) {
     let (shift_x, shift_y) = (Lanes::splat(shift.x), Lanes::splat(shift.y));
     let (offset, every) = if SAMPLED { (sample.offset, sample.every) } else { (0, 1) };
     let mut i = range.start + offset * LANES;
@@ -489,9 +546,9 @@ impl Kernel {
         dy += shift_y;
       }
       if SAMPLED {
-        self.add::<true, AVERAGE>(dx, dy, load(&coeffs[i..]) * sample.weight, sample.weight, range.end - i);
+        self.add::<true, AVERAGE, OVERLAP>(dx, dy, load(&coeffs[i..]) * sample.weight, sample.weight, range.end - i);
       } else {
-        self.add::<false, AVERAGE>(dx, dy, load(&coeffs[i..]), Lanes::ONE, range.end - i);
+        self.add::<false, AVERAGE, OVERLAP>(dx, dy, load(&coeffs[i..]), Lanes::ONE, range.end - i);
       }
       i += every * LANES;
     }
@@ -502,24 +559,37 @@ impl Kernel {
   /// Stałe wektory muszą być `const`: `Lanes::splat` ze stałą w pętli kompiluje się do
   /// `memcpy` z puli stałych przy każdym użyciu, co podwajało czas pętli.
   #[inline(always)]
-  fn add<const SAMPLED: bool, const AVERAGE: bool>(&mut self, dx: Lanes, dy: Lanes, coeffs: Lanes, weight: Lanes, remaining: usize) {
+  fn add<const SAMPLED: bool, const AVERAGE: bool, const OVERLAP: u8>(&mut self, dx: Lanes, dy: Lanes, coeffs: Lanes, weight: Lanes, remaining: usize) {
     const LANE_INDEX: Lanes = Lanes::new([0., 1., 2., 3., 4., 5., 6., 7.]);
     const RADIUS_SQ: Lanes = Lanes::splat(INTERACTION_RADIUS * INTERACTION_RADIUS);
     const REPULSION: Lanes = Lanes::splat(-REPULSION_STRENGTH);
     const REPULSION_R: Lanes = Lanes::splat(REPULSION_RADIUS);
     const MIDDLE: Lanes = Lanes::splat(KERNEL_MIDDLE);
     const WIDTH: Lanes = Lanes::splat(KERNEL_WIDTH);
+    const HALF: Lanes = Lanes::splat(0.5);
     let distance_sq = dx * dx + dy * dy;
     let valid = LANE_INDEX.simd_lt(Lanes::splat(remaining as f32))
       & distance_sq.simd_le(RADIUS_SQ)
       & distance_sq.simd_gt(Lanes::ZERO);
     let distance = distance_sq.sqrt();
-    let repulsion = if SAMPLED { REPULSION * weight * (REPULSION_R - distance) } else { REPULSION * (REPULSION_R - distance) };
     let attraction = coeffs * (Lanes::ONE - ((distance - MIDDLE) / WIDTH).abs()).max(Lanes::ZERO);
-    let magnitude = distance.simd_lt(REPULSION_R).select(repulsion, attraction);
+    let (ux, uy) = (dx / distance, dy / distance);
+    let magnitude = if OVERLAP == RESOLVE {
+      // Przyciąganie zaczyna się dalej niż zasięg odpychania, więc bez sprężyny zostaje samo.
+      let overlap = valid & distance.simd_lt(REPULSION_R);
+      // Maska po mnożeniu: poza zasięgiem i na zapasie kierunek bywa NaN.
+      let push = HALF * (distance - REPULSION_R);
+      self.cor_x += overlap.select(push * ux, Lanes::ZERO);
+      self.cor_y += overlap.select(push * uy, Lanes::ZERO);
+      self.cor_n += overlap.select(Lanes::ONE, Lanes::ZERO);
+      attraction
+    } else {
+      let repulsion = if SAMPLED { REPULSION * weight * (REPULSION_R - distance) } else { REPULSION * (REPULSION_R - distance) };
+      distance.simd_lt(REPULSION_R).select(repulsion, attraction)
+    };
     // Poza zasięgiem `dx / distance` może być NaN, więc maska na samym wkładzie.
-    self.sum_x += valid.select(magnitude * (dx / distance), Lanes::ZERO);
-    self.sum_y += valid.select(magnitude * (dy / distance), Lanes::ZERO);
+    self.sum_x += valid.select(magnitude * ux, Lanes::ZERO);
+    self.sum_y += valid.select(magnitude * uy, Lanes::ZERO);
     if AVERAGE {
       self.count += valid.select(weight, Lanes::ZERO);
     }
@@ -530,7 +600,7 @@ impl Kernel {
   /// (okno od indeksu `buffer.first`); przy `AVERAGE` para liczy się jako sąsiad obu cząstek.
   #[inline(always)]
   #[allow(clippy::too_many_arguments)]
-  fn pair_run<const SAMPLED: bool, const AVERAGE: bool>(
+  fn pair_run<const SAMPLED: bool, const AVERAGE: bool, const OVERLAP: u8>(
     &mut self,
     xs: &[f32],
     ys: &[f32],
@@ -540,7 +610,7 @@ impl Kernel {
     buffer: &mut PairBuffer,
     sample: Sample,
   ) {
-    let PairBuffer { first, xs: bx, ys: by, counts: bc } = buffer;
+    let PairBuffer { first, xs: bx, ys: by, counts: bc, cx, cy, cn } = buffer;
     let first = *first;
     const LANE_INDEX: Lanes = Lanes::new([0., 1., 2., 3., 4., 5., 6., 7.]);
     const RADIUS_SQ: Lanes = Lanes::splat(INTERACTION_RADIUS * INTERACTION_RADIUS);
@@ -548,6 +618,7 @@ impl Kernel {
     const REPULSION_R: Lanes = Lanes::splat(REPULSION_RADIUS);
     const MIDDLE: Lanes = Lanes::splat(KERNEL_MIDDLE);
     const WIDTH: Lanes = Lanes::splat(KERNEL_WIDTH);
+    const HALF: Lanes = Lanes::splat(0.5);
     let (offset, every) = if SAMPLED { (sample.offset, sample.every) } else { (0, 1) };
     let mut j = range.start + offset * LANES;
     while j < range.end {
@@ -559,7 +630,7 @@ impl Kernel {
         & distance_sq.simd_gt(Lanes::ZERO);
       let distance = distance_sq.sqrt();
       let repelled = distance.simd_lt(REPULSION_R);
-      let mut repulsion = REPULSION * (REPULSION_R - distance);
+      let mut repulsion = if OVERLAP == RESOLVE { Lanes::ZERO } else { REPULSION * (REPULSION_R - distance) };
       let mut shape = (Lanes::ONE - ((distance - MIDDLE) / WIDTH).abs()).max(Lanes::ZERO);
       if SAMPLED {
         repulsion *= sample.weight;
@@ -568,9 +639,23 @@ impl Kernel {
       let mag_in = repelled.select(repulsion, load(&cin[j..]) * shape);
       let mag_out = repelled.select(repulsion, load(&cout[j..]) * shape);
       let (ux, uy) = (dx / distance, dy / distance);
+      let k = j - first;
+      if OVERLAP == RESOLVE {
+        // Poprawka obu cząstek pary: ta cząstka do siebie, sąsiad w przeciwną stronę.
+        let overlap = valid & repelled;
+        let push = HALF * (distance - REPULSION_R);
+        let (px, py) = (overlap.select(push * ux, Lanes::ZERO), overlap.select(push * uy, Lanes::ZERO));
+        let one = overlap.select(Lanes::ONE, Lanes::ZERO);
+        self.cor_x += px;
+        self.cor_y += py;
+        self.cor_n += one;
+        let (out_x, out_y, out_n) = (load(&cx[k..]) - px, load(&cy[k..]) - py, load(&cn[k..]) + one);
+        cx[k..k + LANES].copy_from_slice(&out_x.to_array());
+        cy[k..k + LANES].copy_from_slice(&out_y.to_array());
+        cn[k..k + LANES].copy_from_slice(&out_n.to_array());
+      }
       self.sum_x += valid.select(mag_in * ux, Lanes::ZERO);
       self.sum_y += valid.select(mag_in * uy, Lanes::ZERO);
-      let k = j - first;
       let out_x = load(&bx[k..]) - valid.select(mag_out * ux, Lanes::ZERO);
       let out_y = load(&by[k..]) - valid.select(mag_out * uy, Lanes::ZERO);
       bx[k..k + LANES].copy_from_slice(&out_x.to_array());
@@ -592,6 +677,10 @@ impl Kernel {
 
   fn count(&self) -> f32 {
     self.count.reduce_add()
+  }
+
+  fn correction(&self) -> Vec3 {
+    Vec3::new(self.cor_x.reduce_add(), self.cor_y.reduce_add(), self.cor_n.reduce_add())
   }
 }
 
