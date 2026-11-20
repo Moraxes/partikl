@@ -1,7 +1,7 @@
 ---
 id: 27
 title: Tarcie w kroku całkowania
-summary: Tarcie z prędkości po kroku i dokładnym zanikiem kwadratowym zamiast prędkości z poprzedniego kroku
+summary: Tarcie z prędkości po kroku, dokładny zanik kwadratowy; koszt +5 µs, stabilności przy 100k nie naprawia
 status: doing
 priority: now
 branch: main
