@@ -10,7 +10,7 @@ blocked_by:
 - 15
 created: 2026-11-20T20:29:45
 worked: 2026-11-20T21:30:51
-edited: 2026-11-20T21:23:45
+edited: 2026-11-20T21:38:09
 links:
 - kind: commit
   target: e38c3d2
@@ -36,6 +36,9 @@ Wynik: pary liczone raz powyżej 600 tys. par na krok (`e38c3d2`): `compute_forc
 | kandydaci przed → po | 25,2 → 25,2 | 98,7 → 127,4 | 864,5 → 1118 |
 
 Zmiana kolejności sumowania rozjeżdża trajektorie; nowe stany macierzy 6 i 4 mają więcej kandydatów, więc czas kroku miesza kod ze stanem. Stąd porównanie na kandydata (`forces / kandydat` w `tools/bench-ab`); stały narzut `compute_forces` (ok. 40–50 µs) rozłożony na więcej kandydatów też obniża tę liczbę (szacunkowo ok. 6% przy macierzy 6, ok. 1,5% przy 4).
+
+## Poprawka (`33c6386`)
+Bufory sił na wątek sumowane w kolejności buforów dawały wynik zależny od planowania wątków: trajektorie różniły się między przebiegami tego samego pliku (macierz 4: 944–1477 kandydatów po 4096 krokach). Teraz bufor na zakres (okno od początku zakresu do najdalszej komórki „do przodu”), sumowany w kolejności zakresów; test identycznych bitów w kolejnych przebiegach. Koszt na kandydata po poprawce ×0,99 / ×1,00 / ×0,96. Pomiary `e38c3d2` wyżej są przez to na różnych stanach (porównanie na kandydata nadal ma sens, czas kroku nie).
 
 ## Jak działa
 - Siatka: `half_runs(c)`: przebiegi komórek o większym indeksie bez szwu i przebiegi przez szew; test pokrycia każdej pary komórek dokładnie raz.
