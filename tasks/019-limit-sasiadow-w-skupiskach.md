@@ -2,12 +2,12 @@
 id: 19
 title: Limit sąsiadów w skupiskach
 summary: 'Próbkowanie sąsiadów powyżej 512 kandydatów: krok ×0,47 przy gęstej macierzy; skupiska bardziej zaszumione (do oceny)'
-status: doing
+status: done
 priority: later
 branch: main
 part_of: 12
 created: 2026-11-20T20:29:45
-worked: 2026-11-20T21:37:16
+worked: 2026-11-20T21:38:09
 edited: 2026-11-20T21:38:09
 links:
 - kind: commit
