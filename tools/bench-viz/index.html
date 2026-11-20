@@ -20,12 +20,15 @@
     }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, sans-serif; }
   header { padding: 16px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; border-bottom: 1px solid var(--border); }
   h1 { font-size: 18px; margin: 0; font-weight: 600; }
   h2 { font-size: 15px; margin: 0 0 8px; font-weight: 600; }
   label { color: var(--muted); font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
   select, button, input[type=file] { font: inherit; color: var(--fg); }
+  label { max-width: 100%; }
+  select { min-width: 0; max-width: 100%; }
   select, button { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
   button { cursor: pointer; }
   main { padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 320px; }
@@ -338,7 +341,8 @@ function renderScatter() {
       text: mine.map((p) => `macierz ${p.seed}, n=${p.n}, offset=${p.offset}`),
       hovertemplate: '%{text}<br>kandydaci %{x:.1f}<br>%{y:.1f}<extra></extra>',
       marker: {
-        size: 13, color: 'rgba(0,0,0,0)', line: { color: css('--accent'), width: 2.5 },
+        // scattergl rysuje obrys symboli `-open` kolorem `color`, nie `line.color`.
+        size: 13, color: css('--accent'), line: { color: css('--accent'), width: 2.5 },
         symbol: mine.map((p) => SYMBOLS[ds.offsets.indexOf(p.offset) % SYMBOLS.length] + '-open'),
       },
     });
