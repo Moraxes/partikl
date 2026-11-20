@@ -2,11 +2,11 @@
 id: 27
 title: Tarcie w kroku całkowania
 summary: Tarcie z prędkości po kroku, dokładny zanik kwadratowy; koszt +5 µs, stabilności przy 100k nie naprawia
-status: doing
+status: done
 priority: now
 branch: main
 created: 2026-11-20T23:24:58
-worked: 2026-11-20T23:34:08
+worked: 2026-11-20T23:34:45
 edited: 2026-11-20T23:27:16
 links:
 - kind: commit
