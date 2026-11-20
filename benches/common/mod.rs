@@ -31,8 +31,8 @@ use results::{ResultsFile, Run};
 
 use partikl::config::{DELTA_TIME, INTERACTION_RADIUS};
 use partikl::sim::{
-  Acceleration, InteractionId, LastPosition, ParticleBundle, SimPlugin, SpatialGrid, compute_forces,
-  task_pool_options,
+  Acceleration, InteractionId, LastPosition, ParticleBundle, SimOptions, SimPlugin, SpatialGrid,
+  register_forces, task_pool_options,
   compute_friction, integrate, rebuild_grid, update_shape, wrap_around,
 };
 use partikl::spec::{Interaction, ParticleSpec};
@@ -222,7 +222,7 @@ impl Sim {
     // Systemy uruchamiane ręcznie w kolejności `SimSet`, bez harmonogramu i czasu Bevy.
     let world = app.world_mut();
     let systems = [
-      world.register_system(compute_forces),
+      register_forces(world, SimOptions::default()),
       world.register_system(compute_friction),
       world.register_system(integrate),
       world.register_system(wrap_around),

@@ -74,7 +74,9 @@ struct PairBuffer {
 }
 
 /// Współczynniki sił w kolejności siatki na jeden krok, podział pracy i wyniki; bufory
-/// używane ponownie.
+/// używane ponownie. Zasób, nie `Local`, bo dzielą go wszystkie warianty `compute_forces`
+/// (praca z poprzedniego kroku przetrwa przełączenie opcji).
+#[derive(Resource)]
 pub struct ForceData {
   /// Zakresy cząstek (w kolejności siatki) dla zadań, o zbliżonej liczbie par.
   chunks: Vec<Range<usize>>,
@@ -161,10 +163,13 @@ impl ForceData {
 /// ECS, więc siatka musi być aktualna (`rebuild_grid`). Sama cząstka jest pomijana przez
 /// zerową odległość (tak samo każda inna dokładnie w tym samym miejscu, dla której kierunek
 /// siły i tak jest nieokreślony).
-pub fn compute_forces(
+///
+/// Warianty według `SimOptions`: `AVERAGE` (`SimOptions::average_forces`) i `OVERLAP`
+/// (`Overlap` jako `u8`, stałe `SPRING`, `RESOLVE`, `ADAPTIVE_RANGE`).
+pub fn compute_forces<const AVERAGE: bool, const OVERLAP: u8>(
   particle_spec: Res<ParticleSpec>,
   grid: Res<SpatialGrid>,
-  mut data: Local<ForceData>,
+  mut data: ResMut<ForceData>,
   mut particles: Query<(Entity, &mut Acceleration)>,
 ) {
   let symmetric = data.last_work >= SYMMETRIC_WORK;

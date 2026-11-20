@@ -1,4 +1,6 @@
 use bevy::prelude::Resource;
+
+use crate::sim::{Overlap, SimOptions};
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -49,4 +51,23 @@ pub struct ProgramArgs {
   /// Radius of each particle.
   #[arg(short = 's', long, default_value_t = 2.0)]
   pub particle_size: f32,
+
+  /// Scale each particle's force down when it has more neighbours than usual.
+  ///
+  /// Toggled at runtime with N.
+  #[arg(long)]
+  pub average_forces: bool,
+
+  /// How overlapping particles push each other apart.
+  ///
+  /// Cycled at runtime with O.
+  #[arg(long, value_enum, default_value_t = Overlap::Spring)]
+  pub overlap: Overlap,
+}
+
+impl ProgramArgs {
+  /// Opcje symulacji na start.
+  pub fn sim_options(&self) -> SimOptions {
+    SimOptions { average_forces: self.average_forces, overlap: self.overlap }
+  }
 }

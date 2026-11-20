@@ -9,6 +9,7 @@ fn main() {
   let program_args = args::ProgramArgs::parse();
   App::new()
     .insert_resource(loading::get_particle_spec(&program_args))
+    .insert_resource(program_args.sim_options())
     .insert_resource(program_args)
     .add_plugins(
       DefaultPlugins

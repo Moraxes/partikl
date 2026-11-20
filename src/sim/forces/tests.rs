@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use rand::prelude::*;
 
-use super::compute_forces;
+use super::{ForceData, compute_forces};
+use crate::sim::SPRING;
 use crate::config::*;
 use crate::sim::{Acceleration, InteractionId, SpatialGrid};
 use crate::spec::{Interaction, ParticleSpec};
@@ -57,11 +58,12 @@ fn run_forces_times(spec: &ParticleSpec, points: &[(Vec2, usize)], grid_order: &
   let mut grid = SpatialGrid::new(SIZE.x, SIZE.y, INTERACTION_RADIUS);
   grid.rebuild(grid_order.iter().map(|&k| (entities[k], points[k].0, InteractionId(points[k].1))));
   world.insert_resource(grid);
+  world.init_resource::<ForceData>();
   world.insert_resource(ParticleSpec {
     interactions: spec.interactions.iter().map(|i| Interaction { force_coeffs: i.force_coeffs.clone() }).collect(),
   });
   for _ in 0..times {
-    world.run_system_cached(compute_forces).unwrap();
+    world.run_system_cached(compute_forces::<false, SPRING>).unwrap();
   }
   entities.iter().map(|e| world.get::<Acceleration>(*e).unwrap().0).collect()
 }

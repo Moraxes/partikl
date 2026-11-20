@@ -9,7 +9,7 @@ pub mod selection;
 
 use crate::args::ProgramArgs;
 use crate::render::MainCamera;
-use crate::sim::SimState;
+use crate::sim::{SimOptions, SimState};
 
 pub struct UiPlugin;
 
@@ -51,13 +51,16 @@ pub fn init_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
 
 pub fn update_text(
   diagnostics: Res<DiagnosticsStore>,
+  options: Res<SimOptions>,
   query: Query<Entity, With<FpsText>>,
   mut writer: TextUiWriter,
 ) {
   if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
     if let Some(average) = fps.average() {
       let entity = query.single().unwrap();
-      *writer.text(entity, 0) = format!("{:.2}", average);
+      let averaging = if options.average_forces { "on" } else { "off" };
+      *writer.text(entity, 0) =
+        format!("{average:.2}\n[N] averaging: {averaging}\n[O] overlap: {}", options.overlap);
     }
   }
 }
@@ -94,6 +97,7 @@ pub fn handle_keyboard_input(
   keyboard: Res<ButtonInput<KeyCode>>,
   state: Res<State<SimState>>,
   mut next_state: ResMut<NextState<SimState>>,
+  mut options: ResMut<SimOptions>,
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
   if keyboard.just_pressed(KeyCode::Space) {
@@ -102,6 +106,12 @@ pub fn handle_keyboard_input(
       SimState::Paused => SimState::Running,
     };
     next_state.set(new_state);
+  }
+  if keyboard.just_pressed(KeyCode::KeyN) {
+    options.average_forces = !options.average_forces;
+  }
+  if keyboard.just_pressed(KeyCode::KeyO) {
+    options.overlap = options.overlap.next();
   }
   if keyboard.just_pressed(KeyCode::KeyF) {
     let mut primary_window = windows.single_mut().unwrap();

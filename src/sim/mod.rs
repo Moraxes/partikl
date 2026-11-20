@@ -6,10 +6,14 @@ use bevy::tasks::available_parallelism;
 mod components;
 mod forces;
 mod grid;
+mod options;
+
+use bevy::ecs::system::SystemId;
 
 pub use components::*;
-pub use forces::compute_forces;
+pub use forces::{ForceData, compute_forces};
 pub use grid::{Neighbour, SpatialGrid};
+pub use options::*;
 
 use crate::config::*;
 
@@ -52,6 +56,8 @@ impl Plugin for SimPlugin {
     app
       .insert_resource(Time::<Fixed>::from_seconds(DELTA_TIME))
       .init_state::<SimState>()
+      .init_resource::<SimOptions>()
+      .init_resource::<ForceData>()
       .configure_sets(
         FixedUpdate,
         (
@@ -68,7 +74,12 @@ impl Plugin for SimPlugin {
       .add_systems(
         FixedUpdate,
         (
-          compute_forces.in_set(SimSet::Forces),
+          forces_variant::<false, SPRING>(),
+          forces_variant::<false, RESOLVE>(),
+          forces_variant::<false, ADAPTIVE_RANGE>(),
+          forces_variant::<true, SPRING>(),
+          forces_variant::<true, RESOLVE>(),
+          forces_variant::<true, ADAPTIVE_RANGE>(),
           compute_friction.in_set(SimSet::Friction),
           integrate.in_set(SimSet::Integrate),
           wrap_around.in_set(SimSet::Wrap),
@@ -83,6 +94,26 @@ impl Plugin for SimPlugin {
 /// na różnicy pozycji z poprzedniego kroku. Wynik jako przyspieszenie zastępcze, więc
 /// `integrate` przesunie cząstkę o przemieszczenie po kroku już stłumione (szczegóły w
 /// `friction_acceleration`). Prędkość poniżej `VELOCITY_THRESHOLD` jest zerowana.
+/// Wariant `compute_forces` działający tylko przy pasujących `SimOptions`.
+fn forces_variant<const AVERAGE: bool, const OVERLAP: u8>() -> bevy::ecs::schedule::ScheduleConfigs<bevy::ecs::system::ScheduleSystem> {
+  compute_forces::<AVERAGE, OVERLAP>
+    .run_if(|options: Res<SimOptions>| options.selects(AVERAGE, OVERLAP))
+    .in_set(SimSet::Forces)
+}
+
+/// Rejestruje wariant `compute_forces` dla `options` (do ręcznego uruchamiania kroku: bench,
+/// testy). `ForceData` musi być w świecie.
+pub fn register_forces(world: &mut World, options: SimOptions) -> SystemId {
+  match (options.average_forces, options.overlap) {
+    (false, Overlap::Spring) => world.register_system(compute_forces::<false, SPRING>),
+    (false, Overlap::Resolve) => world.register_system(compute_forces::<false, RESOLVE>),
+    (false, Overlap::AdaptiveRange) => world.register_system(compute_forces::<false, ADAPTIVE_RANGE>),
+    (true, Overlap::Spring) => world.register_system(compute_forces::<true, SPRING>),
+    (true, Overlap::Resolve) => world.register_system(compute_forces::<true, RESOLVE>),
+    (true, Overlap::AdaptiveRange) => world.register_system(compute_forces::<true, ADAPTIVE_RANGE>),
+  }
+}
+
 pub fn compute_friction(
   mut particles: Query<(&Transform, &mut LastPosition, &mut Acceleration)>,
 ) {
