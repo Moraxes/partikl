@@ -16,6 +16,10 @@ links:
   target: e38c3d2
   at: 2026-11-20T21:23:04
   note: 'perf: compute each close pair once for dense states'
+- kind: report
+  target: .artifacts/reports/perf-report.md
+  at: 2026-11-20T21:23:46
+  note: sekcja Tryb szybki
 ---
 Wynik: pary liczone raz powyżej 600 tys. par na krok (`e38c3d2`): `compute_forces` na kandydata ×0,84 (macierz 6) i ×0,75 (macierz 4); przy małej gęstości bez zmian (tryb jednostronny). Zawsze symetrycznie: ×1,26 przy macierzy 23, dlatego próg.
 
