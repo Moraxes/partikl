@@ -9,7 +9,7 @@ part_of: 12
 blocked_by:
 - 15
 created: 2026-11-20T20:29:45
-worked: 2026-11-20T21:23:46
+worked: 2026-11-20T21:30:51
 edited: 2026-11-20T21:23:45
 links:
 - kind: commit
@@ -20,6 +20,10 @@ links:
   target: .artifacts/reports/perf-report.md
   at: 2026-11-20T21:23:46
   note: sekcja Tryb szybki
+- kind: commit
+  target: 33c6386
+  at: 2026-11-20T21:30:51
+  note: 'fix: sum pair forces per range in range order to keep the simulation deterministic'
 ---
 Wynik: pary liczone raz powyżej 600 tys. par na krok (`e38c3d2`): `compute_forces` na kandydata ×0,84 (macierz 6) i ×0,75 (macierz 4); przy małej gęstości bez zmian (tryb jednostronny). Zawsze symetrycznie: ×1,26 przy macierzy 23, dlatego próg.
 
