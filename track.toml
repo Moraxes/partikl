@@ -1,0 +1,13 @@
+# Konfiguracja `track` dla tego projektu.
+
+# Katalog artefaktów względem katalogu projektu (np. ".artifacts").
+# artifacts = ".artifacts"
+
+# Commit w `.track/` po każdej zmianie (gdy to katalog roboczy gita).
+auto_commit = true
+
+# Ile zadań może być naraz w toku, zanim `track start` ostrzeże.
+wip_limit = 2
+
+# Limit czasu sprawdzania remote przy `track add`, w sekundach.
+fetch_timeout_s = 2.0
