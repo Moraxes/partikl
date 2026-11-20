@@ -1,13 +1,14 @@
 ---
 id: 12
 title: Profil kroku po SIMD
-summary: 'Profil n=9000 na 6808821: update_shape 34–39% kroku, pula wątków ~11% wykorzystania przy małej gęstości'
+summary: 'Krok n=9000: ×0,64 / ×0,61 / ×0,33 (macierze 23 / 6 / 4) po zadaniach 013–019'
 status: todo
 priority: soon
 branch: main
 relates:
 - 10
 created: 2026-11-20T20:29:07
+edited: 2026-11-20T22:44:36
 links:
 - kind: profile
   target: .artifacts/profiles/sim-quick-6808821-m23.json.gz
@@ -22,6 +23,21 @@ links:
   at: 2026-11-20T20:29:44
   note: macierz 4
 ---
+Wynik: krok przy n=9000 (tryb `--quick`, iloczyn etapów) ×0,64 / ×0,61 / ×0,33 dla macierzy 23 / 6 / 4: z 392 / 478 / 1329 µs do ok. 223 / 290 / 426 µs. Bez próbkowania sąsiadów (zadanie 019, zmienia wygląd gęstych skupisk) macierz 4 ×0,70 (ok. 890 µs). Etapy i tabele w raporcie, sekcja „Tryb szybki”.
+
+| zadanie | wynik |
+|---|---|
+| 013 obrót bez trygonometrii | krok ×0,76 / ×0,72 / ×0,87 |
+| 014 siatka przez sortowanie | krok ×0,97 / ×0,92 / ×0,89 (inne stany) |
+| 015 siły w kolejności siatki | krok ×0,86 / ×1,03 / ×1,00 |
+| 016 podział po równo, komórki R/2 | krok ×0,93 / ×1,02 / ×1,01, potem ×1,07 / ×0,91 / ×0,85 |
+| 017 pary liczone raz (z poprawką determinizmu) | `compute_forces` na kandydata ×1,00 / ×0,84 / ×0,75 |
+| 019 próbkowanie powyżej 512 kandydatów | krok ×1,01 / ×0,97 / ×0,47; wygląd do oceny |
+| 021 usypianie | bez zmian: brak spokojnych cząstek |
+
+Przy kilku etapach trajektorie się zmieniły (kolejność sumowania), więc iloczyn dla macierzy 6 i 4 jest przybliżony.
+
+## Profil z punktu wyjścia
 Zadanie zbiorcze dla optymalizacji z profilu kroku przy n=9000 (tryb `--quick`, commit 6808821, samply 4 kHz, osobno macierze 23, 6 i 4). Następny krok: zacząć od zadania z kształtem bez trygonometrii (najtańsze, największy zysk przy typowych macierzach), potem przebudowa siatki i kolejność sił.
 
 ## Profil (czas ścienny wątku głównego)
