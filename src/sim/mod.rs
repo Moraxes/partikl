@@ -1,10 +1,22 @@
 use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
 use bevy::utils::Parallel;
-use bevy::window::PrimaryWindow;
+
+mod components;
+mod grid;
+
+pub use components::*;
+pub use grid::SpatialGrid;
 
 use crate::config::*;
-use crate::core::*;
+use crate::spec::ParticleSpec;
+
+#[derive(Debug, Default, Clone, Eq, PartialEq, Hash, States)]
+pub enum SimState {
+  #[default]
+  Running,
+  Paused,
+}
 
 /// Kolejność etapów kroku symulacji w `FixedUpdate`. Wykonują się tylko w stanie
 /// `SimState::Running`.
@@ -51,7 +63,7 @@ impl Plugin for SimPlugin {
 
 pub fn compute_forces(
   particle_spec: Res<ParticleSpec>,
-  sim_region: Res<SimRegion>,
+  grid: Res<SpatialGrid>,
   mut particles_out: Query<(Entity, &Transform, &mut Acceleration, &InteractionId)>,
   particles_in: Query<(Entity, &Transform, &InteractionId)>,
 ) {
@@ -60,7 +72,7 @@ pub fn compute_forces(
     || queue.borrow_local_mut(),
     |local_queue, (entity, transform, _, interaction)| {
       let neighbours =
-        sim_region.get_entities_by_position(transform.translation.x, transform.translation.y);
+        grid.get_entities_by_position(transform.translation.x, transform.translation.y);
       let acceleration = neighbours
         .into_iter()
         .map(|other_entity| particles_in.get(other_entity).unwrap())
@@ -70,7 +82,7 @@ pub fn compute_forces(
             if entity == other_entity {
               return acceleration;
             }
-            let delta = sim_region.get_corrected_position_delta(
+            let delta = grid.get_corrected_position_delta(
               transform.translation.xy(),
               other_transform.translation.xy(),
             );
@@ -141,18 +153,18 @@ pub fn integrate(
 }
 
 pub fn wrap_around(
-  mut sim_region: ResMut<SimRegion>,
+  mut grid: ResMut<SpatialGrid>,
   mut query: Query<(Entity, &mut Transform, &mut LastPosition)>,
 ) {
   for (entity, mut transform, mut last_pos) in query.iter_mut() {
     let x_old = last_pos.0.x;
     let y_old = last_pos.0.y;
-    let adjustment = sim_region.get_wrap_around_adjustment(transform.translation.xy());
+    let adjustment = grid.get_wrap_around_adjustment(transform.translation.xy());
     transform.translation += adjustment.extend(0.0);
     last_pos.0 += adjustment;
     let x_new = transform.translation.x;
     let y_new = transform.translation.y;
-    sim_region.move_entity(entity, x_old, y_old, x_new, y_new);
+    grid.move_entity(entity, x_old, y_old, x_new, y_new);
   }
 }
 
@@ -177,80 +189,4 @@ fn scale_from_velocity(velocity_length_sq: f32) -> Vec3 {
 fn rotation_from_velocity(velocity: Vec2) -> Quat {
   let angle = velocity.angle_to(Vec2::new(1.0, 0.0));
   Quat::from_rotation_z(-angle)
-}
-
-#[derive(Default, Debug)]
-pub struct SelectedGizmo {
-  id: Option<Entity>,
-  translation: Vec3,
-}
-
-pub fn select_on_click(
-  mouse_buttons: Res<ButtonInput<MouseButton>>,
-  windows: Query<&Window, With<PrimaryWindow>>,
-  camera_query: Query<&Transform, With<MainCamera>>,
-  particles: Query<(Entity, &Transform, &Children), With<Acceleration>>,
-  sim_region: Res<SimRegion>,
-  mut gizmos: Query<
-    (Option<&Selection>, Option<&Highlight>, &mut Visibility),
-    Or<(With<Selection>, With<Highlight>)>,
-  >,
-  mut selected_gizmo: Local<SelectedGizmo>,
-) {
-  if !mouse_buttons.just_released(MouseButton::Left) {
-    return;
-  }
-
-  let window = windows.single().unwrap();
-  let cursor_position_opt = window.cursor_position();
-  if cursor_position_opt.is_none() {
-    return;
-  }
-  let cursor_position = cursor_position_opt.unwrap();
-  let size = Vec2::new(window.width() as f32, window.height() as f32);
-  let cursor_position_offset = cursor_position - size / 2.0;
-  let camera_transform = camera_query.single().unwrap();
-  let world_position = camera_transform.to_matrix()
-    * cursor_position_offset.extend(0.0).extend(1.0)
-    * Vec4::from((1.0, -1.0, 1.0, 1.0));
-
-  for (_, _, mut visibility) in gizmos.iter_mut().filter(|(s, _, _)| s.is_some()) {
-    *visibility = Visibility::Hidden;
-  }
-  selected_gizmo.id = None;
-  for (particle, transform, children) in particles.iter() {
-    if (transform.translation - world_position.truncate())
-      .truncate()
-      .length_squared()
-      > 16.0
-    {
-      continue;
-    }
-    selected_gizmo.id = Some(particle);
-    selected_gizmo.translation = transform.translation;
-    for child in children.iter() {
-      if let Ok((Some(_), None, mut visibility)) = gizmos.get_mut(child) {
-        *visibility = Visibility::Inherited;
-      }
-    }
-    break;
-  }
-
-  if let Some(particle) = selected_gizmo.id {
-    let (_, transform, _) = particles.get(particle).unwrap();
-    selected_gizmo.translation = transform.translation;
-    for (_, _, mut visibility) in gizmos.iter_mut().filter(|(_, h, _)| h.is_some()) {
-      *visibility = Visibility::Hidden;
-    }
-    let neighbour_ids = sim_region
-      .get_entities_by_position(selected_gizmo.translation.x, selected_gizmo.translation.y);
-    for nid in neighbour_ids {
-      let (_, _, children) = particles.get(nid).unwrap();
-      for child in children.iter() {
-        if let Ok((None, Some(_), mut visibility)) = gizmos.get_mut(child) {
-          *visibility = Visibility::Inherited;
-        }
-      }
-    }
-  }
 }

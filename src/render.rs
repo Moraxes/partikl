@@ -5,7 +5,19 @@ use bevy::window::PrimaryWindow;
 use rand::prelude::*;
 
 use crate::config::{DELTA_TIME, INTERACTION_RADIUS};
-use crate::core;
+use crate::sim::{Acceleration, InteractionId, LastPosition, ParticleBundle, SpatialGrid};
+use crate::spec::ParticleSpec;
+use crate::ui::selection::{Highlight, Selection};
+
+/// Materiały cząstek, indeksowane `InteractionId`.
+#[derive(Resource, Default)]
+pub struct ParticleMaterials(pub Vec<Handle<StandardMaterial>>);
+
+#[derive(Component, Default, Debug)]
+pub struct MainCamera {
+  pub zoom_exponent: i32,
+  pub zoom_base: f32,
+}
 
 pub struct RenderPlugin;
 
@@ -35,19 +47,24 @@ fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
 }
 
 pub fn init_materials(
-  mut particle_spec: ResMut<core::ParticleSpec>,
+  mut commands: Commands,
+  particle_spec: Res<ParticleSpec>,
   mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
   let mut rng = rand::rng();
-  for color in get_random_colors(particle_spec.interactions.len(), &mut rng) {
+  let handles = get_random_colors(particle_spec.interactions.len(), &mut rng)
+    .into_iter()
+    .map(|color| {
     let material = StandardMaterial {
       base_color: color,
       double_sided: true,
       unlit: true,
       ..Default::default()
     };
-    particle_spec.materials.push(materials.add(material));
-  }
+    materials.add(material)
+    })
+    .collect();
+  commands.insert_resource(ParticleMaterials(handles));
 }
 
 pub fn init_particles(
@@ -55,20 +72,21 @@ pub fn init_particles(
   mut commands: Commands,
   mut meshes: ResMut<Assets<Mesh>>,
   mut materials: ResMut<Assets<StandardMaterial>>,
-  particle_spec: Res<core::ParticleSpec>,
+  particle_spec: Res<ParticleSpec>,
+  particle_materials: Res<ParticleMaterials>,
   windows: Query<&Window, With<PrimaryWindow>>,
 ) {
   let mut rng = rand::rng();
   let window = windows.single().expect("no primary window");
   let width = window.width();
   let height = window.height();
-  let mut sim_region = core::SimRegion::new(width, height, INTERACTION_RADIUS);
+  let mut grid = SpatialGrid::new(width, height, INTERACTION_RADIUS);
 
   let circle_mesh = meshes.add(Mesh::try_from(Sphere::new(args.particle_size)).unwrap());
   let gizmo_mesh = meshes.add(Mesh::try_from(Sphere::new(args.particle_size + 3.0)).unwrap());
 
   for _ in 0..args.num_particles {
-    let interaction = core::InteractionId(
+    let interaction = InteractionId(
       (0..particle_spec.interactions.len())
         .choose(&mut rng)
         .expect("no particle spec"),
@@ -83,21 +101,21 @@ pub fn init_particles(
     );
     let particle = commands
       .spawn((
-        core::ParticleBundle {
-          acceleration: core::Acceleration(Vec2::new(0.0, 0.0)),
-          last_pos: core::LastPosition(
+        ParticleBundle {
+          acceleration: Acceleration(Vec2::new(0.0, 0.0)),
+          last_pos: LastPosition(
             (translation - DELTA_TIME as f32 * starting_velocity).truncate(),
           ),
           interaction,
         },
         Transform::from_translation(translation),
         Mesh3d(circle_mesh.clone()),
-        MeshMaterial3d(particle_spec.materials[interaction.0].clone()),
+        MeshMaterial3d(particle_materials.0[interaction.0].clone()),
       ))
       .id();
     let particle_selection = commands
       .spawn((
-        core::Selection::default(),
+        Selection,
         Visibility::Hidden,
         Mesh3d(gizmo_mesh.clone()),
         MeshMaterial3d(materials.add(Color::srgba(1.0, 1.0, 1.0, 0.5))),
@@ -105,7 +123,7 @@ pub fn init_particles(
       .id();
     let particle_highlight = commands
       .spawn((
-        core::Highlight::default(),
+        Highlight,
         Visibility::Hidden,
         Mesh3d(gizmo_mesh.clone()),
         MeshMaterial3d(materials.add(Color::srgba(1.0f32, 0.0, 0.5, 0.5))),
@@ -114,12 +132,12 @@ pub fn init_particles(
     commands
       .entity(particle)
       .add_children(&[particle_selection, particle_highlight]);
-    sim_region.insert_entity(particle, position_x, position_y);
+    grid.insert_entity(particle, position_x, position_y);
   }
-  commands.insert_resource(sim_region);
+  commands.insert_resource(grid);
 
   commands.spawn((
-    core::MainCamera {
+    MainCamera {
       zoom_base: 1.125,
       zoom_exponent: 1,
     },

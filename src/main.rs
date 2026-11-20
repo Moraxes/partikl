@@ -4,10 +4,10 @@ use clap::Parser;
 
 mod args;
 mod config;
-mod core;
 mod loading;
 mod render;
 mod sim;
+mod spec;
 mod ui;
 
 fn main() {

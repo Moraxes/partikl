@@ -5,8 +5,11 @@ use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowMode};
 
+pub mod selection;
+
 use crate::args::ProgramArgs;
-use crate::core::*;
+use crate::render::MainCamera;
+use crate::sim::SimState;
 
 pub struct UiPlugin;
 
@@ -18,7 +21,7 @@ impl Plugin for UiPlugin {
       .add_systems(
         Update,
         (
-          crate::sim::select_on_click,
+          selection::select_on_click,
           update_text,
           exit_after_time,
           handle_keyboard_input,

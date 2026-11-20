@@ -12,9 +12,9 @@ use std::fs::File;
 use std::path::PathBuf;
 
 use crate::args;
-use crate::core;
+use crate::spec::{Interaction, ParticleSpec};
 
-pub fn get_particle_spec(program_args: &args::ProgramArgs) -> core::ParticleSpec {
+pub fn get_particle_spec(program_args: &args::ProgramArgs) -> ParticleSpec {
   if let Some(path) = &program_args.interaction_spec {
     let file = File::open(path).expect(&format!("failed to open file at {:?}", path));
     let interaction_list = from_reader(file).expect(&format!("failed to parse file at {:?}", path));
@@ -46,20 +46,17 @@ pub fn get_particle_spec(program_args: &args::ProgramArgs) -> core::ParticleSpec
 }
 
 fn validate_interaction_list(
-  interactions: Vec<core::Interaction>,
-) -> Result<core::ParticleSpec, MalformedInteractionError> {
+  interactions: Vec<Interaction>,
+) -> Result<ParticleSpec, MalformedInteractionError> {
   let total_interactions = interactions.len();
   interactions
     .iter()
     .try_for_each(|interaction| validate_single_interaction(interaction, total_interactions))?;
-  Ok(core::ParticleSpec {
-    interactions,
-    ..Default::default()
-  })
+  Ok(ParticleSpec { interactions })
 }
 
 fn validate_single_interaction(
-  interaction: &core::Interaction,
+  interaction: &Interaction,
   total_interactions: usize,
 ) -> Result<(), MalformedInteractionError> {
   let total_coeffs = interaction.force_coeffs.len();
@@ -73,18 +70,15 @@ fn validate_single_interaction(
   }
 }
 
-fn generate_particle_spec(rng: &mut impl Rng, type_count: usize) -> core::ParticleSpec {
+fn generate_particle_spec(rng: &mut impl Rng, type_count: usize) -> ParticleSpec {
   let interactions = (0..type_count)
     .map(|_| generate_single_interaction(rng, type_count))
     .collect();
-  core::ParticleSpec {
-    interactions,
-    ..Default::default()
-  }
+  ParticleSpec { interactions }
 }
 
-fn generate_single_interaction(rng: &mut impl Rng, type_count: usize) -> core::Interaction {
-  core::Interaction {
+fn generate_single_interaction(rng: &mut impl Rng, type_count: usize) -> Interaction {
+  Interaction {
     force_coeffs: (0..type_count)
       .map(|_| 1000.0 * rng.random::<f32>() - 500.0)
       .collect(),

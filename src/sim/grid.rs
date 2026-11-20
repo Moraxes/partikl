@@ -1,46 +1,22 @@
 use bevy::prelude::*;
 
-use serde::{Deserialize, Serialize};
-
 use std::collections::HashMap;
 
-#[derive(Component, Default, Debug)]
-pub struct Acceleration(pub Vec2);
-#[derive(Component, Default, Debug)]
-pub struct LastPosition(pub Vec2);
-
-#[derive(Bundle, Default)]
-pub struct ParticleBundle {
-  pub last_pos: LastPosition,
-  pub acceleration: Acceleration,
-  pub interaction: InteractionId,
-}
-
+/// Siatka przestrzenna z zawijaniem (torus) do szukania sąsiadów cząstek.
+/// Świat obejmuje `[-half_size, half_size]` w obu osiach.
 #[derive(Default, Resource)]
-pub struct ParticleSpec {
-  pub interactions: Vec<Interaction>,
-  pub materials: Vec<Handle<StandardMaterial>>,
-}
-#[derive(Default, Deserialize, Serialize, Debug)]
-pub struct Interaction {
-  pub force_coeffs: Vec<f32>,
-}
-#[derive(Component, Default, Clone, Copy)]
-pub struct InteractionId(pub usize);
-
-#[derive(Default, Resource)]
-pub struct SimRegion {
-  top_right: Vec2,
+pub struct SpatialGrid {
+  half_size: Vec2,
   pub granularity: f32,
   pub index: HashMap<(i32, i32), Vec<Entity>>,
 }
 
-impl SimRegion {
+impl SpatialGrid {
   const OFFSETS: [i32; 3] = [-1, 0, 1];
 
-  pub fn new(width: f32, height: f32, granularity: f32) -> SimRegion {
-    SimRegion {
-      top_right: Vec2::new(width / 2.0, height / 2.0),
+  pub fn new(width: f32, height: f32, granularity: f32) -> SpatialGrid {
+    SpatialGrid {
+      half_size: Vec2::new(width / 2.0, height / 2.0),
       granularity,
       ..Default::default()
     }
@@ -53,24 +29,24 @@ impl SimRegion {
 
   pub fn get_wrap_around_adjustment(&self, point: Vec2) -> Vec2 {
     let mut adjustment = Vec2::ZERO;
-    if point.x > self.top_right.x {
-      adjustment.x = -self.top_right.x;
-    } else if point.x < -self.top_right.x {
-      adjustment.x = self.top_right.x;
+    if point.x > self.half_size.x {
+      adjustment.x = -self.half_size.x;
+    } else if point.x < -self.half_size.x {
+      adjustment.x = self.half_size.x;
     }
-    if point.y > self.top_right.y {
-      adjustment.y = -self.top_right.y;
-    } else if point.y < -self.top_right.y {
-      adjustment.y = self.top_right.y;
+    if point.y > self.half_size.y {
+      adjustment.y = -self.half_size.y;
+    } else if point.y < -self.half_size.y {
+      adjustment.y = self.half_size.y;
     }
     2.0 * adjustment
   }
 
   fn get_wrapped_buckets(&self, ix: i32, iy: i32) -> Vec<(i32, i32)> {
-    let right = (self.top_right.x / self.granularity).round() as i32;
-    let top = (self.top_right.y / self.granularity).round() as i32;
-    let left = (-self.top_right.x / self.granularity).round() as i32;
-    let bottom = (-self.top_right.y / self.granularity).round() as i32;
+    let right = (self.half_size.x / self.granularity).round() as i32;
+    let top = (self.half_size.y / self.granularity).round() as i32;
+    let left = (-self.half_size.x / self.granularity).round() as i32;
+    let bottom = (-self.half_size.y / self.granularity).round() as i32;
     let mut result = vec![(ix, iy); 4];
     let mut count = 1;
 
@@ -154,21 +130,4 @@ impl SimRegion {
       (y / self.granularity).round() as i32,
     )
   }
-}
-
-#[derive(Debug, Default, Clone, Eq, PartialEq, Hash, States)]
-pub enum SimState {
-  #[default]
-  Running,
-  Paused,
-}
-
-#[derive(Component, Default, Debug)]
-pub struct Selection;
-#[derive(Component, Default, Debug)]
-pub struct Highlight;
-#[derive(Component, Default, Debug)]
-pub struct MainCamera {
-  pub zoom_exponent: i32,
-  pub zoom_base: f32,
 }
