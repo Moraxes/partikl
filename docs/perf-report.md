@@ -17,6 +17,7 @@ Etapy optymalizacji symulacji i indeksu przestrzennego, mierzone benchmarkami `s
 | SIMD (f32x8) | `ec4d863` | 0,76 | 0,68 | 1,03 | 0,96 | 0,92 | 0,95 | 1,02 | 1,31 | 1,02 |
 | stałe SIMD jako const | `1c07039` | 0,87 | 0,80 | 1,03 | 0,98 | 1,01 | 0,99 | 0,99 | 1,01 | 1,01 |
 | kopia siatki w jednym przejściu | `ffe6723` | 0,98 | 0,95 | 1,01 | 1,02 | 1,00 | 1,02 | 0,98 | 1,00 | 1,02 |
+| przesunięcie przebiegów przez szew | `fd4ff44` | 0,93 | 0,89 | 1,00 | 0,99 | 1,03 | 0,97 | 0,95 | 2,53 | 0,99 |
 
 ## Względem punktu wyjścia
 
@@ -32,23 +33,24 @@ Iloczyn wyników kolejnych etapów.
 | SIMD (f32x8) | `ec4d863` | 0,29 | 0,20 | 1,09 | 1,08 | 1,12 | 0,92 | 0,22 | 2,22 | 0,94 |
 | stałe SIMD jako const | `1c07039` | 0,25 | 0,16 | 1,12 | 1,06 | 1,13 | 0,91 | 0,22 | 2,24 | 0,95 |
 | kopia siatki w jednym przejściu | `ffe6723` | 0,25 | 0,15 | 1,13 | 1,08 | 1,13 | 0,93 | 0,22 | 2,25 | 0,96 |
+| przesunięcie przebiegów przez szew | `fd4ff44` | 0,23 | 0,14 | 1,13 | 1,07 | 1,17 | 0,90 | 0,21 | 5,70 | 0,95 |
 
 ## Czas kroku symulacji
 
 Mediana po macierzach z median czasu kroku w µs, z przebiegów każdego etapu (różne dni, więc
 zawierają dryf warunków; zmiany etapów mierzą tabele wyżej).
 
-| n | offset | punkt wyjścia | płaska siatka | siły z danych w siatce | tablica sąsiedztwa i płaskie współczynniki | wszystkie rdzenie i drobne partie | SIMD (f32x8) | stałe SIMD jako const | kopia siatki w jednym przejściu |
-|---|---|---|---|---|---|---|---|---|---|
-| 1000 | 256 | 152 | 69 | 63 | 62 | 68 | 62 | 59 | 55 |
-| 1000 | 1024 | 152 | 72 | 65 | 67 | 70 | 62 | 58 | 56 |
-| 1000 | 4096 | 158 | 81 | 77 | 71 | 78 | 68 | 60 | 57 |
-| 3000 | 256 | 503 | 247 | 212 | 211 | 201 | 155 | 148 | 142 |
-| 3000 | 1024 | 517 | 273 | 237 | 222 | 214 | 169 | 150 | 147 |
-| 3000 | 4096 | 613 | 413 | 351 | 291 | 269 | 205 | 161 | 160 |
-| 9000 | 256 | 1877 | 1154 | 927 | 823 | 617 | 482 | 432 | 421 |
-| 9000 | 1024 | 2249 | 1603 | 1189 | 1041 | 722 | 534 | 472 | 463 |
-| 9000 | 4096 | 3927 | 3175 | 2433 | 1871 | 1202 | 662 | 543 | 513 |
+| n | offset | punkt wyjścia | płaska siatka | siły z danych w siatce | tablica sąsiedztwa i płaskie współczynniki | wszystkie rdzenie i drobne partie | SIMD (f32x8) | stałe SIMD jako const | kopia siatki w jednym przejściu | przesunięcie przebiegów przez szew |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1000 | 256 | 152 | 69 | 63 | 62 | 68 | 62 | 59 | 55 | 52 |
+| 1000 | 1024 | 152 | 72 | 65 | 67 | 70 | 62 | 58 | 56 | 52 |
+| 1000 | 4096 | 158 | 81 | 77 | 71 | 78 | 68 | 60 | 57 | 55 |
+| 3000 | 256 | 503 | 247 | 212 | 211 | 201 | 155 | 148 | 142 | 140 |
+| 3000 | 1024 | 517 | 273 | 237 | 222 | 214 | 169 | 150 | 147 | 143 |
+| 3000 | 4096 | 613 | 413 | 351 | 291 | 269 | 205 | 161 | 160 | 153 |
+| 9000 | 256 | 1877 | 1154 | 927 | 823 | 617 | 482 | 432 | 421 | 407 |
+| 9000 | 1024 | 2249 | 1603 | 1189 | 1041 | 722 | 534 | 472 | 463 | 425 |
+| 9000 | 4096 | 3927 | 3175 | 2433 | 1871 | 1202 | 662 | 543 | 513 | 495 |
 
 ## Etapy
 
@@ -241,5 +243,32 @@ Trajektorie identyczne jak przed zmianą (288/288 punktów), porównanie na tych
 | grid: neighbours | 0,98 [0,98; 0,99] | 0,97 / 0,96 / 1,01 | 1,01 / 1,00 / 0,97 | 0,98 / 0,98 / 0,98 |
 | grid: build | 1,00 [1,00; 1,01] | 1,00 / 1,01 / 1,00 | 1,02 / 1,01 / 0,99 | 1,00 / 1,00 / 1,00 |
 | grid: move | 1,02 [1,01; 1,02] | 1,01 / 1,01 / 1,01 | 1,01 / 1,00 / 1,06 | 1,01 / 1,01 / 1,03 |
+
+Kolumny n: offsety 256 / 1024 / 4096.
+
+### 8. przesunięcie przebiegów przez szew (`fd4ff44`)
+
+Każdy przebieg komórek sąsiedztwa ma stałe przesunięcie (0 albo ± rozmiar świata w osi), policzone raz w `SpatialGrid::new`; przebiegi dzielone na granicy szwu. `compute_forces` liczy `(x − x₀) + shift` tylko dla przebiegów przez szew, a dla reszty samo `x − x₀`, zamiast porównań i dwóch `select` na każdą parę i oś. Wynik co do bitu jak przy zawijaniu (test `run_shift_gives_the_same_delta_as_wrapping`), więc trajektorie identyczne. Pomiar przed zmianą robiony z commitu 0562481, bez zmian w kodzie od ffe6723. `grid: build` obejmuje dzielenie przebiegów w `SpatialGrid::new`.
+
+- przed, sim: `sim-2026-11-20-16-06-00.jsonl`, rewizja `0562481`, 288 rekordów
+- przed, grid: `grid-2026-11-20-16-07-57.jsonl`, rewizja `0562481`, 864 rekordów
+- po, sim: `sim-2026-11-20-16-08-07.jsonl`, rewizja `0562481*`, 288 rekordów
+- po, grid: `grid-2026-11-20-16-09-50.jsonl`, rewizja `0562481*`, 864 rekordów
+
+Porównanie z pomiarem „przed” zrobionym tuż przed pomiarem etapu.
+
+Trajektorie różnią się od tych sprzed zmiany (107/288 identycznych): porównanie sim jest na tych samych macierzach, ale innych stanach.
+
+| Metryka | ogółem [95% CI] | n=1000 | n=3000 | n=9000 |
+|---|---|---|---|---|
+| krok | 0,93 [0,91; 0,95] | 0,96 / 0,92 / 0,92 | 0,94 / 0,96 / 0,88 | 0,96 / 0,90 / 0,91 |
+| compute_forces | 0,89 [0,87; 0,91] | 0,94 / 0,90 / 0,90 | 0,92 / 0,92 / 0,85 | 0,91 / 0,84 / 0,85 |
+| compute_friction | 1,00 [0,98; 1,01] | 1,02 / 1,00 / 1,00 | 1,01 / 1,04 / 1,02 | 0,96 / 0,94 / 0,98 |
+| integrate | 0,99 [0,98; 1,01] | 1,02 / 0,97 / 1,00 | 1,00 / 1,00 / 1,01 | 0,99 / 0,97 / 0,99 |
+| wrap_around | 1,03 [1,02; 1,05] | 1,08 / 1,01 / 1,03 | 1,01 / 1,02 / 1,01 | 1,06 / 1,01 / 1,06 |
+| update_shape | 0,97 [0,95; 0,99] | 0,96 / 0,93 / 0,94 | 0,96 / 0,99 / 0,97 | 1,00 / 0,98 / 1,00 |
+| grid: neighbours | 0,95 [0,95; 0,96] | 1,06 / 0,97 / 0,99 | 0,96 / 0,95 / 0,93 | 0,91 / 0,90 / 0,92 |
+| grid: build | 2,53 [2,49; 2,58] | 2,99 / 2,96 / 2,92 | 2,53 / 2,51 / 2,62 | 2,10 / 2,17 / 2,20 |
+| grid: move | 0,99 [0,98; 1,00] | 1,00 / 1,00 / 1,02 | 1,00 / 0,97 / 0,98 | 0,99 / 0,99 / 0,97 |
 
 Kolumny n: offsety 256 / 1024 / 4096.
