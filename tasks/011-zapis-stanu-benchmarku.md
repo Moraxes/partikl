@@ -2,10 +2,11 @@
 id: 11
 title: Zapis stanu benchmarku
 summary: Stan symulacji po offsecie z cache zamiast symulowania 4096 kroków; pomiar przed/po na tym samym stanie
-status: todo
+status: doing
 priority: later
 branch: main
 created: 2026-11-20T19:56:05
+worked: 2026-11-21T00:38:37
 ---
 Tryb szybki (`--quick`, commit 6808821) za każdym razem symuluje 4096 kroków, żeby dojść do mierzonego stanu, a zmiana, która zmienia trajektorię (np. kolejność działań jak przy SIMD), przesuwa liczbę kandydatów przy każdej z trzech macierzy, więc porównanie przed/po miesza zmianę czasu ze zmianą stanu. Następny krok: zapisywać pełny stan (pozycje, `LastPosition`, typy) po offsecie w `.cache/`, jak `grid` robi z `.cache/grid-states`, i mierzyć od niego; `--regenerate` przy świadomej zmianie dynamiki.
 
