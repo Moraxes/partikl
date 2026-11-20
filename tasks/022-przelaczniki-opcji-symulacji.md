@@ -2,11 +2,11 @@
 id: 22
 title: Przełączniki opcji symulacji
 summary: 'SimOptions z flag CLI, klawisze w trakcie (nakładanie: 3 tryby cyklicznie); warianty jako osobne systemy z run_if'
-status: doing
+status: done
 priority: soon
 branch: main
 created: 2026-11-20T23:12:14
-worked: 2026-11-20T23:37:09
+worked: 2026-11-20T23:39:30
 edited: 2026-11-20T23:20:42
 links:
 - kind: commit
