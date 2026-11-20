@@ -3,7 +3,7 @@
 //
 //   node tools/bench-report/report.js [manifest] [wyjście]
 //
-// Domyślnie czyta `.data/perf-stages.json` i pisze `docs/perf-report.md`. Manifest to lista
+// Domyślnie czyta `.data/perf-stages.json` i pisze `.worklog/reports/perf-report.md` (gałąź `worklog`). Manifest to lista
 // etapów w kolejności; pierwszy jest punktem wyjścia. Pliki przebiegów są względne do
 // `.data/bench-results/`, `grid` albo `sim` można pominąć, jeśli etap nie zmienia tej części:
 //
@@ -27,7 +27,7 @@ const D = require('../bench-viz/data.js');
 
 const root = path.resolve(__dirname, '../..');
 const manifestPath = path.resolve(process.argv[2] ?? path.join(root, '.data/perf-stages.json'));
-const outPath = path.resolve(process.argv[3] ?? path.join(root, 'docs/perf-report.md'));
+const outPath = path.resolve(process.argv[3] ?? path.join(root, '.worklog/reports/perf-report.md'));
 const resultsDir = path.join(path.dirname(manifestPath), 'bench-results');
 
 const METRICS = [
