@@ -14,6 +14,10 @@ links:
   target: b25cb70
   at: 2026-11-20T20:50:45
   note: 'perf: rebuild the spatial grid every step by counting sort'
+- kind: report
+  target: .artifacts/reports/perf-report.md
+  at: 2026-11-20T20:52:44
+  note: sekcja Tryb szybki
 ---
 Wynik: siatka układana co krok od nowa sortowaniem przez zliczanie (`b25cb70`, system `rebuild_grid`). `wrap_around` + `rebuild_grid` 51 / 45 / 41 µs zamiast `wrap_around` 57 / 54 / 78 µs; krok ×0,97 / ×0,92 / ×0,89 (macierze 23 / 6 / 4). Złączenie tarcia, całkowania, zawijania i siatki w jeden system odrzucone (wolniejsze). Wersja równoległa niezrobiona: zakres pracy w puli Bevy kosztuje ok. 30 µs (zadanie 013), więcej niż cała przebudowa.
 
