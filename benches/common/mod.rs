@@ -261,15 +261,44 @@ impl Sim {
   }
 
   /// Średnia liczba kandydatów na sąsiada zwracanych przez siatkę (z samą cząstką).
-  pub fn candidates_mean(&mut self) -> f64 {
-    let positions = self.positions();
-    candidates_mean(self.app.world().resource::<SpatialGrid>(), &positions)
+  ///
+  /// Z liczności komórek (`candidates_in_grid`): cząstki w ECS to te, z których zbudowano
+  /// siatkę, na tych samych pozycjach (siatka powstaje na końcu kroku). `check` liczy też po
+  /// pozycjach (`candidates_mean`, wolno: po każdym kandydacie) i sprawdza, że wynik ten sam.
+  pub fn candidates_mean(&mut self, check: bool) -> f64 {
+    let fast = candidates_in_grid(self.app.world().resource::<SpatialGrid>());
+    if check {
+      let positions = self.positions();
+      let slow = candidates_mean(self.app.world().resource::<SpatialGrid>(), &positions);
+      assert_eq!(fast, slow, "kandydaci z komórek różni od liczonych po pozycjach");
+    }
+    fast
   }
 }
 
+/// Średnia liczba kandydatów na cząstkę (z nią samą) dla cząstek na `positions`, po kolei przez
+/// `get_entities_by_position`.
 pub fn candidates_mean(grid: &SpatialGrid, positions: &[Vec2]) -> f64 {
   let total: usize = positions.iter().map(|p| grid.get_entities_by_position(p.x, p.y).count()).sum();
   total as f64 / positions.len().max(1) as f64
+}
+
+/// Jak `candidates_mean` dla cząstek samej siatki, bez przechodzenia po kandydatach: każda
+/// cząstka komórki ma tylu kandydatów, ile cząstek jest w sąsiedztwie komórki
+/// (`neighbour_runs`, te same komórki co w `get_entities_by_position`).
+pub fn candidates_in_grid(grid: &SpatialGrid) -> f64 {
+  let starts = grid.cell_starts();
+  let total: u64 = (0..grid.cell_count())
+    .map(|c| {
+      let count = grid.cell_range(c).len() as u64;
+      if count == 0 {
+        return 0;
+      }
+      let neighbourhood: u64 = grid.neighbour_runs(c).iter().map(|r| (starts[r.last as usize] - starts[r.first as usize]) as u64).sum();
+      count * neighbourhood
+    })
+    .sum();
+  total as f64 / grid.len().max(1) as f64
 }
 
 pub fn nanos(d: Duration) -> u64 {

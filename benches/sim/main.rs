@@ -79,9 +79,10 @@ fn main() {
       let mut step_ns = vec![];
       let mut system_ns = vec![vec![]; SYSTEM_NAMES.len()];
       let mut candidates = vec![];
-      for _ in 0..args.measured {
-        // Kandydaci dla stanu, który przetwarza mierzony krok (poza pomiarem).
-        candidates.push(sim.candidates_mean());
+      for rep in 0..args.measured {
+        // Kandydaci dla stanu, który przetwarza mierzony krok (poza pomiarem); w pierwszym
+        // powtórzeniu sprawdzone wolniejszym liczeniem po pozycjach.
+        candidates.push(sim.candidates_mean(rep == 0));
         let (step, per_system) = sim.step_timed();
         step_ns.push(nanos(step));
         for (i, d) in per_system.iter().enumerate() {
