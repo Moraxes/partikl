@@ -5,3 +5,4 @@ rust-toolchain.toml
 /.notes
 /.data
 /.worklog
+node_modules/

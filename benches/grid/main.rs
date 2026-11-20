@@ -19,6 +19,7 @@ use bevy::prelude::*;
 use clap::Parser;
 use serde_json::{Value, json};
 
+use common::results::{GridRows, SampleKey};
 use common::{BenchArgs, Output, Progress, Sample, Sim, WORLD, nanos};
 use partikl::config::INTERACTION_RADIUS;
 use partikl::sim::{InteractionId, SpatialGrid};
@@ -164,7 +165,8 @@ fn main() {
   let args = GridArgs { common: common_args, ..args };
   let c = &args.common;
 
-  let mut output = Output::new("grid", c);
+  let mut output = Output::new("grid", c, GridRows::schema());
+  let mut rows = GridRows::default();
   let groups = c.n.iter().map(|&n| (format!("n={n}"), n as f64, c.matrices as usize)).collect();
   let mut progress = Progress::new(&output, groups, &COLUMNS);
   let mut summary: BTreeMap<(usize, usize, &str), Vec<f64>> = BTreeMap::new();
@@ -204,14 +206,10 @@ fn main() {
       );
 
       for (op, ns) in OPS.iter().zip([&build_ns, &neighbours_ns, &move_ns]) {
-        let mut record = sample.json();
-        let object = record.as_object_mut().unwrap();
-        object.insert("op".into(), json!(op));
-        object.insert("step_offset".into(), json!(offset));
-        object.insert("candidates_mean".into(), json!(candidates_mean));
-        object.insert("state_revision".into(), json!(state.revision));
-        object.insert("ns".into(), json!(ns));
-        output.write(record);
+        let key = SampleKey::new(&sample, offset, candidates_mean);
+        for (rep, &x) in ns.iter().enumerate() {
+          rows.push(&key, rep, op, &state.revision, x);
+        }
         let mut values: Vec<f64> = ns.iter().map(|&x| x as f64).collect();
         summary.entry((sample.n, offset, op)).or_default().push(common::median(&mut values));
       }
@@ -219,6 +217,7 @@ fn main() {
     for e in entities {
       world.despawn(e);
     }
+    output.write(&rows.take_batch());
     progress.finish_sample(group, summary_rows(&summary));
   }
   progress.finish();
@@ -226,4 +225,5 @@ fn main() {
   println!("\nSiatka: rozkład median po macierzach ({} na n)", c.matrices);
   println!("{}", common::format_table(&COLUMNS, &summary_rows(&summary)));
   println!("\nWyniki: {}", output.path.display());
+  output.finish();
 }

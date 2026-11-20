@@ -3,13 +3,13 @@
 //
 //   node tools/bench-report/report.js [manifest] [wyjście]
 //
-// Domyślnie czyta `.data/perf-stages.json` i pisze `.worklog/reports/perf-report.md` (gałąź `worklog`). Manifest to lista
-// etapów w kolejności; pierwszy jest punktem wyjścia. Pliki przebiegów są względne do
+// Wymaga `npm install` w `tools/` (hyparquet). Domyślnie czyta `.data/perf-stages.json` i
+// pisze `.worklog/reports/perf-report.md` (gałąź `worklog`). Manifest to lista etapów w kolejności; pierwszy jest punktem wyjścia. Pliki przebiegów są względne do
 // `.data/bench-results/`, `grid` albo `sim` można pominąć, jeśli etap nie zmienia tej części:
 //
 //   { "stages": [
 //     { "name": "punkt wyjścia", "commit": "8f682a0",
-//       "sim": "sim-….jsonl", "grid": "grid-….jsonl", "note": "opcjonalnie" },
+//       "sim": "sim-….parquet", "grid": "grid-….parquet", "note": "opcjonalnie" },
 //     { "name": "…", "commit": "…", "sim": "…", "grid": "…",
 //       "before": { "sim": "…", "grid": "…" } },
 //     … ] }
@@ -42,23 +42,38 @@ const METRICS = [
   ['grid: move', 'grid: move'],
 ];
 
-function loadRun(file, bench) {
+let parquet = null;
+async function loadRun(file, bench) {
   if (!file) return null;
-  const text = fs.readFileSync(path.join(resultsDir, file), 'utf8');
-  const runs = D.groupRuns(D.parseJsonl(text, file), file).filter((r) => r.bench === bench);
-  if (runs.length !== 1) throw new Error(`${file}: oczekiwany jeden przebieg ${bench}, jest ${runs.length}`);
-  return runs[0];
+  if (!parquet) {
+    const [hyparquet, { compressors }] = await Promise.all([import('hyparquet'), import('hyparquet-compressors')]);
+    parquet = { ...hyparquet, compressors };
+  }
+  const bytes = fs.readFileSync(path.join(resultsDir, file));
+  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const run = await D.readRun(buffer, parquet, file);
+  if (run.bench !== bench) throw new Error(`${file}: oczekiwany przebieg ${bench}, jest ${run.bench}`);
+  return run;
 }
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-function loadPair(files) {
-  const sim = loadRun(files.sim, 'sim');
-  const grid = loadRun(files.grid, 'grid');
+async function loadPair(files) {
+  const sim = await loadRun(files.sim, 'sim');
+  const grid = await loadRun(files.grid, 'grid');
   const data = D.buildDataset(sim, grid);
   return { simRun: sim, gridRun: grid, data, byKey: new Map(data.points.map((p) => [p.key, p])) };
 }
 
-const stages = manifest.stages.map((s) => ({ ...s, ...loadPair(s), before: s.before ? loadPair(s.before) : null }));
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+
+async function main() {
+const stages = [];
+for (const s of manifest.stages) {
+  stages.push({ ...s, ...(await loadPair(s)), before: s.before ? await loadPair(s.before) : null });
+}
 /** Z czym porównywać etap `i`: jego pomiar `before` albo przebiegi poprzedniego etapu. */
 const reference = (i) => stages[i].before ?? stages[i - 1];
 
@@ -228,3 +243,4 @@ stages.forEach((s, i) => {
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, lines.join('\n'));
 console.log(`zapisano ${path.relative(process.cwd(), outPath)} (${stages.length} etapów)`);
+}

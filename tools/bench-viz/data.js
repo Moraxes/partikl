@@ -1,4 +1,4 @@
-// Dane wizualizatora: parsowanie JSONL z benchmarków, mediany, cechy macierzy i PCA.
+// Dane wizualizatora: odczyt plików Parquet z benchmarków, mediany, cechy macierzy i PCA.
 // Bez zależności i bez DOM, żeby dało się to sprawdzić w node:
 //   node -e 'const d = require("./tools/bench-viz/data.js"); ...'
 'use strict';
@@ -13,39 +13,70 @@
     return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
   }
 
-  /** Rekordy z tekstu JSONL; błąd wskazuje numer linii. */
-  function parseJsonl(text, name = 'plik') {
-    const records = [];
-    text.split('\n').forEach((line, i) => {
-      if (line.trim() === '') return;
-      try {
-        records.push(JSON.parse(line));
-      } catch (err) {
-        throw new Error(`${name}, linia ${i + 1}: ${err.message}`);
-      }
-    });
-    return records;
+  /** Obsługiwany format plików wyników (`benches/common/results.rs`): tylko ten major. */
+  const SCHEMA = 'partikl-bench';
+  const SCHEMA_MAJOR = '1';
+
+  /**
+   * Przebieg z pliku Parquet. `lib` to hyparquet: `{ parquetMetadataAsync, parquetReadObjects,
+   * compressors }` (z hyparquet-compressors), podawany z zewnątrz, żeby ten plik nie miał
+   * zależności. `file` to `ArrayBuffer` albo `AsyncBuffer` hyparquet.
+   */
+  async function readRun(file, lib, source = '') {
+    const meta = await lib.parquetMetadataAsync(file);
+    const kv = Object.fromEntries((meta.key_value_metadata || []).map(({ key, value }) => [key, value]));
+    const major = String(kv.schema_version || '').split('.')[0];
+    if (kv.schema !== SCHEMA || major !== SCHEMA_MAJOR) {
+      throw new Error(`${source}: format ${kv.schema} ${kv.schema_version}, obsługiwany ${SCHEMA} ${SCHEMA_MAJOR}.x`);
+    }
+    const rows = await lib.parquetReadObjects({ file, compressors: lib.compressors });
+    return runFromRows(rows, kv, source);
   }
 
-  /** Przebiegi: rekordy pogrupowane po `run.bench` i `run.started`. */
-  function groupRuns(records, source = '') {
-    const runs = new Map();
-    for (const r of records) {
-      if (!r.run || !r.run.bench) continue;
-      const key = `${r.run.bench}|${r.run.started}`;
-      if (!runs.has(key)) {
-        runs.set(key, {
-          key,
-          bench: r.run.bench,
-          started: r.run.started,
-          revision: r.run.revision,
-          source,
-          records: [],
-        });
+  /**
+   * Wiersze (jeden na pomiar) złożone w rekordy próbek: `(n, spec_seed, step_offset[, op])`
+   * z tablicami pomiarów w kolejności `rep`, macierzą `interactions` i opisem przebiegu `run`.
+   */
+  function runFromRows(rows, kv, source = '') {
+    const run = {
+      bench: kv.bench,
+      revision: kv.revision,
+      started: kv.started,
+      warmup: Number(kv.warmup),
+      measured: Number(kv.measured),
+      world: JSON.parse(kv.world || '[]'),
+    };
+    const series = kv.bench === 'sim' ? ['candidates', 'step_ns', ...SIM_SYSTEMS.map((s) => `${s}_ns`)] : ['ns'];
+    const records = new Map();
+    for (const row of rows) {
+      const key = `${row.n}|${row.spec_seed}|${row.step_offset}|${row.op ?? ''}`;
+      let r = records.get(key);
+      if (!r) {
+        const types = row.types;
+        const flat = Array.from(row.interactions, Number);
+        r = {
+          n: row.n,
+          types,
+          spec_seed: Number(row.spec_seed),
+          placement_seed: Number(row.placement_seed),
+          step_offset: row.step_offset,
+          interactions: Array.from({ length: types }, (_, i) => flat.slice(i * types, (i + 1) * types)),
+          candidates_mean: row.candidates_mean,
+          run,
+        };
+        if (row.op !== undefined) {
+          r.op = row.op;
+          r.state_revision = row.state_revision;
+        }
+        for (const s of series) r[s === 'candidates' ? 'candidates_per_step' : s] = [];
+        records.set(key, r);
       }
-      runs.get(key).records.push(r);
+      for (const s of series) {
+        if (row[s] === undefined) continue;
+        r[s === 'candidates' ? 'candidates_per_step' : s][row.rep] = Number(row[s]);
+      }
     }
-    return [...runs.values()];
+    return { key: `${run.bench}|${run.started}`, bench: run.bench, started: run.started, revision: run.revision, source, records: [...records.values()] };
   }
 
   const pointKey = (n, seed, offset) => `${n}|${seed}|${offset}`;
@@ -242,8 +273,8 @@
   const api = {
     SIM_SYSTEMS,
     median,
-    parseJsonl,
-    groupRuns,
+    readRun,
+    runFromRows,
     buildDataset,
     benchOf,
     value,

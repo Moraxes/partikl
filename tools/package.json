@@ -1,0 +1,9 @@
+{
+  "name": "partikl-tools",
+  "private": true,
+  "description": "Narzędzia do wyników benchmarków (bench-viz, bench-report).",
+  "dependencies": {
+    "hyparquet": "1.32.0",
+    "hyparquet-compressors": "1.1.3"
+  }
+}

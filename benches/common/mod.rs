@@ -1,16 +1,18 @@
 //! Wspólna część benchmarków `sim` i `grid`: deterministyczne sceny, krokowanie symulacji,
-//! parametry z linii poleceń i zapis wyników jako JSONL.
+//! parametry z linii poleceń i zapis wyników jako Parquet (format w `results`).
 //!
 //! Każda próbka to stan symulacji wyznaczony przez `(n, macierz, step_offset)`: `n` cząstek,
 //! macierz sił z ziarna `spec_seed`, rozmieszczenie z ziarna `placement_seed`, po
 //! `step_offset` krokach. Z jednej trajektorii na macierz bierzemy wszystkie offsety.
 //!
-//! Wyniki ogląda się w `tools/bench-viz/index.html` (otworzyć w przeglądarce, wczytać pliki JSONL).
+//! Wyniki ogląda się w `tools/bench-viz/index.html` (otworzyć w przeglądarce, wczytać pliki
+//! `.parquet`) albo zapytaniami, np. `duckdb -c "select … from '<katalog>/sim-*.parquet'"`.
 
 #![allow(dead_code)]
 
-use std::fs::{self, File};
-use std::io::{BufWriter, Write};
+pub mod results;
+
+use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
@@ -21,7 +23,11 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use clap::Parser;
 use rand::prelude::*;
+use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
 use serde_json::{Value, json};
+
+use results::{ResultsFile, Run};
 
 use partikl::config::{DELTA_TIME, INTERACTION_RADIUS};
 use partikl::sim::{
@@ -99,15 +105,6 @@ impl Sample {
     particle_spec(self.types, self.spec_seed)
   }
 
-  pub fn json(&self) -> Value {
-    json!({
-      "n": self.n,
-      "types": self.types,
-      "spec_seed": self.spec_seed,
-      "placement_seed": self.placement_seed,
-      "interactions": self.spec().interactions.iter().map(|i| &i.force_coeffs).collect::<Vec<_>>(),
-    })
-  }
 }
 
 pub fn rng(seed: u64) -> StdRng {
@@ -252,36 +249,37 @@ pub fn git_revision() -> String {
   if dirty { format!("{hash}-dirty") } else { hash }
 }
 
-/// Zapis wyników: jedna linia JSON na rekord, z wspólnymi metadanymi przebiegu.
+/// Plik wyników przebiegu (`results`): `<bench>-<start>.parquet` w `out_dir`.
 pub struct Output {
-  writer: BufWriter<File>,
+  file: ResultsFile,
   pub path: PathBuf,
-  pub run: Value,
+  pub run: Run,
 }
 
 impl Output {
-  pub fn new(bench: &str, args: &BenchArgs) -> Self {
+  pub fn new(bench: &str, args: &BenchArgs, schema: SchemaRef) -> Self {
     fs::create_dir_all(&args.out_dir).expect("cannot create output directory");
     let started = chrono::Local::now();
-    let path = args.out_dir.join(format!("{bench}-{}.jsonl", started.format("%Y-%m-%d-%H-%M-%S")));
-    let writer = BufWriter::new(File::create(&path).expect("cannot create output file"));
-    let run = json!({
-      "bench": bench,
-      "revision": git_revision(),
-      "started": started.to_rfc3339(),
-      "warmup": args.warmup,
-      "measured": args.measured,
-      "world": [WORLD.x, WORLD.y],
-    });
-    Output { writer, path, run }
+    let path = args.out_dir.join(format!("{bench}-{}.parquet", started.format("%Y-%m-%d-%H-%M-%S")));
+    let run = Run {
+      bench: bench.to_string(),
+      revision: git_revision(),
+      started: started.to_rfc3339(),
+      warmup: args.warmup,
+      measured: args.measured,
+      world: [WORLD.x, WORLD.y],
+    };
+    let file = ResultsFile::create(path.clone(), schema, &run);
+    Output { file, path, run }
   }
 
-  pub fn write(&mut self, mut record: Value) {
-    let object = record.as_object_mut().expect("record must be an object");
-    object.insert("run".into(), self.run.clone());
-    serde_json::to_writer(&mut self.writer, &record).unwrap();
-    self.writer.write_all(b"\n").unwrap();
-    self.writer.flush().unwrap();
+  pub fn write(&mut self, batch: &RecordBatch) {
+    self.file.write(batch);
+  }
+
+  /// Domyka plik; bez tego zostaje tylko `<plik>.parquet.partial`.
+  pub fn finish(self) {
+    self.file.finish();
   }
 }
 
@@ -319,9 +317,9 @@ impl Progress {
       path: output.path.with_extension("progress.json"),
       header: json!({
         "schema": 1,
-        "bench": output.run["bench"],
-        "revision": output.run["revision"],
-        "started": output.run["started"],
+        "bench": output.run.bench,
+        "revision": output.run.revision,
+        "started": output.run.started,
         "pid": std::process::id(),
         "results": output.path.display().to_string(),
       }),

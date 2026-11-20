@@ -1,5 +1,6 @@
 //! Gorąca ścieżka symulacji: czas kroku i każdego systemu w stanach po `step_offset` krokach,
-//! dla wielu macierzy sił. Wyniki: JSONL w `.data/bench-results/`, postęp w pliku
+//! dla wielu macierzy sił. Wyniki: Parquet w `.data/bench-results/` (format w
+//! `common::results`), postęp w pliku
 //! `.progress.json` obok, podsumowanie na stdout.
 //!
 //! `cargo bench --bench sim -- --help` pokazuje parametry.
@@ -9,8 +10,7 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use serde_json::json;
-
+use common::results::{SampleKey, SimRows};
 use common::{BenchArgs, Output, Progress, SYSTEM_NAMES, Sim, median, nanos, quantile};
 
 /// Mediany jednej macierzy w jednym punkcie `(n, offset)`.
@@ -57,7 +57,8 @@ fn to_f64(values: &[u64]) -> Vec<f64> {
 
 fn main() {
   let args = BenchArgs::parse_sorted();
-  let mut output = Output::new("sim", &args);
+  let mut output = Output::new("sim", &args, SimRows::schema());
+  let mut rows = SimRows::default();
   let groups = args.n.iter().map(|&n| (format!("n={n}"), n as f64, args.matrices as usize)).collect();
   let mut progress = Progress::new(&output, groups, &COLUMNS);
   let mut summary: BTreeMap<(usize, usize), Vec<MatrixResult>> = BTreeMap::new();
@@ -90,16 +91,11 @@ fn main() {
       steps_done += args.warmup + args.measured;
 
       let candidates_mean = candidates.iter().sum::<f64>() / candidates.len() as f64;
-      let mut record = sample.json();
-      let object = record.as_object_mut().unwrap();
-      object.insert("step_offset".into(), json!(offset));
-      object.insert("candidates_mean".into(), json!(candidates_mean));
-      object.insert("candidates_per_step".into(), json!(candidates));
-      object.insert("step_ns".into(), json!(step_ns));
-      for (name, ns) in SYSTEM_NAMES.iter().zip(&system_ns) {
-        object.insert(format!("{name}_ns"), json!(ns));
+      let key = SampleKey::new(&sample, offset, candidates_mean);
+      for rep in 0..args.measured {
+        let systems = std::array::from_fn(|i| system_ns[i][rep]);
+        rows.push(&key, rep, candidates[rep], step_ns[rep], systems);
       }
-      output.write(record);
 
       summary.entry((sample.n, offset)).or_default().push(MatrixResult {
         step: median(&mut to_f64(&step_ns)),
@@ -107,6 +103,7 @@ fn main() {
         systems: system_ns.iter().map(|ns| median(&mut to_f64(ns))).collect(),
       });
     }
+    output.write(&rows.take_batch());
     progress.finish_sample(group, summary_rows(&summary));
   }
   progress.finish();
@@ -118,4 +115,5 @@ fn main() {
   );
   println!("{}", common::format_table(&COLUMNS, &summary_rows(&summary)));
   println!("\nWyniki: {}", output.path.display());
+  output.finish();
 }
