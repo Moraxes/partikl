@@ -55,6 +55,12 @@ pub struct SpatialGrid {
   /// `c`: `neighbour_runs[run_starts[c]..run_starts[c + 1]]`.
   run_starts: Vec<u32>,
   neighbour_runs: Vec<NeighbourRun>,
+  /// Połowa sąsiedztwa do liczenia każdej pary raz: dla komórki `c` przebiegi komórek o
+  /// większym indeksie bez przesunięcia (`forward_runs`) i wszystkie przebiegi przez szew
+  /// (`seam_runs`); `half_starts[c]` to para początków w obu tablicach.
+  half_starts: Vec<(u32, u32)>,
+  forward_runs: Vec<NeighbourRun>,
+  seam_runs: Vec<NeighbourRun>,
 }
 
 /// Kolejne komórki `first..last` z sąsiedztwa jednej komórki, wszystkie po tej samej stronie
@@ -140,6 +146,9 @@ impl SpatialGrid {
       neighbour_starts: Vec::new(),
       neighbour_cells: Vec::new(),
       run_starts: Vec::new(),
+      half_starts: Vec::new(),
+      forward_runs: Vec::new(),
+      seam_runs: Vec::new(),
       neighbour_runs: Vec::new(),
     };
     let mut starts = Vec::with_capacity(columns * rows + 1);
@@ -158,6 +167,15 @@ impl SpatialGrid {
     let mut runs: Vec<NeighbourRun> = Vec::with_capacity(columns * rows * 3 + 64);
     let mut sorted = Vec::with_capacity(36);
     run_starts.push(0);
+    let (mut forward, mut seam) = (Vec::new(), Vec::new());
+    let mut half_starts = Vec::with_capacity(columns * rows + 1);
+    // Dokleja komórkę do ostatniego przebiegu od `first`, jeśli to jego ciąg dalszy.
+    fn push_cell(runs: &mut Vec<NeighbourRun>, first: usize, cell: u32, shift: Vec2) {
+      match runs[first..].last_mut() {
+        Some(run) if run.last == cell && run.shift == shift => run.last += 1,
+        _ => runs.push(NeighbourRun { first: cell, last: cell + 1, shift }),
+      }
+    }
     for iy in bottom..=top {
       for ix in left..=right {
         sorted.clear();
@@ -165,17 +183,28 @@ impl SpatialGrid {
         sorted.sort_unstable_by_key(|&(cell, _)| cell);
         let first = runs.len();
         for &(cell, shift) in &sorted {
-          let cell = cell as u32;
-          match runs[first..].last_mut() {
-            Some(run) if run.last == cell && run.shift == shift => run.last += 1,
-            _ => runs.push(NeighbourRun { first: cell, last: cell + 1, shift }),
-          }
+          push_cell(&mut runs, first, cell as u32, shift);
         }
         run_starts.push(runs.len() as u32);
+        let c = grid.cell_index((ix, iy)).unwrap() as u32;
+        let (forward_first, seam_first) = (forward.len(), seam.len());
+        half_starts.push((forward_first as u32, seam_first as u32));
+        for &(cell, shift) in &sorted {
+          let cell = cell as u32;
+          if shift != Vec2::ZERO {
+            push_cell(&mut seam, seam_first, cell, shift);
+          } else if cell > c {
+            push_cell(&mut forward, forward_first, cell, shift);
+          }
+        }
       }
     }
+    half_starts.push((forward.len() as u32, seam.len() as u32));
     grid.run_starts = run_starts;
     grid.neighbour_runs = runs;
+    grid.half_starts = half_starts;
+    grid.forward_runs = forward;
+    grid.seam_runs = seam;
     grid
   }
 
@@ -340,6 +369,16 @@ impl SpatialGrid {
   /// `get_neighbour_cells`, w innej kolejności.
   pub fn neighbour_runs(&self, c: usize) -> &[NeighbourRun] {
     &self.neighbour_runs[self.run_starts[c] as usize..self.run_starts[c + 1] as usize]
+  }
+
+  /// Połowa sąsiedztwa komórki `c` do liczenia każdej pary raz: (przebiegi komórek o większym
+  /// indeksie bez przesunięcia, przebiegi przez szew). Para cząstek z różnych komórek bez
+  /// szwu jest w przebiegach „do przodu” dokładnie jednej z nich; para przez szew w przebiegach
+  /// szwu obu (liczona z każdej strony osobno); pary w tej samej komórce poza przebiegami.
+  pub fn half_runs(&self, c: usize) -> (&[NeighbourRun], &[NeighbourRun]) {
+    let (f0, s0) = self.half_starts[c];
+    let (f1, s1) = self.half_starts[c + 1];
+    (&self.forward_runs[f0 as usize..f1 as usize], &self.seam_runs[s0 as usize..s1 as usize])
   }
 
   /// Indeks komórki (wierszami), albo `None` poza siatką (taka komórka jest zawsze pusta).

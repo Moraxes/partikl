@@ -7,6 +7,7 @@
 //! zakresów (`SpatialGrid::neighbour_runs`).
 
 use std::ops::Range;
+use std::sync::Mutex;
 
 use bevy::prelude::*;
 use wide::f32x8;
@@ -26,6 +27,19 @@ const LANES: usize = 8;
 const CHUNK_WORK: u64 = 50_000;
 /// Granice liczby zakresów na wątek.
 const CHUNKS_PER_THREAD: std::ops::RangeInclusive<usize> = 1..=16;
+/// Od tej pracy na krok (z poprzedniego kroku) każda para jest liczona raz, z siłą dla obu
+/// cząstek (`pair_forces_in_range`); poniżej każda cząstka sumuje swoje pary sama
+/// (`forces_in_range`), bo zbieranie buforów kosztuje więcej, niż daje połowa par.
+const SYMMETRIC_WORK: u64 = 600_000;
+
+/// Siły dla cząstek „do przodu” z jednego zadania; bufor na wątek (zadania jednego wątku idą
+/// po kolei), zerowany przy pierwszym użyciu w kroku.
+#[derive(Default)]
+struct PairBuffer {
+  step: u64,
+  xs: Vec<f32>,
+  ys: Vec<f32>,
+}
 
 /// Współczynniki sił w kolejności siatki na jeden krok, podział pracy i wyniki; bufory
 /// używane ponownie.
@@ -42,16 +56,31 @@ pub struct ForceData {
   stride: usize,
   /// `table[other * types + me]`: macierz sił spłaszczona.
   table: Vec<f32>,
+  /// `out_coeffs[me * stride + j]`: siła, jaką cząstka typu `me` działa na cząstkę `j` siatki.
+  out_coeffs: Vec<f32>,
+  /// Bufory sił „do przodu” (tryb symetryczny), co najmniej tyle, ile zadań naraz.
+  buffers: Vec<Mutex<PairBuffer>>,
+  step: u64,
 }
 
 impl Default for ForceData {
   fn default() -> Self {
-    ForceData { chunks: vec![], forces: vec![], last_work: u64::MAX, coeffs: vec![], stride: 0, table: vec![] }
+    ForceData {
+      chunks: vec![],
+      forces: vec![],
+      last_work: u64::MAX,
+      coeffs: vec![],
+      stride: 0,
+      table: vec![],
+      out_coeffs: vec![],
+      buffers: vec![],
+      step: 0,
+    }
   }
 }
 
 impl ForceData {
-  fn fill(&mut self, grid: &SpatialGrid, spec: &ParticleSpec) {
+  fn fill(&mut self, grid: &SpatialGrid, spec: &ParticleSpec, symmetric: bool) {
     let types = spec.interactions.len();
     self.table.clear();
     for other in &spec.interactions {
@@ -66,6 +95,15 @@ impl ForceData {
         *slot = self.table[other.0 * types + me];
       }
       row[n..].fill(0.0);
+    }
+    if symmetric {
+      self.out_coeffs.resize(types * self.stride, 0.0);
+      for (me, row) in self.out_coeffs.chunks_mut(self.stride).enumerate() {
+        for (slot, other) in row.iter_mut().zip(grid.types()) {
+          *slot = self.table[me * types + other.0];
+        }
+        row[n..].fill(0.0);
+      }
     }
   }
 
@@ -96,14 +134,19 @@ pub fn compute_forces(
   mut data: Local<ForceData>,
   mut particles: Query<(Entity, &mut Acceleration)>,
 ) {
-  data.fill(&grid, &particle_spec);
+  let symmetric = data.last_work >= SYMMETRIC_WORK;
+  data.fill(&grid, &particle_spec, symmetric);
   let pool = ComputeTaskPool::get();
   let n = grid.len();
   data.plan(n, pool.thread_num());
-  let ForceData { coeffs, stride, chunks, forces, last_work, .. } = &mut *data;
+  data.step += 1;
+  while data.buffers.len() < pool.thread_num() + 1 {
+    data.buffers.push(Mutex::default());
+  }
+  let ForceData { coeffs, out_coeffs, stride, chunks, forces, last_work, buffers, step, .. } = &mut *data;
   forces.clear();
   forces.resize(n, Vec2::ZERO);
-  let (coeffs, stride, grid) = (&coeffs[..], *stride, &*grid);
+  let (coeffs, out_coeffs, stride, grid, buffers, step) = (&coeffs[..], &out_coeffs[..], *stride, &*grid, &buffers[..], *step);
 
   let work = pool.scope(|scope| {
     let mut rest = &mut forces[..];
@@ -111,10 +154,34 @@ pub fn compute_forces(
       let (chunk, tail) = rest.split_at_mut(particles.len());
       rest = tail;
       let particles = particles.clone();
-      scope.spawn(async move { forces_in_range(grid, coeffs, stride, particles, chunk) });
+      if symmetric {
+        scope.spawn(async move {
+          let mut buffer = take_buffer(buffers);
+          if buffer.step != step {
+            buffer.step = step;
+            buffer.xs.clear();
+            buffer.xs.resize(n + SpatialGrid::PADDING, 0.0);
+            buffer.ys.clear();
+            buffer.ys.resize(n + SpatialGrid::PADDING, 0.0);
+          }
+          pair_forces_in_range(grid, coeffs, out_coeffs, stride, particles, chunk, &mut buffer)
+        });
+      } else {
+        scope.spawn(async move { forces_in_range(grid, coeffs, stride, particles, chunk) });
+      }
     }
   });
   *last_work = work.iter().sum();
+  if symmetric {
+    for buffer in buffers.iter() {
+      let buffer = buffer.lock().unwrap();
+      if buffer.step == step {
+        for ((force, x), y) in forces.iter_mut().zip(&buffer.xs).zip(&buffer.ys) {
+          *force += Vec2::new(*x, *y);
+        }
+      }
+    }
+  }
 
   // Z powrotem do ECS: iteracja w tej samej kolejności co w `rebuild_grid` (ten sam zestaw
   // encji, bez zmian struktury między systemami), sprawdzana encja po encji.
@@ -166,6 +233,64 @@ fn forces_in_range(grid: &SpatialGrid, coeffs: &[f32], stride: usize, particles:
         } else {
           sum.run::<true>(xs, ys, coeffs, start..end, run.shift);
         }
+      }
+      out[i - particles.start] = sum.total();
+    }
+    i = cell_end;
+    c += 1;
+  }
+  work
+}
+
+/// Wolny bufor sił „do przodu”: zadań naraz jest najwyżej tyle, ile wątków (z wątkiem
+/// głównym), a buforów o jeden więcej, więc któryś zawsze jest wolny.
+fn take_buffer(buffers: &[Mutex<PairBuffer>]) -> std::sync::MutexGuard<'_, PairBuffer> {
+  loop {
+    for buffer in buffers {
+      if let Ok(guard) = buffer.try_lock() {
+        return guard;
+      }
+    }
+    std::hint::spin_loop();
+  }
+}
+
+/// Jak `forces_in_range`, ale każda para raz: pary w tej samej komórce (dalsze cząstki) i z
+/// komórek „do przodu” (`SpatialGrid::half_runs`) dają siłę obu cząstkom, druga trafia do
+/// `buffer` (indeksy siatki); pary przez szew jednostronnie, jak zawsze.
+fn pair_forces_in_range(
+  grid: &SpatialGrid,
+  coeffs: &[f32],
+  out_coeffs: &[f32],
+  stride: usize,
+  particles: Range<usize>,
+  out: &mut [Vec2],
+  buffer: &mut PairBuffer,
+) -> u64 {
+  let mut work = 0u64;
+  let (xs, ys, starts, types) = (grid.xs(), grid.ys(), grid.cell_starts(), grid.types());
+  let PairBuffer { xs: bx, ys: by, .. } = buffer;
+  let mut c = starts.partition_point(|&s| s as usize <= particles.start) - 1;
+  let mut i = particles.start;
+  while i < particles.end {
+    let full_end = starts[c + 1] as usize;
+    let cell_end = full_end.min(particles.end);
+    let candidates: u32 = grid.neighbour_runs(c).iter().map(|r| starts[r.last as usize] - starts[r.first as usize]).sum();
+    work += (cell_end - i) as u64 * (candidates as u64 + 8);
+    let (forward, seam) = grid.half_runs(c);
+    for i in i..cell_end {
+      let me = types[i].0;
+      let cin = &coeffs[me * stride..(me + 1) * stride];
+      let cout = &out_coeffs[me * stride..(me + 1) * stride];
+      let mut sum = Kernel::new(Vec2::new(xs[i], ys[i]));
+      sum.pair_run(xs, ys, cin, cout, i + 1..full_end, bx, by);
+      for run in forward {
+        let range = starts[run.first as usize] as usize..starts[run.last as usize] as usize;
+        sum.pair_run(xs, ys, cin, cout, range, bx, by);
+      }
+      for run in seam {
+        let range = starts[run.first as usize] as usize..starts[run.last as usize] as usize;
+        sum.run::<true>(xs, ys, cin, range, run.shift);
       }
       out[i - particles.start] = sum.total();
     }
@@ -239,6 +364,41 @@ impl Kernel {
     // Poza zasięgiem `dx / distance` może być NaN, więc maska na samym wkładzie.
     self.sum_x += valid.select(magnitude * (dx / distance), Lanes::ZERO);
     self.sum_y += valid.select(magnitude * (dy / distance), Lanes::ZERO);
+  }
+
+  /// Pary z zakresu tablic (bez przesunięcia) liczone raz: siła od sąsiadów do sumy tej
+  /// cząstki, siła od tej cząstki na sąsiadów odjęta (przeciwny kierunek) w `bx`, `by`.
+  #[inline(always)]
+  fn pair_run(&mut self, xs: &[f32], ys: &[f32], cin: &[f32], cout: &[f32], range: Range<usize>, bx: &mut [f32], by: &mut [f32]) {
+    const LANE_INDEX: Lanes = Lanes::new([0., 1., 2., 3., 4., 5., 6., 7.]);
+    const RADIUS_SQ: Lanes = Lanes::splat(INTERACTION_RADIUS * INTERACTION_RADIUS);
+    const REPULSION: Lanes = Lanes::splat(-REPULSION_STRENGTH);
+    const REPULSION_R: Lanes = Lanes::splat(REPULSION_RADIUS);
+    const MIDDLE: Lanes = Lanes::splat(KERNEL_MIDDLE);
+    const WIDTH: Lanes = Lanes::splat(KERNEL_WIDTH);
+    let mut j = range.start;
+    while j < range.end {
+      let dx = load(&xs[j..]) - self.x;
+      let dy = load(&ys[j..]) - self.y;
+      let distance_sq = dx * dx + dy * dy;
+      let valid = LANE_INDEX.simd_lt(Lanes::splat((range.end - j) as f32))
+        & distance_sq.simd_le(RADIUS_SQ)
+        & distance_sq.simd_gt(Lanes::ZERO);
+      let distance = distance_sq.sqrt();
+      let repelled = distance.simd_lt(REPULSION_R);
+      let repulsion = REPULSION * (REPULSION_R - distance);
+      let shape = (Lanes::ONE - ((distance - MIDDLE) / WIDTH).abs()).max(Lanes::ZERO);
+      let mag_in = repelled.select(repulsion, load(&cin[j..]) * shape);
+      let mag_out = repelled.select(repulsion, load(&cout[j..]) * shape);
+      let (ux, uy) = (dx / distance, dy / distance);
+      self.sum_x += valid.select(mag_in * ux, Lanes::ZERO);
+      self.sum_y += valid.select(mag_in * uy, Lanes::ZERO);
+      let out_x = load(&bx[j..]) - valid.select(mag_out * ux, Lanes::ZERO);
+      let out_y = load(&by[j..]) - valid.select(mag_out * uy, Lanes::ZERO);
+      bx[j..j + LANES].copy_from_slice(&out_x.to_array());
+      by[j..j + LANES].copy_from_slice(&out_y.to_array());
+      j += LANES;
+    }
   }
 
   fn total(&self) -> Vec2 {

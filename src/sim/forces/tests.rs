@@ -42,6 +42,12 @@ fn reference(spec: &ParticleSpec, points: &[(Vec2, usize)], me: usize) -> Vec2 {
 /// Cząstki w świecie, siatka zbudowana w kolejności `grid_order` (indeksy do `points`),
 /// jeden przebieg `compute_forces`; przyspieszenia w kolejności `points`.
 fn run_forces(spec: &ParticleSpec, points: &[(Vec2, usize)], grid_order: &[usize]) -> Vec<Vec2> {
+  run_forces_times(spec, points, grid_order, 1)
+}
+
+/// Jak `run_forces`, `times` przebiegów z rzędu (przyspieszenia się sumują). Pierwszy przebieg
+/// liczy pary raz (praca poprzedniego kroku nieznana), kolejne przy małej pracy jednostronnie.
+fn run_forces_times(spec: &ParticleSpec, points: &[(Vec2, usize)], grid_order: &[usize], times: usize) -> Vec<Vec2> {
   let mut world = World::new();
   bevy::tasks::ComputeTaskPool::get_or_init(bevy::tasks::TaskPool::default);
   let entities: Vec<Entity> = points
@@ -54,7 +60,9 @@ fn run_forces(spec: &ParticleSpec, points: &[(Vec2, usize)], grid_order: &[usize
   world.insert_resource(ParticleSpec {
     interactions: spec.interactions.iter().map(|i| Interaction { force_coeffs: i.force_coeffs.clone() }).collect(),
   });
-  world.run_system_cached(compute_forces).unwrap();
+  for _ in 0..times {
+    world.run_system_cached(compute_forces).unwrap();
+  }
   entities.iter().map(|e| world.get::<Acceleration>(*e).unwrap().0).collect()
 }
 
@@ -105,4 +113,15 @@ fn dense_cluster_matches_reference() {
   points.extend(random_points(&mut rng, 200, 3));
   let order: Vec<usize> = (0..points.len()).collect();
   assert_close(&run_forces(&spec, &points, &order), &spec, &points);
+}
+
+#[test]
+fn pair_and_one_sided_modes_both_match_reference() {
+  let mut rng = StdRng::seed_from_u64(14);
+  let spec = spec(&mut rng, 3);
+  let points = random_points(&mut rng, 500, 3);
+  let order: Vec<usize> = (0..points.len()).collect();
+  let twice = run_forces_times(&spec, &points, &order, 2);
+  let halves: Vec<Vec2> = twice.iter().map(|a| *a / 2.0).collect();
+  assert_close(&halves, &spec, &points);
 }

@@ -346,3 +346,37 @@ fn every_reach_matches_brute_force_including_edges() {
     }
   }
 }
+
+#[test]
+fn half_runs_cover_each_cell_pair_once_and_seam_from_both_sides() {
+  for reach in 1..=2 {
+    for (width, height) in [(400.0, 400.0), (500.0, 330.0), (2560.0, 1440.0)] {
+      let grid = SpatialGrid::with_reach(width, height, INTERACTION_RADIUS, reach);
+      let cells = |runs: &[NeighbourRun]| -> Vec<(u32, Vec2)> {
+        runs.iter().flat_map(|r| (r.first..r.last).map(move |c| (c, r.shift))).collect()
+      };
+      let mut forward_pairs = HashSet::new();
+      for c in 0..grid.cell_count() {
+        let all = cells(grid.neighbour_runs(c));
+        let (forward, seam) = grid.half_runs(c);
+        let seam = cells(seam);
+        let expected_seam: Vec<_> = all.iter().copied().filter(|&(_, s)| s != Vec2::ZERO).collect();
+        assert_eq!(seam, expected_seam, "przebiegi szwu komórki {c}");
+        for (d, shift) in cells(forward) {
+          assert_eq!(shift, Vec2::ZERO);
+          assert!(d as usize > c);
+          assert!(forward_pairs.insert((c as u32, d)), "para ({c}, {d}) dwa razy");
+        }
+      }
+      // Każda para różnych komórek-sąsiadów bez szwu jest w przebiegach „do przodu” jednej z nich.
+      for c in 0..grid.cell_count() {
+        for (d, shift) in cells(grid.neighbour_runs(c)) {
+          if shift == Vec2::ZERO && d as usize != c {
+            let pair = ((c as u32).min(d), (c as u32).max(d));
+            assert!(forward_pairs.contains(&pair), "brak pary {pair:?} (reach {reach}, {width}x{height})");
+          }
+        }
+      }
+    }
+  }
+}
