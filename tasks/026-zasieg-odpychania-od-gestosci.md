@@ -2,7 +2,7 @@
 id: 26
 title: Zasięg odpychania od gęstości
 summary: 'Trzeci tryb nakładania: zasięg odpychania pary rośnie z wygładzoną gęstością, sztywność stała'
-status: todo
+status: doing
 priority: soon
 branch: main
 blocked_by:
@@ -11,6 +11,7 @@ relates:
 - 23
 - 25
 created: 2026-11-20T23:20:35
+worked: 2026-11-20T23:44:23
 ---
 Cel: trzeci tryb obsługi nakładania (obok sprężyny i rozsuwania, ten sam klawisz przełącza cyklicznie): zasięg odpychania pary `r_ij = max(r_i, r_j)` rośnie z gęstością wokół cząstki, siła na jednostkę wnikania bez zmian. Gęsta gwiazda puchnie (większe odstępy, mniej sąsiadów, słabsze przyciąganie), sztywność pary się nie zmienia. Następny krok: wygładzona gęstość jako stan cząstki, funkcja r(N̄) z ograniczeniem, sonda.
 
