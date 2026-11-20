@@ -14,6 +14,10 @@ links:
   target: 975035d
   at: 2026-11-20T20:43:58
   note: 'perf: compute particle rotation from velocity without trigonometry'
+- kind: report
+  target: .artifacts/reports/perf-report.md
+  at: 2026-11-20T20:45:52
+  note: sekcja Tryb szybki
 ---
 Wynik: obrót bez trygonometrii (`975035d`): `update_shape` ×0,15–0,19, krok ×0,76 / ×0,72 / ×0,87 (macierze 23 / 6 / 4), te same stany. Zrównoleglenie reszty odrzucone (wolniejsze). Przeniesienie do `Update` i shader niezrobione: zostało ok. 27 µs (ok. 8% kroku przy typowej macierzy), a przy ekranie 120 Hz `Update` byłby częściej niż krok fizyki (100 Hz).
 
