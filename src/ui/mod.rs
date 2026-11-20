@@ -36,12 +36,16 @@ impl Plugin for UiPlugin {
 #[derive(Component)]
 pub struct Hud;
 
-pub fn init_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
+/// Font napisów, wbudowany w binarkę (bez katalogu `assets` obok pliku wykonywalnego).
+const HUD_FONT: &[u8] = include_bytes!("../../assets/FiraMono-Regular.ttf");
+
+pub fn init_ui(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
+  let font = fonts.add(Font::from_bytes(HUD_FONT.to_vec()));
   commands.spawn((
     Hud,
     Text::new(""),
     TextFont {
-      font: FontSource::Handle(asset_server.load("FiraMono-Regular.ttf")),
+      font: FontSource::Handle(font),
       font_size: FontSize::Px(13.0),
       ..Default::default()
     },
