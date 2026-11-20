@@ -6,8 +6,13 @@ status: doing
 priority: now
 branch: main
 created: 2026-11-20T23:24:58
-worked: 2026-11-20T23:24:58
+worked: 2026-11-20T23:34:08
 edited: 2026-11-20T23:27:16
+links:
+- kind: commit
+  target: f855ea1
+  at: 2026-11-20T23:34:08
+  note: 'fix: apply quadratic friction to the post-step velocity with its exact decay'
 ---
 Wynik (niezacommitowane, do przejrzenia): zmiana tylko w `compute_friction` + `friction_acceleration`, 3 testy w `src/sim/tests.rs`. Koszt: `compute_friction` 7 → 12 µs, krok ×1,016 / ×0,990 / ×1,032 (trajektorie inne). Stabilność przy n=100000: niższe maksima prędkości, odsetek szybkich cząstek bez wyraźnej zmiany: tarcie nie było przyczyną chaosu.
 
