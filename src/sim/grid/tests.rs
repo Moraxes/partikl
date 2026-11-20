@@ -303,8 +303,30 @@ fn neighbour_runs_cover_the_same_cells_once() {
     for c in 0..grid.cells().len() {
       let mut expected: Vec<u32> = grid.neighbour_cells_at(c).to_vec();
       expected.sort_unstable();
-      let from_runs: Vec<u32> = grid.neighbour_runs(c).iter().flat_map(|&(a, b)| a..b).collect();
+      let from_runs: Vec<u32> = grid.neighbour_runs(c).iter().flat_map(|r| r.first..r.last).collect();
       assert_eq!(from_runs, expected, "komórka {c} w świecie {width}x{height}");
     }
+  }
+}
+
+#[test]
+fn run_shift_gives_the_same_delta_as_wrapping() {
+  for (width, height) in [(400.0, 400.0), (500.0, 330.0), (2560.0, 1440.0)] {
+    let size = Vec2::new(width, height);
+    let mut rng = StdRng::seed_from_u64(5);
+    let points = random_points(&mut rng, 600, size);
+    let ids = entities(points.len());
+    let grid = build_grid(&ids, &points, size);
+    let mut shifted = 0;
+    for p in &points {
+      for run in grid.neighbour_runs(grid.cell_at(p.x, p.y)) {
+        for q in grid.cells()[run.first as usize..run.last as usize].iter().flatten() {
+          let delta = (q.position - *p) + run.shift;
+          assert_eq!(delta, grid.get_corrected_position_delta(*p, q.position), "{p} → {}", q.position);
+          shifted += (run.shift != Vec2::ZERO) as usize;
+        }
+      }
+    }
+    assert!(shifted > 0, "żadna para przez szew w świecie {width}x{height}");
   }
 }

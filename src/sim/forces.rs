@@ -6,6 +6,8 @@
 //! ciągłych zakresów (`SpatialGrid::neighbour_runs`), a współczynnik ładuje się wektorowo,
 //! bez wybierania po typie sąsiada.
 
+use std::ops::Range;
+
 use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
 use wide::f32x8;
@@ -88,7 +90,6 @@ pub fn compute_forces(
 ) {
   data.fill(&grid, &particle_spec);
   let data = &*data;
-  let half = grid.half_size();
 
   particles
     .par_iter_mut()
@@ -96,19 +97,15 @@ pub fn compute_forces(
     .for_each(|(transform, mut acceleration, interaction)| {
       let position = transform.translation.xy();
       let coeffs = &data.coeffs[interaction.0 * data.stride..(interaction.0 + 1) * data.stride];
-      let mut sum = Kernel::new(position, half);
-      for &(first, last) in grid.neighbour_runs(grid.cell_at(position.x, position.y)) {
-        let start = data.starts[first as usize] as usize;
-        let end = data.starts[last as usize] as usize;
-        let mut i = start;
-        while i < end {
-          sum.add(
-            load(&data.xs[i..]),
-            load(&data.ys[i..]),
-            load(&coeffs[i..]),
-            end - i,
-          );
-          i += LANES;
+      let mut sum = Kernel::new(position);
+      for run in grid.neighbour_runs(grid.cell_at(position.x, position.y)) {
+        let start = data.starts[run.first as usize] as usize;
+        let end = data.starts[run.last as usize] as usize;
+        // Przebiegi przez szew są tylko przy krawędziach świata; reszta bez dodawania.
+        if run.shift == Vec2::ZERO {
+          sum.run::<false>(data, coeffs, start..end, Vec2::ZERO);
+        } else {
+          sum.run::<true>(data, coeffs, start..end, run.shift);
         }
       }
       acceleration.0 += sum.total();
@@ -124,46 +121,50 @@ fn load(values: &[f32]) -> Lanes {
 struct Kernel {
   x: Lanes,
   y: Lanes,
-  half_x: Lanes,
-  half_y: Lanes,
   sum_x: Lanes,
   sum_y: Lanes,
 }
 
 impl Kernel {
-  fn new(position: Vec2, half: Vec2) -> Self {
+  fn new(position: Vec2) -> Self {
     Kernel {
       x: Lanes::splat(position.x),
       y: Lanes::splat(position.y),
-      half_x: Lanes::splat(half.x),
-      half_y: Lanes::splat(half.y),
       sum_x: Lanes::ZERO,
       sum_y: Lanes::ZERO,
     }
   }
 
-  /// Różnica współrzędnych krótszą drogą na torusie (`get_corrected_position_delta`).
+  /// Siły od sąsiadów z zakresu tablic, jednego przebiegu komórek z przesunięciem `shift`
+  /// (`NeighbourRun::shift`; `SHIFTED == false` tylko dla zerowego).
   #[inline(always)]
-  fn wrap(delta: Lanes, half: Lanes) -> Lanes {
-    let size = half + half;
-    let delta = delta.simd_gt(half).select(delta - size, delta);
-    delta.simd_lt(-half).select(delta + size, delta)
+  fn run<const SHIFTED: bool>(&mut self, data: &ForceData, coeffs: &[f32], range: Range<usize>, shift: Vec2) {
+    let (shift_x, shift_y) = (Lanes::splat(shift.x), Lanes::splat(shift.y));
+    let mut i = range.start;
+    while i < range.end {
+      let mut dx = load(&data.xs[i..]) - self.x;
+      let mut dy = load(&data.ys[i..]) - self.y;
+      if SHIFTED {
+        dx += shift_x;
+        dy += shift_y;
+      }
+      self.add(dx, dy, load(&coeffs[i..]), range.end - i);
+      i += LANES;
+    }
   }
 
-  /// Dodaje siły od `remaining.min(LANES)` sąsiadów z wektorów.
+  /// Dodaje siły od `remaining.min(LANES)` sąsiadów z wektorów (różnice już przez szew).
   ///
   /// Stałe wektory muszą być `const`: `Lanes::splat` ze stałą w pętli kompiluje się do
   /// `memcpy` z puli stałych przy każdym użyciu, co podwajało czas pętli.
   #[inline(always)]
-  fn add(&mut self, xs: Lanes, ys: Lanes, coeffs: Lanes, remaining: usize) {
+  fn add(&mut self, dx: Lanes, dy: Lanes, coeffs: Lanes, remaining: usize) {
     const LANE_INDEX: Lanes = Lanes::new([0., 1., 2., 3., 4., 5., 6., 7.]);
     const RADIUS_SQ: Lanes = Lanes::splat(INTERACTION_RADIUS * INTERACTION_RADIUS);
     const REPULSION: Lanes = Lanes::splat(-REPULSION_STRENGTH);
     const REPULSION_R: Lanes = Lanes::splat(REPULSION_RADIUS);
     const MIDDLE: Lanes = Lanes::splat(KERNEL_MIDDLE);
     const WIDTH: Lanes = Lanes::splat(KERNEL_WIDTH);
-    let dx = Self::wrap(xs - self.x, self.half_x);
-    let dy = Self::wrap(ys - self.y, self.half_y);
     let distance_sq = dx * dx + dy * dy;
     let valid = LANE_INDEX.simd_lt(Lanes::splat(remaining as f32))
       & distance_sq.simd_le(RADIUS_SQ)
