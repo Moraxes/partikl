@@ -91,6 +91,29 @@ fn o_cycles_overlap_modes() {
 }
 
 #[test]
+fn h_toggles_hud_visibility() {
+  let mut app = input_app();
+  app.add_systems(Update, handle_keyboard_input);
+  let hud = app.world_mut().spawn((Hud, Visibility::default())).id();
+  let visible = |app: &App| *app.world().get::<Visibility>(hud).unwrap() != Visibility::Hidden;
+  assert!(visible(&app));
+  tap_key(&mut app, KeyCode::KeyH);
+  assert!(!visible(&app));
+  tap_key(&mut app, KeyCode::KeyH);
+  assert!(visible(&app));
+}
+
+#[test]
+fn hud_text_shows_fps_and_options() {
+  let options = SimOptions { average_forces: true, overlap: Overlap::AdaptiveRange };
+  let text = hud_text(Some(59.6), &options);
+  assert!(text.contains("60 fps"), "{text}");
+  assert!(text.contains("averaging on"), "{text}");
+  assert!(text.contains("overlap adaptive range"), "{text}");
+  assert!(hud_text(None, &SimOptions::default()).contains("– fps"));
+}
+
+#[test]
 fn f_toggles_fullscreen() {
   let mut app = input_app();
   app.add_systems(Update, handle_keyboard_input);

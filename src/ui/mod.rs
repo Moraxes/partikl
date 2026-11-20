@@ -32,36 +32,50 @@ impl Plugin for UiPlugin {
   }
 }
 
+/// Napisy w prawym dolnym rogu: FPS i stan opcji symulacji. Przełączane klawiszem H.
 #[derive(Component)]
-pub struct FpsText;
+pub struct Hud;
 
 pub fn init_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
-  commands
-    .spawn((
-      Text::new("hello"),
-      TextFont {
-        font: FontSource::Handle(asset_server.load("FiraMono-Regular.ttf")),
-        font_size: FontSize::Px(16.0),
-        ..Default::default()
-      },
-      TextColor(WHITE.into()),
-    ))
-    .insert(FpsText);
+  commands.spawn((
+    Hud,
+    Text::new(""),
+    TextFont {
+      font: FontSource::Handle(asset_server.load("FiraMono-Regular.ttf")),
+      font_size: FontSize::Px(13.0),
+      ..Default::default()
+    },
+    TextColor(WHITE.with_alpha(0.4).into()),
+    TextLayout::justify(Justify::Right),
+    Node {
+      position_type: PositionType::Absolute,
+      right: Val::Px(12.0),
+      bottom: Val::Px(10.0),
+      ..Default::default()
+    },
+  ));
+}
+
+/// Treść napisów: FPS (`None`, dopóki nie ma średniej) i opcje z klawiszami.
+pub fn hud_text(fps: Option<f64>, options: &SimOptions) -> String {
+  let fps = fps.map_or("–".to_string(), |fps| format!("{fps:.0}"));
+  let averaging = if options.average_forces { "on" } else { "off" };
+  format!("{fps} fps\naveraging {averaging}  N\noverlap {}  O\nhide  H", options.overlap)
 }
 
 pub fn update_text(
   diagnostics: Res<DiagnosticsStore>,
   options: Res<SimOptions>,
-  query: Query<Entity, With<FpsText>>,
+  query: Query<Entity, With<Hud>>,
   mut writer: TextUiWriter,
 ) {
-  if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
-    if let Some(average) = fps.average() {
-      let entity = query.single().unwrap();
-      let averaging = if options.average_forces { "on" } else { "off" };
-      *writer.text(entity, 0) =
-        format!("{average:.2}\n[N] averaging: {averaging}\n[O] overlap: {}", options.overlap);
-    }
+  let Ok(entity) = query.single() else { return };
+  let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS).and_then(|fps| fps.average());
+  let text = hud_text(fps, &options);
+  let mut current = writer.text(entity, 0);
+  // Bez zapisu, gdy bez zmian: zapis oznacza tekst do ponownego układu.
+  if *current != text {
+    *current = text;
   }
 }
 
@@ -99,6 +113,7 @@ pub fn handle_keyboard_input(
   mut next_state: ResMut<NextState<SimState>>,
   mut options: ResMut<SimOptions>,
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
+  mut hud: Query<&mut Visibility, With<Hud>>,
 ) {
   if keyboard.just_pressed(KeyCode::Space) {
     let new_state = match state.get() {
@@ -112,6 +127,14 @@ pub fn handle_keyboard_input(
   }
   if keyboard.just_pressed(KeyCode::KeyO) {
     options.overlap = options.overlap.next();
+  }
+  if keyboard.just_pressed(KeyCode::KeyH) {
+    for mut visibility in hud.iter_mut() {
+      *visibility = match *visibility {
+        Visibility::Hidden => Visibility::Inherited,
+        _ => Visibility::Hidden,
+      };
+    }
   }
   if keyboard.just_pressed(KeyCode::KeyF) {
     let mut primary_window = windows.single_mut().unwrap();
