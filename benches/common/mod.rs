@@ -4,6 +4,8 @@
 //! Każda próbka to stan symulacji wyznaczony przez `(n, macierz, step_offset)`: `n` cząstek,
 //! macierz sił z ziarna `spec_seed`, rozmieszczenie z ziarna `placement_seed`, po
 //! `step_offset` krokach. Z jednej trajektorii na macierz bierzemy wszystkie offsety.
+//!
+//! Wyniki ogląda się w `tools/bench-viz/index.html` (otworzyć w przeglądarce, wczytać pliki JSONL).
 
 #![allow(dead_code)]
 

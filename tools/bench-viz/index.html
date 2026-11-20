@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wyniki benchmarków</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/3.0.1/plotly.min.js"></script>
+<script src="data.js"></script>
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #ffffff; --fg: #1d1d1b; --muted: #6b6b66; --border: #dedcd6;
+    --accent: #d9480f; --line: #c4c2bb;
+    --c0: #1c7ed6; --c1: #2b8a3e; --c2: #ae3ec9; --c3: #e8590c; --c4: #0c8599;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --card: #1f1f1d; --fg: #ecebe6; --muted: #9c9b94; --border: #34332f;
+      --accent: #ff8a3d; --line: #55544f;
+      --c0: #4dabf7; --c1: #69db7c; --c2: #da77f2; --c3: #ffa94d; --c4: #3bc9db;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, sans-serif; }
+  header { padding: 16px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; border-bottom: 1px solid var(--border); }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  h2 { font-size: 15px; margin: 0 0 8px; font-weight: 600; }
+  label { color: var(--muted); font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+  select, button, input[type=file] { font: inherit; color: var(--fg); }
+  select, button { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
+  button { cursor: pointer; }
+  main { padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 320px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; min-width: 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 8px; }
+  .plots { display: grid; gap: 16px; min-width: 0; }
+  .pair { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+  .plot { width: 100%; height: 460px; }
+  .plot.small { height: 420px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+  #empty { padding: 32px 16px; max-width: 760px; }
+  code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: 12px; }
+  #detail table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 12px; }
+  #detail th, #detail td { border-bottom: 1px solid var(--border); padding: 3px 4px; text-align: right; }
+  #detail th:first-child, #detail td:first-child { text-align: left; }
+  #heatmap { width: 100%; height: 240px; }
+  .drop { outline: 2px dashed var(--accent); outline-offset: -8px; }
+  .error { color: var(--accent); }
+  aside { position: sticky; top: 16px; align-self: start; }
+  @media (max-width: 1000px) {
+    main { grid-template-columns: minmax(0, 1fr); }
+    .pair { grid-template-columns: minmax(0, 1fr); }
+    aside { position: static; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Wyniki benchmarków</h1>
+  <label>Pliki JSONL <input type="file" id="files" accept=".jsonl,.json" multiple></label>
+  <label>sim <select id="simRun"></select></label>
+  <label>grid <select id="gridRun"></select></label>
+  <label>metryka <select id="metric"></select></label>
+  <span id="status" class="hint"></span>
+</header>
+
+<section id="empty">
+  <p>Wybierz albo przeciągnij tu pliki z <code>target/bench-results/</code>
+  (<code>sim-*.jsonl</code>, <code>grid-*.jsonl</code>). Dane zostają w przeglądarce.</p>
+  <p class="hint">Każdy punkt to stan symulacji <code>(n, macierz sił, step_offset)</code>. Czasy to
+  mediany mierzonych kroków (sim) albo powtórzeń (grid) po rozgrzewce. Kliknięcie macierzy
+  wyróżnia ją na wszystkich wykresach.</p>
+</section>
+
+<main id="app" hidden>
+  <div class="plots">
+    <section class="card">
+      <h2>Przestrzeń macierzy</h2>
+      <div class="controls">
+        <label>x <select id="axX"></select></label>
+        <label>y <select id="axY"></select></label>
+        <label>z <select id="axZ"></select></label>
+        <label>kolor <select id="colorMode">
+          <option value="value">metryka w punkcie</option>
+          <option value="slowdown">spowolnienie (największy / najmniejszy offset)</option>
+        </select></label>
+        <label>n <select id="colorN"></select></label>
+        <label>offset <select id="colorOffset"></select></label>
+      </div>
+      <div id="matrixSpace" class="plot"></div>
+      <p class="hint" id="pcaNote"></p>
+    </section>
+
+    <section class="card">
+      <h2>Metryka vs kandydaci na sąsiada</h2>
+      <div id="scatter" class="plot small"></div>
+      <p class="hint">Kandydaci to średnia liczba cząstek zwracanych przez siatkę na zapytanie, z tego samego
+      benchu co metryka. Kolor: n, symbol: offset. Obie osie logarytmiczne.</p>
+    </section>
+
+    <section class="card">
+      <h2>Trajektorie macierzy</h2>
+      <div class="pair">
+        <div id="trajMetric" class="plot small"></div>
+        <div id="trajCandidates" class="plot small"></div>
+      </div>
+      <p class="hint">Każda macierz to siatka n × offset połączona liniami; osie logarytmiczne.</p>
+    </section>
+  </div>
+
+  <aside class="card" id="detail">
+    <h2>Macierz</h2>
+    <p class="hint" id="detailHint">Kliknij punkt albo linię, żeby wybrać macierz.</p>
+    <div id="detailBody" hidden>
+      <div class="controls">
+        <label>macierz <select id="seedSelect"></select></label>
+        <button id="clear">wyczyść</button>
+      </div>
+      <div id="heatmap"></div>
+      <p class="hint">Wiersz a, kolumna b: siła, z jaką typ a działa na typ b (dodatnia przyciąga): niebieski przyciąganie, czerwony odpychanie.</p>
+      <div id="detailTable"></div>
+      <div id="detailFeatures"></div>
+    </div>
+  </aside>
+</main>
+
+<script>
+'use strict';
+const D = window.BenchData;
+const $ = (id) => document.getElementById(id);
+const state = { runs: [], dataset: null, selected: null };
+const SYMBOLS = ['circle', 'square', 'diamond', 'cross', 'x', 'circle-open'];
+const SYMBOLS_3D = ['circle', 'square', 'diamond', 'cross', 'x', 'circle-open'];
+
+function css(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+const palette = () => ['--c0', '--c1', '--c2', '--c3', '--c4'].map(css);
+
+function isTime(metric) {
+  return !metric.startsWith('kandydaci');
+}
+/** Wartość do wykresu: czasy w µs, kandydaci bez zmian. */
+function shown(point, metric) {
+  const v = D.value(point, metric);
+  return isTime(metric) ? v / 1e3 : v;
+}
+function unit(metric) {
+  return isTime(metric) ? `${metric} [µs]` : metric;
+}
+function fmt(x, digits = 1) {
+  if (!Number.isFinite(x)) return '–';
+  return Math.abs(x) >= 100 ? x.toFixed(0) : x.toFixed(digits);
+}
+
+function baseLayout(extra = {}) {
+  const fg = css('--fg');
+  const grid = css('--border');
+  const axis = { color: fg, gridcolor: grid, zerolinecolor: grid };
+  return {
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: fg, family: 'system-ui, sans-serif', size: 12 },
+    margin: { l: 50, r: 10, t: 10, b: 45 },
+    uirevision: 'keep',
+    legend: { orientation: 'h', y: -0.15 },
+    hoverlabel: { bgcolor: css('--card'), font: { color: fg } },
+    xaxis: { ...axis },
+    yaxis: { ...axis },
+    ...extra,
+  };
+}
+function scene(x, y, z, extra = {}) {
+  const fg = css('--fg');
+  const grid = css('--border');
+  const axis = (title, more = {}) => ({
+    title: { text: title }, color: fg, gridcolor: grid, zerolinecolor: grid, backgroundcolor: 'rgba(0,0,0,0)', ...more,
+  });
+  return { xaxis: axis(x, extra.x), yaxis: axis(y, extra.y), zaxis: axis(z, extra.z), uirevision: 'keep' };
+}
+const CONFIG = { responsive: true, displaylogo: false };
+
+// --- wczytywanie --------------------------------------------------------------------------
+
+async function loadFiles(files) {
+  const errors = [];
+  for (const file of files) {
+    try {
+      const runs = D.groupRuns(D.parseJsonl(await file.text(), file.name), file.name);
+      for (const run of runs) {
+        if (!state.runs.some((r) => r.key === run.key)) state.runs.push(run);
+      }
+    } catch (err) {
+      errors.push(err.message);
+    }
+  }
+  state.runs.sort((a, b) => String(b.started).localeCompare(String(a.started)));
+  $('status').textContent = errors.join('; ');
+  $('status').className = errors.length ? 'hint error' : 'hint';
+  fillRunSelect('simRun', 'sim');
+  fillRunSelect('gridRun', 'grid');
+  rebuild();
+}
+
+function fillRunSelect(id, bench) {
+  const select = $(id);
+  const previous = select.value;
+  const runs = state.runs.filter((r) => r.bench === bench);
+  select.innerHTML = '<option value="">–</option>' + runs
+    .map((r) => `<option value="${r.key}">${r.started.slice(0, 19).replace('T', ' ')} @ ${r.revision}</option>`)
+    .join('');
+  select.value = runs.some((r) => r.key === previous) ? previous : (runs[0]?.key ?? '');
+}
+
+function fillSelect(id, values, preferred, label = (v) => v) {
+  const select = $(id);
+  const previous = select.value;
+  select.innerHTML = values.map((v) => `<option value="${v}">${label(v)}</option>`).join('');
+  const pick = [previous, preferred].find((v) => values.map(String).includes(String(v)));
+  select.value = pick ?? values[0] ?? '';
+}
+
+function rebuild() {
+  const run = (id) => state.runs.find((r) => r.key === $(id).value) ?? null;
+  const ds = D.buildDataset(run('simRun'), run('gridRun'));
+  state.dataset = ds;
+  const hasData = ds.points.length > 0;
+  $('app').hidden = !hasData;
+  $('empty').hidden = hasData;
+  if (!hasData) return;
+
+  const metrics = [...ds.metrics, 'kandydaci (sim)', 'kandydaci (grid)']
+    .filter((m) => ds.points.some((p) => Number.isFinite(D.value(p, m))));
+  fillSelect('metric', metrics, 'sim: step');
+  const names = ds.features.names;
+  fillSelect('axX', names, 'ślad');
+  fillSelect('axY', names, 'średnia poza przekątną');
+  fillSelect('axZ', names, 'asymetria');
+  fillSelect('colorN', ds.ns, ds.ns[ds.ns.length - 1]);
+  fillSelect('colorOffset', ds.offsets, ds.offsets[ds.offsets.length - 1]);
+  fillSelect('seedSelect', ds.seeds, state.selected);
+  if (ds.features.pca) {
+    const ex = ds.features.pca.explained.map((x, i) => `PC${i + 1} ${(100 * x).toFixed(0)}%`).join(', ');
+    $('pcaNote').textContent = `PCA 9 współczynników macierzy (wyjaśniona wariancja: ${ex}).`;
+  }
+  if (!ds.seeds.includes(state.selected)) state.selected = null;
+  render();
+}
+
+// --- widoki --------------------------------------------------------------------------------
+
+function pointAt(n, seed, offset) {
+  return state.dataset.points.find((p) => p.n === n && p.seed === seed && p.offset === offset);
+}
+
+function colorValue(seed) {
+  const { offsets } = state.dataset;
+  const metric = $('metric').value;
+  const n = Number($('colorN').value);
+  if ($('colorMode').value === 'slowdown') {
+    const first = pointAt(n, seed, offsets[0]);
+    const last = pointAt(n, seed, offsets[offsets.length - 1]);
+    return first && last ? D.value(last, metric) / D.value(first, metric) : NaN;
+  }
+  const p = pointAt(n, seed, Number($('colorOffset').value));
+  return p ? shown(p, metric) : NaN;
+}
+
+function renderMatrixSpace() {
+  const ds = state.dataset;
+  const [fx, fy, fz] = ['axX', 'axY', 'axZ'].map((id) => $(id).value);
+  const feat = (seed, name) => ds.features.bySeed.get(seed)?.[name];
+  const metric = $('metric').value;
+  const isSlowdown = $('colorMode').value === 'slowdown';
+  const colors = ds.seeds.map(colorValue);
+  const logColors = colors.map((c) => (c > 0 ? Math.log10(c) : null));
+  const colorTitle = isSlowdown
+    ? `log10 spowolnienia (${metric}, n=${$('colorN').value})`
+    : `log10 ${unit(metric)} (n=${$('colorN').value}, offset=${$('colorOffset').value})`;
+  const traces = [{
+    type: 'scatter3d', mode: 'markers',
+    x: ds.seeds.map((s) => feat(s, fx)), y: ds.seeds.map((s) => feat(s, fy)), z: ds.seeds.map((s) => feat(s, fz)),
+    customdata: ds.seeds,
+    text: ds.seeds.map((s, i) => `macierz ${s}<br>${isSlowdown ? 'spowolnienie' : unit(metric)}: ${fmt(colors[i], 2)}`),
+    hoverinfo: 'text',
+    marker: {
+      size: 6, color: logColors, colorscale: 'Viridis', showscale: true,
+      colorbar: { title: { text: colorTitle, side: 'right' }, thickness: 12, tickfont: { color: css('--fg') } },
+      line: { width: 0 },
+    },
+    showlegend: false,
+  }];
+  if (state.selected !== null) {
+    const s = state.selected;
+    traces.push({
+      type: 'scatter3d', mode: 'markers', x: [feat(s, fx)], y: [feat(s, fy)], z: [feat(s, fz)],
+      customdata: [s], hoverinfo: 'skip', showlegend: false,
+      marker: { size: 12, color: 'rgba(0,0,0,0)', line: { color: css('--accent'), width: 4 } },
+    });
+  }
+  Plotly.react('matrixSpace', traces, baseLayout({ scene: scene(fx, fy, fz), margin: { l: 0, r: 0, t: 0, b: 0 } }), CONFIG);
+}
+
+function renderScatter() {
+  const ds = state.dataset;
+  const metric = $('metric').value;
+  const colors = palette();
+  const pts = ds.points.filter((p) => Number.isFinite(D.value(p, metric)) && Number.isFinite(D.candidatesFor(p, metric)));
+  const traces = ds.ns.map((n, i) => {
+    const mine = pts.filter((p) => p.n === n);
+    return {
+      type: 'scattergl', mode: 'markers', name: `n=${n}`,
+      x: mine.map((p) => D.candidatesFor(p, metric)), y: mine.map((p) => shown(p, metric)),
+      customdata: mine.map((p) => p.seed),
+      text: mine.map((p) => `macierz ${p.seed}, n=${p.n}, offset=${p.offset}`),
+      hovertemplate: '%{text}<br>kandydaci %{x:.1f}<br>%{y:.1f}<extra></extra>',
+      marker: {
+        size: 7, color: colors[i % colors.length], opacity: state.selected === null ? 0.75 : 0.35,
+        symbol: mine.map((p) => SYMBOLS[ds.offsets.indexOf(p.offset) % SYMBOLS.length]),
+      },
+    };
+  });
+  if (state.selected !== null) {
+    const mine = pts.filter((p) => p.seed === state.selected);
+    traces.push({
+      type: 'scattergl', mode: 'markers', name: `macierz ${state.selected}`,
+      x: mine.map((p) => D.candidatesFor(p, metric)), y: mine.map((p) => shown(p, metric)),
+      customdata: mine.map((p) => p.seed),
+      text: mine.map((p) => `macierz ${p.seed}, n=${p.n}, offset=${p.offset}`),
+      hovertemplate: '%{text}<br>kandydaci %{x:.1f}<br>%{y:.1f}<extra></extra>',
+      marker: {
+        size: 13, color: 'rgba(0,0,0,0)', line: { color: css('--accent'), width: 2.5 },
+        symbol: mine.map((p) => SYMBOLS[ds.offsets.indexOf(p.offset) % SYMBOLS.length] + '-open'),
+      },
+    });
+  }
+  const layout = baseLayout();
+  layout.xaxis = { ...layout.xaxis, type: 'log', title: { text: `kandydaci na sąsiada (${D.benchOf(metric)})` } };
+  layout.yaxis = { ...layout.yaxis, type: 'log', title: { text: unit(metric) } };
+  layout.margin = { l: 60, r: 10, t: 10, b: 50 };
+  Plotly.react('scatter', traces, layout, CONFIG);
+}
+
+/** Siatka n × offset jednej macierzy jako linie (z `null` między odcinkami). */
+function wireframe(seed, zOf) {
+  const ds = state.dataset;
+  const x = [];
+  const y = [];
+  const z = [];
+  const add = (p) => {
+    x.push(p ? p.n : null);
+    y.push(p ? p.offset : null);
+    z.push(p ? zOf(p) : null);
+  };
+  for (const n of ds.ns) {
+    for (const o of ds.offsets) add(pointAt(n, seed, o));
+    add(null);
+  }
+  for (const o of ds.offsets) {
+    for (const n of ds.ns) add(pointAt(n, seed, o));
+    add(null);
+  }
+  return { x, y, z };
+}
+
+function renderTrajectory(div, zOf, zTitle) {
+  const ds = state.dataset;
+  const traces = ds.seeds.map((seed) => {
+    const w = wireframe(seed, zOf);
+    return {
+      type: 'scatter3d', mode: 'lines+markers', name: `macierz ${seed}`, ...w,
+      customdata: w.x.map(() => seed),
+      hovertemplate: `macierz ${seed}<br>n=%{x}, offset=%{y}<br>%{z:.1f}<extra></extra>`,
+      line: { color: css('--line'), width: 2 },
+      marker: { size: 2, color: css('--line') },
+      connectgaps: false, showlegend: false,
+    };
+  });
+  if (state.selected !== null) {
+    const w = wireframe(state.selected, zOf);
+    traces.push({
+      type: 'scatter3d', mode: 'lines+markers', ...w, customdata: w.x.map(() => state.selected),
+      hovertemplate: `macierz ${state.selected}<br>n=%{x}, offset=%{y}<br>%{z:.1f}<extra></extra>`,
+      line: { color: css('--accent'), width: 7 }, marker: { size: 4, color: css('--accent') },
+      connectgaps: false, showlegend: false,
+    });
+  }
+  const sc = scene('n', 'offset', zTitle, { x: { type: 'log' }, y: { type: 'log' }, z: { type: 'log' } });
+  sc.aspectmode = 'cube';
+  sc.camera = { eye: { x: 1.7, y: -1.5, z: 0.8 } };
+  Plotly.react(div, traces, baseLayout({ scene: sc, margin: { l: 0, r: 0, t: 0, b: 0 } }), CONFIG);
+}
+
+function renderDetail() {
+  const ds = state.dataset;
+  const s = state.selected;
+  $('detailBody').hidden = s === null;
+  $('detailHint').hidden = s !== null;
+  if (s === null) return;
+  $('seedSelect').value = String(s);
+  const m = ds.matrices.get(s);
+  const t = m.matrix.length;
+  const labels = [...Array(t).keys()].map((i) => `typ ${i}`);
+  const limit = Math.max(...m.matrix.flat().map(Math.abs), 1);
+  Plotly.react('heatmap', [{
+    type: 'heatmap', z: m.matrix, x: labels, y: labels, zmid: 0, zmin: -limit, zmax: limit,
+    colorscale: 'RdBu', reversescale: true, showscale: false,
+    text: m.matrix.map((r) => r.map((v) => v.toFixed(0))), texttemplate: '%{text}',
+    hovertemplate: 'a=%{y}, b=%{x}: %{z:.1f}<extra></extra>',
+  }], baseLayout({
+    margin: { l: 50, r: 10, t: 30, b: 10 },
+    yaxis: { autorange: 'reversed', color: css('--fg') },
+    xaxis: { side: 'top', color: css('--fg') },
+  }), { ...CONFIG, displayModeBar: false });
+
+  const metric = $('metric').value;
+  const head = `<tr><th>n \\ offset</th>${ds.offsets.map((o) => `<th>${o}</th>`).join('')}</tr>`;
+  const rows = ds.ns.map((n) => `<tr><td>${n}</td>${ds.offsets.map((o) => {
+    const p = pointAt(n, s, o);
+    return `<td>${p ? fmt(shown(p, metric)) : '–'}<br><span class="hint">${p ? fmt(D.candidatesFor(p, metric)) : ''}</span></td>`;
+  }).join('')}</tr>`).join('');
+  $('detailTable').innerHTML = `<p class="hint">${unit(metric)}; pod spodem kandydaci</p><table>${head}${rows}</table>`;
+
+  const f = ds.features.bySeed.get(s);
+  const names = ['ślad', 'średnia', 'średnia poza przekątną', 'asymetria', 'min', 'max', 'PC1', 'PC2', 'PC3'];
+  $('detailFeatures').innerHTML = `<p class="hint">ziarna: spec ${s}, rozmieszczenie ${m.placementSeed}</p><table>${
+    names.filter((k) => k in f).map((k) => `<tr><td>${k}</td><td>${fmt(f[k])}</td></tr>`).join('')}</table>`;
+}
+
+function render() {
+  renderMatrixSpace();
+  renderScatter();
+  const metric = $('metric').value;
+  renderTrajectory('trajMetric', (p) => shown(p, metric), unit(metric));
+  const bench = D.benchOf(metric);
+  renderTrajectory('trajCandidates', (p) => p.candidates[bench], `kandydaci (${bench})`);
+  renderDetail();
+  bindClicks();
+}
+
+// --- interakcja ----------------------------------------------------------------------------
+
+function select(seed) {
+  state.selected = seed;
+  render();
+}
+
+function bindClicks() {
+  for (const id of ['matrixSpace', 'scatter', 'trajMetric', 'trajCandidates']) {
+    const el = $(id);
+    if (el.dataset.bound) continue;
+    el.dataset.bound = '1';
+    el.on('plotly_click', (ev) => {
+      const seed = ev.points?.[0]?.customdata;
+      if (seed !== undefined && seed !== null) select(Number(seed));
+    });
+  }
+}
+
+$('files').addEventListener('change', (e) => loadFiles([...e.target.files]));
+for (const id of ['simRun', 'gridRun']) $(id).addEventListener('change', rebuild);
+for (const id of ['metric', 'axX', 'axY', 'axZ', 'colorMode', 'colorN', 'colorOffset']) $(id).addEventListener('change', render);
+$('colorMode').addEventListener('change', () => { $('colorOffset').disabled = $('colorMode').value === 'slowdown'; });
+$('seedSelect').addEventListener('change', (e) => select(Number(e.target.value)));
+$('clear').addEventListener('click', () => select(null));
+
+document.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('drop'); });
+document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('drop'); });
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  document.body.classList.remove('drop');
+  loadFiles([...e.dataTransfer.files]);
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => state.dataset && render());
+</script>
+</body>
+</html>
