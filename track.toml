@@ -1,7 +1,7 @@
 # Konfiguracja `track` dla tego projektu.
 
 # Katalog artefaktów względem katalogu projektu (np. ".artifacts").
-# artifacts = ".artifacts"
+artifacts = ".artifacts"
 
 # Commit w `.track/` po każdej zmianie (gdy to katalog roboczy gita).
 auto_commit = true
