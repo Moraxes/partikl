@@ -132,7 +132,7 @@ pub fn init_particles(
     commands
       .entity(particle)
       .add_children(&[particle_selection, particle_highlight]);
-    grid.insert_entity(particle, position_x, position_y);
+    grid.insert_entity(particle, position_x, position_y, interaction);
   }
   commands.insert_resource(grid);
 

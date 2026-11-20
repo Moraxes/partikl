@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use super::InteractionId;
+
 /// Siatka przestrzenna z zawijaniem (torus) do szukania sąsiadów cząstek.
 /// Świat obejmuje `[-half_size, half_size]` w obu osiach.
 ///
@@ -7,6 +9,11 @@ use bevy::prelude::*;
 /// dla y). Skrajne komórki (`left`/`right`, `bottom`/`top`) leżą w połowie poza światem i
 /// razem tworzą jedną komórkę na szwie, dlatego zapytanie o komórkę przy krawędzi zagląda też
 /// do jej odpowiednika po drugiej stronie. Komórki są w płaskim `Vec`, wierszami.
+///
+/// Oprócz encji komórka trzyma pozycję i typ cząstki ([`Neighbour`]), żeby liczenie sił nie
+/// musiało pytać ECS o każdą parę. Pozycja musi być aktualna: `move_entity` co krok dla każdej
+/// cząstki, także gdy nie zmienia komórki. Żeby to nie wymagało szukania w komórce, `slots`
+/// mówi, gdzie leży każda encja (indeksowane `Entity::index`).
 #[derive(Resource)]
 pub struct SpatialGrid {
   half_size: Vec2,
@@ -16,7 +23,27 @@ pub struct SpatialGrid {
   bottom: i32,
   top: i32,
   columns: usize,
-  cells: Vec<Vec<Entity>>,
+  cells: Vec<Vec<Neighbour>>,
+  slots: Vec<Slot>,
+}
+
+/// Miejsce encji w siatce: komórka i pozycja w niej. `Slot::EMPTY`, jeśli encji nie ma.
+#[derive(Clone, Copy, PartialEq)]
+struct Slot {
+  cell: u32,
+  index: u32,
+}
+
+impl Slot {
+  const EMPTY: Slot = Slot { cell: u32::MAX, index: u32::MAX };
+}
+
+/// Cząstka w komórce siatki.
+#[derive(Clone, Copy)]
+pub struct Neighbour {
+  pub entity: Entity,
+  pub position: Vec2,
+  pub interaction: InteractionId,
 }
 
 /// Komórki do przejrzenia dla jednej komórki sąsiedztwa: ona sama i do trzech odpowiedników
@@ -57,6 +84,7 @@ impl SpatialGrid {
       top,
       columns,
       cells: vec![Vec::new(); columns * rows],
+      slots: Vec::new(),
     }
   }
 
@@ -118,38 +146,70 @@ impl SpatialGrid {
     Some((iy - self.bottom) as usize * self.columns + (ix - self.left) as usize)
   }
 
-  fn cell_mut(&mut self, x: f32, y: f32) -> &mut Vec<Entity> {
-    let coords = self.bucket_coords(x, y);
-    let index = self
-      .cell_index(coords)
-      .unwrap_or_else(|| panic!("position ({x}, {y}) outside the world"));
-    &mut self.cells[index]
+  fn cell_at(&self, x: f32, y: f32) -> usize {
+    self
+      .cell_index(self.bucket_coords(x, y))
+      .unwrap_or_else(|| panic!("position ({x}, {y}) outside the world"))
   }
 
-  pub fn insert_entity(&mut self, entity: Entity, x: f32, y: f32) {
-    self.cell_mut(x, y).push(entity)
+  fn slot_key(entity: Entity) -> usize {
+    entity.index_u32() as usize
   }
 
-  pub fn remove_entity(&mut self, entity: Entity, x_old: f32, y_old: f32) {
-    let bucket_old = self.cell_mut(x_old, y_old);
-    let idx = bucket_old
-      .iter()
-      .position(|&e| e == entity)
-      .expect("entity not in bucket");
-    bucket_old.swap_remove(idx);
+  /// Miejsce encji; panika, jeśli jej nie ma w siatce.
+  fn slot(&self, entity: Entity) -> Slot {
+    let slot = self.slots.get(Self::slot_key(entity)).copied().unwrap_or(Slot::EMPTY);
+    let found = slot != Slot::EMPTY
+      && self.cells[slot.cell as usize].get(slot.index as usize).map(|n| n.entity) == Some(entity);
+    assert!(found, "entity not in bucket");
+    slot
   }
 
+  fn push(&mut self, cell: usize, neighbour: Neighbour) {
+    let key = Self::slot_key(neighbour.entity);
+    if self.slots.len() <= key {
+      self.slots.resize(key + 1, Slot::EMPTY);
+    }
+    self.slots[key] = Slot { cell: cell as u32, index: self.cells[cell].len() as u32 };
+    self.cells[cell].push(neighbour);
+  }
+
+  pub fn insert_entity(&mut self, entity: Entity, x: f32, y: f32, interaction: InteractionId) {
+    let cell = self.cell_at(x, y);
+    self.push(cell, Neighbour { entity, position: Vec2::new(x, y), interaction });
+  }
+
+  /// Usuwa encję z siatki. `(x_old, y_old)` to jej zapisana pozycja.
+  pub fn remove_entity(&mut self, entity: Entity, x_old: f32, y_old: f32) -> Neighbour {
+    let slot = self.slot(entity);
+    debug_assert_eq!(slot.cell as usize, self.cell_at(x_old, y_old));
+    let cell = &mut self.cells[slot.cell as usize];
+    let removed = cell.swap_remove(slot.index as usize);
+    if let Some(moved) = cell.get(slot.index as usize) {
+      self.slots[Self::slot_key(moved.entity)] = slot;
+    }
+    self.slots[Self::slot_key(entity)] = Slot::EMPTY;
+    removed
+  }
+
+  /// Przenosi cząstkę z `(x_old, y_old)` do `(x_new, y_new)`; zapisana pozycja zmienia się
+  /// zawsze, komórka tylko gdy trzeba.
   pub fn move_entity(&mut self, entity: Entity, x_old: f32, y_old: f32, x_new: f32, y_new: f32) {
-    let old_bucket = self.bucket_coords(x_old, y_old);
-    let new_bucket = self.bucket_coords(x_new, y_new);
-    if old_bucket == new_bucket {
+    let position = Vec2::new(x_new, y_new);
+    let new_cell = self.cell_at(x_new, y_new);
+    let slot = self.slot(entity);
+    if slot.cell as usize == new_cell {
+      self.cells[new_cell][slot.index as usize].position = position;
       return;
     }
-    self.remove_entity(entity, x_old, y_old);
-    self.insert_entity(entity, x_new, y_new);
+    let mut neighbour = self.remove_entity(entity, x_old, y_old);
+    neighbour.position = position;
+    self.push(new_cell, neighbour);
   }
 
-  pub fn get_entities(&self, (ix, iy): (i32, i32)) -> impl Iterator<Item = Entity> + Clone + '_ {
+  /// Cząstki z komórki `(ix, iy)` i ośmiu sąsiednich, z zawijaniem. Zawiera też cząstkę, o
+  /// którą pytamy, jeśli leży w tej komórce.
+  pub fn get_neighbours(&self, (ix, iy): (i32, i32)) -> impl Iterator<Item = &Neighbour> + Clone + '_ {
     Self::OFFSETS
       .iter()
       .flat_map(move |&(xoff, yoff)| {
@@ -157,7 +217,15 @@ impl SpatialGrid {
         wrapped.buckets.into_iter().take(wrapped.len)
       })
       .filter_map(|bucket| self.cell_index(bucket))
-      .flat_map(|index| self.cells[index].iter().copied())
+      .flat_map(|index| self.cells[index].iter())
+  }
+
+  pub fn get_neighbours_by_position(&self, x: f32, y: f32) -> impl Iterator<Item = &Neighbour> + '_ {
+    self.get_neighbours(self.bucket_coords(x, y))
+  }
+
+  pub fn get_entities(&self, coords: (i32, i32)) -> impl Iterator<Item = Entity> + Clone + '_ {
+    self.get_neighbours(coords).map(|n| n.entity)
   }
 
   pub fn get_entities_by_position(&self, x: f32, y: f32) -> impl Iterator<Item = Entity> + '_ {

@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 
 use common::{BenchArgs, Output, Progress, Sample, Sim, WORLD, nanos};
 use partikl::config::INTERACTION_RADIUS;
-use partikl::sim::SpatialGrid;
+use partikl::sim::{InteractionId, SpatialGrid};
 
 #[derive(Parser, Debug)]
 struct GridArgs {
@@ -110,7 +110,7 @@ fn states(args: &GridArgs, sample: &Sample) -> Vec<State> {
 fn build(entities: &[Entity], positions: &[Vec2]) -> SpatialGrid {
   let mut grid = SpatialGrid::new(WORLD.x, WORLD.y, INTERACTION_RADIUS);
   for (entity, p) in entities.iter().zip(positions) {
-    grid.insert_entity(*entity, p.x, p.y);
+    grid.insert_entity(*entity, p.x, p.y, InteractionId(0));
   }
   grid
 }

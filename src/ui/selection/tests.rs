@@ -1,4 +1,5 @@
 use super::*;
+use crate::sim::InteractionId;
 use crate::ui::test_util::*;
 
 const WINDOW: Vec2 = Vec2::new(1280.0, 720.0);
@@ -28,7 +29,7 @@ fn scene(positions: &[Vec2], camera: Transform) -> Scene {
     let selection = app.world_mut().spawn((Selection, Visibility::Hidden)).id();
     let highlight = app.world_mut().spawn((Highlight, Visibility::Hidden)).id();
     app.world_mut().entity_mut(particle).add_children(&[selection, highlight]);
-    grid.insert_entity(particle, p.x, p.y);
+    grid.insert_entity(particle, p.x, p.y, InteractionId(0));
     selections.push(selection);
     highlights.push(highlight);
   }

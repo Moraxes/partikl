@@ -60,7 +60,7 @@ fn corrected_delta_is_plain_difference_for_close_points() {
 fn inserted_entity_is_found_near_its_position() {
   let e = entities(1);
   let mut grid = SpatialGrid::new(200.0, 200.0, 20.0);
-  grid.insert_entity(e[0], 5.0, 5.0);
+  grid.insert_entity(e[0], 5.0, 5.0, InteractionId(0));
   assert_eq!(neighbours(&grid, 5.0, 5.0), vec![e[0]]);
   assert_eq!(neighbours(&grid, 25.0, 5.0), vec![e[0]]);
   assert!(neighbours(&grid, 60.0, 5.0).is_empty());
@@ -70,8 +70,8 @@ fn inserted_entity_is_found_near_its_position() {
 fn removed_entity_is_no_longer_found() {
   let e = entities(2);
   let mut grid = SpatialGrid::new(200.0, 200.0, 20.0);
-  grid.insert_entity(e[0], 5.0, 5.0);
-  grid.insert_entity(e[1], 6.0, 6.0);
+  grid.insert_entity(e[0], 5.0, 5.0, InteractionId(0));
+  grid.insert_entity(e[1], 6.0, 6.0, InteractionId(0));
   grid.remove_entity(e[0], 5.0, 5.0);
   assert_eq!(neighbours(&grid, 5.0, 5.0), vec![e[1]]);
 }
@@ -81,7 +81,7 @@ fn removed_entity_is_no_longer_found() {
 fn removing_unknown_entity_panics() {
   let e = entities(2);
   let mut grid = SpatialGrid::new(200.0, 200.0, 20.0);
-  grid.insert_entity(e[0], 5.0, 5.0);
+  grid.insert_entity(e[0], 5.0, 5.0, InteractionId(0));
   grid.remove_entity(e[1], 5.0, 5.0);
 }
 
@@ -89,7 +89,7 @@ fn removing_unknown_entity_panics() {
 fn move_within_same_bucket_keeps_entity_findable() {
   let e = entities(1);
   let mut grid = SpatialGrid::new(200.0, 200.0, 20.0);
-  grid.insert_entity(e[0], 1.0, 1.0);
+  grid.insert_entity(e[0], 1.0, 1.0, InteractionId(0));
   grid.move_entity(e[0], 1.0, 1.0, 2.0, 2.0);
   assert_eq!(neighbours(&grid, 2.0, 2.0), vec![e[0]]);
 }
@@ -98,10 +98,43 @@ fn move_within_same_bucket_keeps_entity_findable() {
 fn move_across_buckets_updates_lookup() {
   let e = entities(1);
   let mut grid = SpatialGrid::new(400.0, 400.0, 20.0);
-  grid.insert_entity(e[0], 0.0, 0.0);
+  grid.insert_entity(e[0], 0.0, 0.0, InteractionId(0));
   grid.move_entity(e[0], 0.0, 0.0, 100.0, 0.0);
   assert!(neighbours(&grid, 0.0, 0.0).is_empty());
   assert_eq!(neighbours(&grid, 100.0, 0.0), vec![e[0]]);
+}
+
+/// Jedyny sąsiad w okolicy `(x, y)`: (pozycja, typ).
+fn stored(grid: &SpatialGrid, x: f32, y: f32) -> (Vec2, usize) {
+  let found: Vec<_> = grid.get_neighbours_by_position(x, y).collect();
+  assert_eq!(found.len(), 1);
+  (found[0].position, found[0].interaction.0)
+}
+
+#[test]
+fn inserted_entity_keeps_position_and_type() {
+  let e = entities(1);
+  let mut grid = SpatialGrid::new(200.0, 200.0, 20.0);
+  grid.insert_entity(e[0], 5.0, -3.0, InteractionId(2));
+  assert_eq!(stored(&grid, 5.0, -3.0), (Vec2::new(5.0, -3.0), 2));
+}
+
+#[test]
+fn move_within_same_bucket_updates_stored_position() {
+  let e = entities(1);
+  let mut grid = SpatialGrid::new(200.0, 200.0, 20.0);
+  grid.insert_entity(e[0], 1.0, 1.0, InteractionId(1));
+  grid.move_entity(e[0], 1.0, 1.0, 2.0, 3.0);
+  assert_eq!(stored(&grid, 2.0, 3.0), (Vec2::new(2.0, 3.0), 1));
+}
+
+#[test]
+fn move_across_buckets_updates_stored_position_and_keeps_type() {
+  let e = entities(1);
+  let mut grid = SpatialGrid::new(400.0, 400.0, 20.0);
+  grid.insert_entity(e[0], 0.0, 0.0, InteractionId(1));
+  grid.move_entity(e[0], 0.0, 0.0, 100.0, 0.0);
+  assert_eq!(stored(&grid, 100.0, 0.0), (Vec2::new(100.0, 0.0), 1));
 }
 
 // --- sąsiedztwo przez krawędzie świata ---
@@ -110,8 +143,8 @@ fn move_across_buckets_updates_lookup() {
 fn neighbours_wrap_across_edges() {
   let e = entities(2);
   let mut grid = SpatialGrid::new(400.0, 400.0, 20.0);
-  grid.insert_entity(e[0], 195.0, 0.0);
-  grid.insert_entity(e[1], -195.0, 0.0);
+  grid.insert_entity(e[0], 195.0, 0.0, InteractionId(0));
+  grid.insert_entity(e[1], -195.0, 0.0, InteractionId(0));
   assert!(neighbours(&grid, 195.0, 0.0).contains(&e[1]));
   assert!(neighbours(&grid, -195.0, 0.0).contains(&e[0]));
 }
@@ -120,8 +153,8 @@ fn neighbours_wrap_across_edges() {
 fn neighbours_wrap_across_corners() {
   let e = entities(2);
   let mut grid = SpatialGrid::new(400.0, 400.0, 20.0);
-  grid.insert_entity(e[0], 195.0, 195.0);
-  grid.insert_entity(e[1], -195.0, -195.0);
+  grid.insert_entity(e[0], 195.0, 195.0, InteractionId(0));
+  grid.insert_entity(e[1], -195.0, -195.0, InteractionId(0));
   assert!(neighbours(&grid, 195.0, 195.0).contains(&e[1]));
   assert!(neighbours(&grid, -195.0, -195.0).contains(&e[0]));
 }
@@ -175,7 +208,7 @@ fn assert_neighbours_match_brute_force(
 fn build_grid(ids: &[Entity], points: &[Vec2], size: Vec2) -> SpatialGrid {
   let mut grid = SpatialGrid::new(size.x, size.y, INTERACTION_RADIUS);
   for (id, p) in ids.iter().zip(points) {
-    grid.insert_entity(*id, p.x, p.y);
+    grid.insert_entity(*id, p.x, p.y, InteractionId(0));
   }
   grid
 }
@@ -238,4 +271,11 @@ fn match_brute_force_after_moves_across_edges() {
     }
   }
   assert_neighbours_match_brute_force(&grid, &ids, &points, size, INTERACTION_RADIUS);
+  // Zapisane pozycje nadążają za ruchem, także bez zmiany komórki.
+  let current: std::collections::HashMap<Entity, Vec2> = ids.iter().copied().zip(points.iter().copied()).collect();
+  for p in &points {
+    for n in grid.get_neighbours_by_position(p.x, p.y) {
+      assert_eq!(n.position, current[&n.entity]);
+    }
+  }
 }

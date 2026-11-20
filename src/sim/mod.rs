@@ -1,12 +1,11 @@
 use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
-use bevy::utils::Parallel;
 
 mod components;
 mod grid;
 
 pub use components::*;
-pub use grid::SpatialGrid;
+pub use grid::{Neighbour, SpatialGrid};
 
 use crate::config::*;
 use crate::spec::ParticleSpec;
@@ -61,61 +60,45 @@ impl Plugin for SimPlugin {
   }
 }
 
+/// Siły od sąsiadów z siatki. Pozycje i typy sąsiadów pochodzą z siatki, nie z ECS, więc
+/// siatka musi być zsynchronizowana z `Transform` (robi to `wrap_around`).
 pub fn compute_forces(
   particle_spec: Res<ParticleSpec>,
   grid: Res<SpatialGrid>,
-  mut particles_out: Query<(Entity, &Transform, &mut Acceleration, &InteractionId)>,
-  particles_in: Query<(Entity, &Transform, &InteractionId)>,
+  mut particles: Query<(Entity, &Transform, &mut Acceleration, &InteractionId)>,
 ) {
-  let mut queue: Parallel<Vec<(Entity, Vec2)>> = Parallel::default();
-  particles_out.par_iter_mut().for_each_init(
-    || queue.borrow_local_mut(),
-    |local_queue, (entity, transform, _, interaction)| {
-      let neighbours =
-        grid.get_entities_by_position(transform.translation.x, transform.translation.y);
-      let acceleration = neighbours
-        .into_iter()
-        .map(|other_entity| particles_in.get(other_entity).unwrap())
-        .fold(
-          Vec2::ZERO,
-          |mut acceleration, (other_entity, other_transform, other_interaction)| {
-            if entity == other_entity {
-              return acceleration;
-            }
-            let delta = grid.get_corrected_position_delta(
-              transform.translation.xy(),
-              other_transform.translation.xy(),
-            );
-            let distance_sq: f32 = delta.length_squared();
-            if distance_sq > INTERACTION_RADIUS * INTERACTION_RADIUS {
-              return acceleration;
-            }
-            let distance = distance_sq.sqrt();
-            let distance_unit_vector = delta / distance;
-            if distance < REPULSION_RADIUS {
-              let safety_margin_repulsion_force =
-                REPULSION_STRENGTH * (REPULSION_RADIUS - distance) * distance_unit_vector;
-              acceleration -= safety_margin_repulsion_force;
-            } else {
-              acceleration += triangular_kernel(
-                particle_spec.interactions[other_interaction.0].force_coeffs[interaction.0],
-                KERNEL_MIDDLE,
-                KERNEL_WIDTH,
-                distance,
-              ) * distance_unit_vector;
-            }
-            acceleration
-          },
-        );
-      local_queue.push((entity, acceleration))
-    },
-  );
-
-  for batch in queue.iter_mut() {
-    for (entity, accel) in batch {
-      particles_out.get_mut(*entity).unwrap().2 .0 += *accel;
-    }
-  }
+  particles
+    .par_iter_mut()
+    .for_each(|(entity, transform, mut acceleration, interaction)| {
+      let position = transform.translation.xy();
+      acceleration.0 += grid
+        .get_neighbours_by_position(position.x, position.y)
+        .fold(Vec2::ZERO, |mut acceleration, other| {
+          if other.entity == entity {
+            return acceleration;
+          }
+          let delta = grid.get_corrected_position_delta(position, other.position);
+          let distance_sq: f32 = delta.length_squared();
+          if distance_sq > INTERACTION_RADIUS * INTERACTION_RADIUS {
+            return acceleration;
+          }
+          let distance = distance_sq.sqrt();
+          let distance_unit_vector = delta / distance;
+          if distance < REPULSION_RADIUS {
+            let safety_margin_repulsion_force =
+              REPULSION_STRENGTH * (REPULSION_RADIUS - distance) * distance_unit_vector;
+            acceleration -= safety_margin_repulsion_force;
+          } else {
+            acceleration += triangular_kernel(
+              particle_spec.interactions[other.interaction.0].force_coeffs[interaction.0],
+              KERNEL_MIDDLE,
+              KERNEL_WIDTH,
+              distance,
+            ) * distance_unit_vector;
+          }
+          acceleration
+        });
+    });
 }
 
 pub fn compute_friction(

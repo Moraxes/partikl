@@ -146,18 +146,19 @@ impl Sim {
         rng.random_range(-WORLD.y / 2.0..WORLD.y / 2.0),
       );
       let velocity = Vec2::new(rng.random_range(-125.0..125.0), rng.random_range(-125.0..125.0));
+      let interaction = InteractionId(rng.random_range(0..sample.types));
       let entity = app
         .world_mut()
         .spawn((
           ParticleBundle {
             last_pos: LastPosition(position - DELTA_TIME as f32 * velocity),
             acceleration: Acceleration(Vec2::ZERO),
-            interaction: InteractionId(rng.random_range(0..sample.types)),
+            interaction,
           },
           Transform::from_translation(position.extend(0.0)),
         ))
         .id();
-      grid.insert_entity(entity, position.x, position.y);
+      grid.insert_entity(entity, position.x, position.y, interaction);
     }
     app.insert_resource(grid);
     app.finish();
