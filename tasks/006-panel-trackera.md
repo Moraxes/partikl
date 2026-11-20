@@ -1,7 +1,7 @@
 ---
 id: 6
 title: Panel trackera
-summary: 'Panel w Claude Code: zadania w toku i oglądane w sesji'
+summary: 'Panel w Claude Code (mod track-panel, /tracker): zadania w toku, na teraz i oglądane w sesji'
 status: doing
 priority: now
 branch: main
