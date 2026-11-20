@@ -13,6 +13,9 @@ links:
   target: c8e2412
   at: 2026-11-21T00:43:45
   note: 'feat(bench): measure quick runs from saved simulation states'
+- kind: commit
+  target: c8e2412
+  at: 2026-11-21T00:45:19
 ---
 Wynik: `sim --state` (stany w `.cache/sim-states`, `--regenerate`, `--prewarm 500`) i `ab.sh --state` (stany generowane kodem „przed”, obie strony mierzą ten sam stan). Przebieg `--quick` ok. 0,8 s zamiast ok. 4,2 s.
 
