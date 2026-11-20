@@ -5,6 +5,8 @@ summary: 'Profil n=9000 na 6808821: update_shape 34–39% kroku, pula wątków ~
 status: todo
 priority: soon
 branch: main
+relates:
+- 10
 created: 2026-11-20T20:29:07
 links:
 - kind: profile
