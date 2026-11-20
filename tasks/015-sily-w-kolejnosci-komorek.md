@@ -6,6 +6,8 @@ status: todo
 priority: soon
 branch: main
 part_of: 12
+blocked_by:
+- 14
 created: 2026-11-20T20:29:45
 ---
 Cel: podnieść wykorzystanie wątków w `compute_forces` (ok. 11% przy macierzy 23, ok. 40% przy 4) i lokalność danych. Następny krok: iterować po cząstkach w kolejności komórek z tablic z sortowania (kolejne cząstki mają tych samych sąsiadów w L1), w zakresach ciągłych zamiast `par_iter_mut` w kolejności ECS; przyspieszenia do tablicy, potem przepisać do `Acceleration`.
