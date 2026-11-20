@@ -2,7 +2,7 @@
 //! w `sim`). Mierzy budowę, zapytania o sąsiadów dla każdej cząstki i przeniesienie cząstek
 //! o jeden krok symulacji. Tylko publiczne API `SpatialGrid`.
 //!
-//! Stany są zapisywane w `.data/bench-cache/grid-states/`, więc kolejne przebiegi (np. przed
+//! Stany są zapisywane w `.cache/grid-states/` (poza gitem), więc kolejne przebiegi (np. przed
 //! i po zmianie siatki) mierzą identyczne dane. `--regenerate` wymusza ponowną symulację.
 //! `cargo bench --bench grid -- --help` pokazuje parametry.
 
@@ -32,7 +32,7 @@ struct GridArgs {
   #[arg(long)]
   regenerate: bool,
   /// Katalog zapisanych stanów.
-  #[arg(long, default_value = ".data/bench-cache/grid-states")]
+  #[arg(long, default_value = ".cache/grid-states")]
   cache_dir: PathBuf,
 }
 

@@ -1,5 +1,5 @@
 //! Gorąca ścieżka symulacji: czas kroku i każdego systemu w stanach po `step_offset` krokach,
-//! dla wielu macierzy sił. Wyniki: Parquet w `.data/bench-results/` (format w
+//! dla wielu macierzy sił. Wyniki: Parquet w `.artifacts/bench/` (format w
 //! `common::results`), postęp w pliku
 //! `.progress.json` obok, podsumowanie na stdout.
 //!

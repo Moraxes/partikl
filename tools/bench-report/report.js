@@ -3,9 +3,10 @@
 //
 //   node tools/bench-report/report.js [manifest] [wyjście]
 //
-// Wymaga `npm install` w `tools/` (hyparquet). Domyślnie czyta `.data/perf-stages.json` i
-// pisze `.worklog/reports/perf-report.md` (gałąź `worklog`). Manifest to lista etapów w kolejności; pierwszy jest punktem wyjścia. Pliki przebiegów są względne do
-// `.data/bench-results/`, `grid` albo `sim` można pominąć, jeśli etap nie zmienia tej części:
+// Wymaga `npm install` w `tools/` (hyparquet). Domyślnie czyta `.artifacts/perf-stages.json` i
+// pisze `.artifacts/reports/perf-report.md` (gałąź `artifacts`). Manifest to lista etapów w
+// kolejności; pierwszy jest punktem wyjścia. Pliki przebiegów są względne do `.artifacts/bench/`,
+// `grid` albo `sim` można pominąć, jeśli etap nie zmienia tej części:
 //
 //   { "stages": [
 //     { "name": "punkt wyjścia", "commit": "8f682a0",
@@ -26,9 +27,9 @@ const path = require('path');
 const D = require('../bench-viz/data.js');
 
 const root = path.resolve(__dirname, '../..');
-const manifestPath = path.resolve(process.argv[2] ?? path.join(root, '.data/perf-stages.json'));
-const outPath = path.resolve(process.argv[3] ?? path.join(root, '.worklog/reports/perf-report.md'));
-const resultsDir = path.join(path.dirname(manifestPath), 'bench-results');
+const manifestPath = path.resolve(process.argv[2] ?? path.join(root, '.artifacts/perf-stages.json'));
+const outPath = path.resolve(process.argv[3] ?? path.join(root, '.artifacts/reports/perf-report.md'));
+const resultsDir = path.join(path.dirname(manifestPath), 'bench');
 
 const METRICS = [
   ['sim: step', 'krok'],
@@ -127,7 +128,7 @@ lines.push(
   'Etapy optymalizacji symulacji i indeksu przestrzennego, mierzone benchmarkami `sim` i `grid`',
   '(`cargo bench`). Liczby to średnia geometryczna stosunku czasów nowy/stary na tych samych',
   '`(n, macierz, offset)`; poniżej 1 znaczy szybciej. Plik generuje',
-  '`node tools/bench-report/report.js` z `.data/perf-stages.json`; nie edytować ręcznie.',
+  '`node tools/bench-report/report.js` z `.artifacts/perf-stages.json`; nie edytować ręcznie.',
   '',
 );
 

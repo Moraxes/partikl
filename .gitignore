@@ -3,6 +3,7 @@
 *.iml
 rust-toolchain.toml
 /.notes
-/.data
-/.worklog
+/.track
+/.artifacts
+/.cache
 node_modules/
