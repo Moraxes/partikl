@@ -9,9 +9,12 @@ pub const VELOCITY_THRESHOLD: f32 = 0.0001;
 pub const KERNEL_MIDDLE: f32 = 30.0;
 /// Szerokość (połowa podstawy) trójkątnego jądra siły oddziaływania.
 pub const KERNEL_WIDTH: f32 = 10.0;
-/// Zasięg oddziaływania: poza nim siła jest zerowa. Jednocześnie rozmiar komórki
-/// siatki przestrzennej, żeby sąsiedzi 3x3 komórek zawsze obejmowali cały zasięg.
+/// Zasięg oddziaływania: poza nim siła jest zerowa.
 pub const INTERACTION_RADIUS: f32 = KERNEL_MIDDLE + KERNEL_WIDTH;
+/// Na ile komórek siatki przestrzennej dzieli się zasięg oddziaływania: komórka ma bok
+/// `INTERACTION_RADIUS / GRID_REACH`, a sąsiedztwo to `(2·GRID_REACH + 1)²` komórek. Mniejsze
+/// komórki to mniej kandydatów poza zasięgiem, ale więcej i krótszych przebiegów.
+pub const GRID_REACH: i32 = 1;
 
 /// Poniżej tej odległości działa twarde odpychanie niezależne od typu cząstek.
 pub const REPULSION_RADIUS: f32 = 10.0;

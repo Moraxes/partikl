@@ -29,17 +29,25 @@ const CHUNKS_PER_THREAD: std::ops::RangeInclusive<usize> = 1..=16;
 
 /// Współczynniki sił w kolejności siatki na jeden krok, podział pracy i wyniki; bufory
 /// używane ponownie.
-#[derive(Default)]
 pub struct ForceData {
   /// Zakresy cząstek (w kolejności siatki) dla zadań, o zbliżonej liczbie par.
   chunks: Vec<Range<usize>>,
   /// Siła na cząstkę w kolejności siatki.
   forces: Vec<Vec2>,
+  /// Praca (pary plus stały koszt na cząstkę) zmierzona w poprzednim kroku; na start duża,
+  /// więc pierwszy krok dzieli się drobno.
+  last_work: u64,
   /// `coeffs[me * stride + j]`: siła, jaką cząstka `j` siatki działa na cząstkę typu `me`.
   coeffs: Vec<f32>,
   stride: usize,
   /// `table[other * types + me]`: macierz sił spłaszczona.
   table: Vec<f32>,
+}
+
+impl Default for ForceData {
+  fn default() -> Self {
+    ForceData { chunks: vec![], forces: vec![], last_work: u64::MAX, coeffs: vec![], stride: 0, table: vec![] }
+  }
 }
 
 impl ForceData {
@@ -61,45 +69,18 @@ impl ForceData {
     }
   }
 
-  /// Podział cząstek na ciągłe zakresy o zbliżonej pracy (ok. `CHUNK_WORK`, w granicach
-  /// `CHUNKS_PER_THREAD` na każdy z `threads` wątków). Praca cząstki to
-  /// liczba kandydatów w sąsiedztwie jej komórki plus stały koszt; zakres może zacząć się i
-  /// skończyć w środku komórki, bo jedna komórka w gęstym skupisku potrafi mieć więcej pracy
-  /// niż wątek powinien dostać.
-  fn plan(&mut self, grid: &SpatialGrid, threads: usize) {
-    let starts = grid.cell_starts();
-    let per_particle = |c: usize| -> u64 {
-      grid.neighbour_runs(c).iter().map(|r| (starts[r.last as usize] - starts[r.first as usize]) as u64).sum::<u64>() + 8
-    };
-    let total: u64 = (0..grid.cell_count()).map(|c| grid.cell_range(c).len() as u64 * per_particle(c)).sum();
+  /// Podział cząstek na ciągłe zakresy po równo. Liczba zakresów z pracy poprzedniego kroku
+  /// (ok. `CHUNK_WORK` na zakres, w granicach `CHUNKS_PER_THREAD` na każdy z `threads`
+  /// wątków); nierówną pracę zakresów (skupiska) wyrównują wątki, które biorą kolejne zakresy.
+  /// Dokładniejszy podział według kandydatów każdej komórki kosztował kilkadziesiąt µs na
+  /// krok, więcej niż dawał.
+  fn plan(&mut self, n: usize, threads: usize) {
     let threads = threads.max(1);
-    let parts = (total.div_ceil(CHUNK_WORK) as usize)
-      .clamp(threads * CHUNKS_PER_THREAD.start(), threads * CHUNKS_PER_THREAD.end());
-    let target = total.div_ceil(parts as u64).max(1);
+    let parts = (self.last_work.div_ceil(CHUNK_WORK) as usize)
+      .clamp(threads * CHUNKS_PER_THREAD.start(), threads * CHUNKS_PER_THREAD.end())
+      .min(n.max(1));
     self.chunks.clear();
-    let (mut first, mut acc) = (0, 0u64);
-    for c in 0..grid.cell_count() {
-      let range = grid.cell_range(c);
-      if range.is_empty() {
-        continue;
-      }
-      let cost = per_particle(c);
-      let mut i = range.start;
-      while i < range.end {
-        // Ile cząstek tej komórki zmieści się do celu bieżącego zakresu.
-        let fit = ((target - acc).div_ceil(cost) as usize).min(range.end - i);
-        i += fit;
-        acc += fit as u64 * cost;
-        if acc >= target {
-          self.chunks.push(first..i);
-          first = i;
-          acc = 0;
-        }
-      }
-    }
-    if first < grid.len() {
-      self.chunks.push(first..grid.len());
-    }
+    self.chunks.extend((0..parts).map(|k| k * n / parts..(k + 1) * n / parts));
   }
 }
 
@@ -117,14 +98,14 @@ pub fn compute_forces(
 ) {
   data.fill(&grid, &particle_spec);
   let pool = ComputeTaskPool::get();
-  data.plan(&grid, pool.thread_num());
   let n = grid.len();
-  let ForceData { coeffs, stride, chunks, forces, .. } = &mut *data;
+  data.plan(n, pool.thread_num());
+  let ForceData { coeffs, stride, chunks, forces, last_work, .. } = &mut *data;
   forces.clear();
   forces.resize(n, Vec2::ZERO);
   let (coeffs, stride, grid) = (&coeffs[..], *stride, &*grid);
 
-  pool.scope(|scope| {
+  let work = pool.scope(|scope| {
     let mut rest = &mut forces[..];
     for particles in chunks.iter() {
       let (chunk, tail) = rest.split_at_mut(particles.len());
@@ -133,6 +114,7 @@ pub fn compute_forces(
       scope.spawn(async move { forces_in_range(grid, coeffs, stride, particles, chunk) });
     }
   });
+  *last_work = work.iter().sum();
 
   // Z powrotem do ECS: iteracja w tej samej kolejności co w `rebuild_grid` (ten sam zestaw
   // encji, bez zmian struktury między systemami), sprawdzana encja po encji.
@@ -158,7 +140,10 @@ pub fn compute_forces(
 }
 
 /// Siły dla cząstek `particles` (indeksy siatki); `out[i - particles.start]` dla cząstki `i`.
-fn forces_in_range(grid: &SpatialGrid, coeffs: &[f32], stride: usize, particles: Range<usize>, out: &mut [Vec2]) {
+/// Zwraca pracę: liczbę kandydatów plus stały koszt na cząstkę (dla podziału w następnym
+/// kroku).
+fn forces_in_range(grid: &SpatialGrid, coeffs: &[f32], stride: usize, particles: Range<usize>, out: &mut [Vec2]) -> u64 {
+  let mut work = 0u64;
   let (xs, ys, starts, types) = (grid.xs(), grid.ys(), grid.cell_starts(), grid.types());
   // Pierwsza komórka zakresu: ostatnia, która zaczyna się nie dalej niż `particles.start`.
   let mut c = starts.partition_point(|&s| s as usize <= particles.start) - 1;
@@ -166,6 +151,8 @@ fn forces_in_range(grid: &SpatialGrid, coeffs: &[f32], stride: usize, particles:
   while i < particles.end {
     let cell_end = (starts[c + 1] as usize).min(particles.end);
     let runs = grid.neighbour_runs(c);
+    let candidates: u32 = runs.iter().map(|r| starts[r.last as usize] - starts[r.first as usize]).sum();
+    work += (cell_end - i) as u64 * (candidates as u64 + 8);
     for i in i..cell_end {
       let me = types[i].0;
       let coeffs = &coeffs[me * stride..(me + 1) * stride];
@@ -185,6 +172,7 @@ fn forces_in_range(grid: &SpatialGrid, coeffs: &[f32], stride: usize, particles:
     i = cell_end;
     c += 1;
   }
+  work
 }
 
 fn load(values: &[f32]) -> Lanes {

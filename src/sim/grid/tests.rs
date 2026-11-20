@@ -319,3 +319,30 @@ fn run_shift_gives_the_same_delta_as_wrapping() {
     assert!(shifted > 0, "żadna para przez szew w świecie {width}x{height}");
   }
 }
+
+#[test]
+fn every_reach_matches_brute_force_including_edges() {
+  for reach in 1..=3 {
+    for (size, seed) in [(Vec2::new(2560.0, 1440.0), 7), (Vec2::new(500.0, 330.0), 8), (Vec2::new(410.0, 290.0), 9)] {
+      let mut rng = StdRng::seed_from_u64(seed);
+      let mut points = random_points(&mut rng, 600, size);
+      // Połowa przy krawędziach i rogach.
+      for p in points.iter_mut().step_by(2) {
+        let mut snap = |v: f32, half: f32| (half - rng.random_range(0.01..2.0 * INTERACTION_RADIUS)).copysign(v);
+        *p = Vec2::new(snap(p.x, size.x / 2.0), snap(p.y, size.y / 2.0));
+      }
+      let ids = entities(points.len());
+      let mut grid = SpatialGrid::with_reach(size.x, size.y, INTERACTION_RADIUS, reach);
+      grid.rebuild(ids.iter().zip(&points).map(|(id, p)| (*id, *p, InteractionId(0))));
+      assert_neighbours_match_brute_force(&grid, &ids, &points, size, INTERACTION_RADIUS);
+      for p in &points {
+        for run in grid.neighbour_runs(grid.cell_at(p.x, p.y)) {
+          for i in grid.cell_starts()[run.first as usize] as usize..grid.cell_starts()[run.last as usize] as usize {
+            let q = Vec2::new(grid.xs()[i], grid.ys()[i]);
+            assert_eq!((q - *p) + run.shift, grid.get_corrected_position_delta(*p, q), "reach {reach}, {p} → {q}");
+          }
+        }
+      }
+    }
+  }
+}

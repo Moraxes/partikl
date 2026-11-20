@@ -1,14 +1,21 @@
 use bevy::prelude::*;
 
 use super::InteractionId;
+use crate::config::GRID_REACH;
 
 /// Siatka przestrzenna z zawijaniem (torus) do szukania sąsiadów cząstek.
 /// Świat obejmuje `[-half_size, half_size]` w obu osiach.
 ///
-/// Komórka `(ix, iy)` zawiera pozycje, dla których `round(x / granularity) == ix` (tak samo
+/// Komórka `(ix, iy)` zawiera pozycje, dla których `round(x / granularity.x) == ix` (tak samo
 /// dla y). Skrajne komórki (`left`/`right`, `bottom`/`top`) leżą w połowie poza światem i
 /// razem tworzą jedną komórkę na szwie, dlatego zapytanie o komórkę przy krawędzi zagląda też
 /// do jej odpowiednika po drugiej stronie. Komórki są w płaskim `Vec`, wierszami.
+///
+/// Komórka ma bok co najmniej `radius / reach`, więc wszystko w zasięgu `radius` od cząstki
+/// leży w `(2·reach + 1)²` komórkach wokół jej komórki. Bok w każdej osi jest dobrany tak,
+/// żeby świat miał parzystą liczbę komórek: wtedy dwie skrajne połówki tworzą dokładnie jedną
+/// komórkę na szwie i zawijanie o liczbę komórek odpowiada zawijaniu o rozmiar świata (przy
+/// sąsiedztwie szerszym niż jedna komórka to konieczne).
 ///
 /// Cząstki leżą w tablicach posortowanych według komórek (encja, x, y, typ): komórka `c` to
 /// zakres `cell_range(c)`. Siatka nie jest aktualizowana przyrostowo: `rebuild` co krok
@@ -17,7 +24,9 @@ use super::InteractionId;
 #[derive(Resource)]
 pub struct SpatialGrid {
   half_size: Vec2,
-  granularity: f32,
+  granularity: Vec2,
+  /// Przesunięcia komórek sąsiedztwa: `-reach..=reach` w obu osiach.
+  offsets: Vec<(i32, i32)>,
   left: i32,
   right: i32,
   bottom: i32,
@@ -89,29 +98,31 @@ impl SpatialGrid {
   /// dowolnej cząstki nie wychodził poza tablicę.
   pub const PADDING: usize = 8;
 
-  const OFFSETS: [(i32, i32); 9] = [
-    (-1, -1),
-    (-1, 0),
-    (-1, 1),
-    (0, -1),
-    (0, 0),
-    (0, 1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-  ];
+  /// Siatka dla zasięgu `radius`, komórki `radius / GRID_REACH`.
+  pub fn new(width: f32, height: f32, radius: f32) -> SpatialGrid {
+    Self::with_reach(width, height, radius, GRID_REACH)
+  }
 
-  pub fn new(width: f32, height: f32, granularity: f32) -> SpatialGrid {
+  /// Siatka dla zasięgu `radius` z komórkami `radius / reach` (`reach ≥ 1`).
+  pub fn with_reach(width: f32, height: f32, radius: f32, reach: i32) -> SpatialGrid {
+    assert!(reach >= 1, "reach must be at least 1");
+    let even_cells = |size: f32| {
+      let n = 2.0 * (size / (2.0 * radius / reach as f32)).floor().max(1.0);
+      size / n
+    };
+    let granularity = Vec2::new(even_cells(width), even_cells(height));
+    let offsets = (-reach..=reach).flat_map(|dx| (-reach..=reach).map(move |dy| (dx, dy))).collect();
     let half_size = Vec2::new(width / 2.0, height / 2.0);
-    let right = (half_size.x / granularity).round() as i32;
-    let top = (half_size.y / granularity).round() as i32;
-    let left = (-half_size.x / granularity).round() as i32;
-    let bottom = (-half_size.y / granularity).round() as i32;
+    let right = (half_size.x / granularity.x).round() as i32;
+    let top = (half_size.y / granularity.y).round() as i32;
+    let left = (-half_size.x / granularity.x).round() as i32;
+    let bottom = (-half_size.y / granularity.y).round() as i32;
     let columns = (right - left + 1) as usize;
     let rows = (top - bottom + 1) as usize;
     let mut grid = SpatialGrid {
       half_size,
       granularity,
+      offsets,
       left,
       right,
       bottom,
@@ -168,7 +179,7 @@ impl SpatialGrid {
     grid
   }
 
-  /// Indeksy komórek sąsiedztwa `(ix, iy)` z zawijaniem, w stałej kolejności (`OFFSETS`).
+  /// Indeksy komórek sąsiedztwa `(ix, iy)` z zawijaniem, w stałej kolejności (`offsets`).
   fn neighbour_cells_of(&self, coords: (i32, i32)) -> impl Iterator<Item = usize> + Clone + '_ {
     self.shifted_neighbour_cells_of(coords).map(|(cell, _)| cell)
   }
@@ -182,7 +193,8 @@ impl SpatialGrid {
       -1 => size,
       _ => 0.0,
     };
-    Self::OFFSETS
+    self
+      .offsets
       .iter()
       .flat_map(move |&(xoff, yoff)| {
         let logical = (ix + xoff, iy + yoff);
@@ -252,6 +264,16 @@ impl SpatialGrid {
 
   pub fn half_size(&self) -> Vec2 {
     self.half_size
+  }
+
+  /// Liczba kolumn komórek (długość wiersza w indeksach komórek).
+  pub fn columns(&self) -> usize {
+    self.columns
+  }
+
+  /// Promień sąsiedztwa w komórkach: sąsiedztwo to `(2·reach + 1)²` komórek.
+  pub fn reach(&self) -> usize {
+    (self.offsets.len() as f64).sqrt() as usize / 2
   }
 
   /// Liczba komórek (indeksy `0..cell_count()`, wierszami).
@@ -419,8 +441,8 @@ impl SpatialGrid {
 
   pub fn bucket_coords(&self, x: f32, y: f32) -> (i32, i32) {
     (
-      (x / self.granularity).round() as i32,
-      (y / self.granularity).round() as i32,
+      (x / self.granularity.x).round() as i32,
+      (y / self.granularity.y).round() as i32,
     )
   }
 }
