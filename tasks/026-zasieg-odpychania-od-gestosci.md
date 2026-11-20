@@ -2,7 +2,7 @@
 id: 26
 title: Zasięg odpychania od gęstości
 summary: 'Trzeci tryb nakładania: zasięg odpychania pary rośnie z wygładzoną gęstością, sztywność stała'
-status: doing
+status: done
 priority: soon
 branch: main
 blocked_by:
