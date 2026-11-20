@@ -10,10 +10,15 @@
 //   { "stages": [
 //     { "name": "punkt wyjścia", "commit": "8f682a0",
 //       "sim": "sim-….jsonl", "grid": "grid-….jsonl", "note": "opcjonalnie" },
+//     { "name": "…", "commit": "…", "sim": "…", "grid": "…",
+//       "before": { "sim": "…", "grid": "…" } },
 //     … ] }
 //
-// Porównanie jest parami: ten sam (n, macierz, offset) w obu przebiegach, stosunek median
-// czasu nowy/stary, średnia geometryczna i 95% przedział ufności (rozkład normalny na logach).
+// `before` to opcjonalny pomiar kodu poprzedniego etapu zrobiony tuż przed pomiarem etapu
+// (bez dryfu warunków między dniami); bez niego etap porównuje się z przebiegami poprzedniego
+// etapu. Porównanie jest parami: ten sam (n, macierz, offset) w obu przebiegach, stosunek
+// median czasu nowy/stary, średnia geometryczna i 95% przedział ufności (rozkład normalny na
+// logach). Wynik względem punktu wyjścia to iloczyn wyników kolejnych etapów.
 'use strict';
 
 const fs = require('fs');
@@ -46,12 +51,16 @@ function loadRun(file, bench) {
 }
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-const stages = manifest.stages.map((s) => {
-  const sim = loadRun(s.sim, 'sim');
-  const grid = loadRun(s.grid, 'grid');
+function loadPair(files) {
+  const sim = loadRun(files.sim, 'sim');
+  const grid = loadRun(files.grid, 'grid');
   const data = D.buildDataset(sim, grid);
-  return { ...s, simRun: sim, gridRun: grid, data, byKey: new Map(data.points.map((p) => [p.key, p])) };
-});
+  return { simRun: sim, gridRun: grid, data, byKey: new Map(data.points.map((p) => [p.key, p])) };
+}
+
+const stages = manifest.stages.map((s) => ({ ...s, ...loadPair(s), before: s.before ? loadPair(s.before) : null }));
+/** Z czym porównywać etap `i`: jego pomiar `before` albo przebiegi poprzedniego etapu. */
+const reference = (i) => stages[i].before ?? stages[i - 1];
 
 /** Stosunki nowy/stary dla metryki, pogrupowane: 'all' i `${n}|${offset}`. */
 function compare(oldStage, newStage, metric) {
@@ -107,7 +116,15 @@ lines.push(
   '',
 );
 
-const base = stages[0];
+/** Iloczyn wyników etapów 1..i dla metryki; NaN, jeśli któryś etap jej nie ma. */
+function cumulative(i, m) {
+  let product = 1;
+  for (let k = 1; k <= i; k++) {
+    const c = compare(reference(k), stages[k], m).get('all');
+    product *= c ? c.ratio : NaN;
+  }
+  return product;
+}
 const metricsPresent = METRICS.filter(([m]) => stages.some((s) => s.data.metrics.includes(m)));
 const head = ['Etap', 'Commit', ...metricsPresent.map(([, label]) => label)];
 
@@ -118,20 +135,21 @@ lines.push(
     stages.map((s, i) => [
       s.name,
       `\`${s.commit}\``,
-      ...metricsPresent.map(([m]) => (i === 0 ? '—' : cell(compare(stages[i - 1], s, m).get('all')))),
+      ...metricsPresent.map(([m]) => (i === 0 ? '—' : cell(compare(reference(i), s, m).get('all')))),
     ]),
   ),
   '',
 );
 
 lines.push('## Względem punktu wyjścia', '');
+lines.push('Iloczyn wyników kolejnych etapów.', '');
 lines.push(
   table(
     head,
     stages.map((s, i) => [
       s.name,
       `\`${s.commit}\``,
-      ...metricsPresent.map(([m]) => (i === 0 ? '1,00' : cell(compare(base, s, m).get('all')))),
+      ...metricsPresent.map(([m]) => num(cumulative(i, m))),
     ]),
   ),
   '',
@@ -143,7 +161,11 @@ const offsets = [...new Set(stages.flatMap((s) => s.data.offsets))].sort((a, b) 
 const simStages = stages.filter((s) => s.simRun);
 if (simStages.length) {
   lines.push('## Czas kroku symulacji', '');
-  lines.push('Mediana po macierzach z median czasu kroku w µs.', '');
+  lines.push(
+    'Mediana po macierzach z median czasu kroku w µs, z przebiegów każdego etapu (różne dni, więc',
+    'zawierają dryf warunków; zmiany etapów mierzą tabele wyżej).',
+    '',
+  );
   lines.push(
     table(
       ['n', 'offset', ...simStages.map((s) => s.name)],
@@ -165,19 +187,23 @@ lines.push('## Etapy', '');
 stages.forEach((s, i) => {
   lines.push(`### ${i}. ${s.name} (\`${s.commit}\`)`, '');
   if (s.note) lines.push(s.note, '');
-  const runs = [s.simRun, s.gridRun].filter(Boolean);
+  const runLine = (label, r) => `- ${label}${r.bench}: \`${r.source}\`, rewizja \`${short(r.revision)}\`, ${r.records.length} rekordów`;
   lines.push(
-    runs.map((r) => `- ${r.bench}: \`${r.source}\`, rewizja \`${short(r.revision)}\`, ${r.records.length} rekordów`).join('\n'),
+    [
+      ...(s.before ? [s.before.simRun, s.before.gridRun].filter(Boolean).map((r) => runLine('przed, ', r)) : []),
+      ...[s.simRun, s.gridRun].filter(Boolean).map((r) => runLine(s.before ? 'po, ' : '', r)),
+    ].join('\n'),
     '',
   );
   if (i === 0) return;
-  const prev = stages[i - 1];
+  const prev = reference(i);
+  if (s.before) lines.push('Porównanie z pomiarem „przed” zrobionym tuż przed pomiarem etapu.', '');
   const { same, total } = sameTrajectories(prev, s);
   if (total) {
     lines.push(
       same === total
-        ? `Trajektorie identyczne z poprzednim etapem (${same}/${total} punktów), porównanie na tych samych stanach.`
-        : `Trajektorie różnią się od poprzedniego etapu (${same}/${total} identycznych): porównanie sim jest na tych samych macierzach, ale innych stanach.`,
+        ? `Trajektorie identyczne jak przed zmianą (${same}/${total} punktów), porównanie na tych samych stanach.`
+        : `Trajektorie różnią się od tych sprzed zmiany (${same}/${total} identycznych): porównanie sim jest na tych samych macierzach, ale innych stanach.`,
       '',
     );
   }
