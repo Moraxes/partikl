@@ -5,6 +5,9 @@ summary: Zasięg odpychania 2 i gładki kształt (1−d²/r²)²; tylko z rozsuw
 status: todo
 priority: later
 branch: main
+relates:
+- 24
+- 25
 created: 2026-11-20T23:12:14
 ---
 Cel: zasięg odpychania 2 zamiast 10 i kształt dzwonowy zamiast liniowego, np. siła `k·(1−d²/r²)²` (zależy tylko od d², 3 mnożenia). Następny krok: zrobić po rozsuwaniu lub uśrednianiu i zmierzyć sondą; samo zmniejszenie zasięgu pogorszy stabilność.
