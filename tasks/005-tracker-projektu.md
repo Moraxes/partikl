@@ -9,11 +9,11 @@ created: 2026-11-20T18:45:00
 worked: 2026-11-20T18:57:49
 links:
 - kind: code
-  target: /Users/maciej/repos/track
+  target: /Users/maciej/repos/trqr
   at: 2026-11-20T18:45:00
   note: repo narzędzia
 - kind: tasks
-  target: /Users/maciej/repos/track/.track
+  target: /Users/maciej/repos/trqr/.trqr
   at: 2026-11-20T18:57:49
   note: zadania narzędzia (panel, VS Code, kanban, synchronizacja, gałęzie)
 ---

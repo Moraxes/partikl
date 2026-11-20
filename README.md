@@ -1,7 +1,7 @@
 # Tracker partikl
 
 Zadania projektu dla człowieka i agentów: `tasks/NNN-tytuł.md`, obsługiwane narzędziem `tq`
-(projekt trqr w `~/repos/trqr`, opis formatu i poleceń w jego README). Gałąź `track`, worktree `.track/`,
+(projekt trqr w `~/repos/trqr`, opis formatu i poleceń w jego README). Gałąź `trqr`, worktree `.trqr/`,
 lokalna. Artefakty (wyniki benchmarków, raporty) są na gałęzi `artifacts` w `.artifacts/` i
 linkowane z zadań (`tq link`, `tq artifacts`).
 
