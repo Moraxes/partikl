@@ -2,14 +2,14 @@
 id: 17
 title: Wspólne obliczenia par
 summary: 'Pary raz powyżej 600 tys. par na krok: compute_forces na kandydata ×0,84 / ×0,75 (macierze 6 / 4)'
-status: doing
+status: done
 priority: later
 branch: main
 part_of: 12
 blocked_by:
 - 15
 created: 2026-11-20T20:29:45
-worked: 2026-11-20T21:23:04
+worked: 2026-11-20T21:23:46
 edited: 2026-11-20T21:23:45
 links:
 - kind: commit
