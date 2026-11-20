@@ -2,12 +2,12 @@
 id: 14
 title: Siatka przez sortowanie
 summary: 'Siatka sortowaniem przez zliczanie: krok ×0,97 / ×0,92 / ×0,89; złączenie systemów odrzucone'
-status: todo
+status: done
 priority: soon
 branch: main
 part_of: 12
 created: 2026-11-20T20:29:45
-worked: 2026-11-20T20:50:45
+worked: 2026-11-20T20:52:44
 edited: 2026-11-20T20:52:44
 links:
 - kind: commit
