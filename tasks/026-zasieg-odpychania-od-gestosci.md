@@ -18,6 +18,9 @@ links:
   target: e3011d7
   at: 2026-11-20T23:47:19
   note: 'feat: density-dependent repulsion range as an overlap mode'
+- kind: commit
+  target: e3011d7
+  at: 2026-11-20T23:47:19
 ---
 Wynik: `--overlap adaptive-range` / klawisz O (trzeci tryb). Zasięg pary `max(r_i, r_j)`, `r = 10·√(N̄/64)` w [10, 20], `N̄` w komponencie `Crowding` (wymagany przez `Acceleration`), α = 0,02. Gwiazdy same się rozpychają: bez uśredniania chaos prawie znika, skupiska najluźniejsze ze wszystkich trybów.
 
