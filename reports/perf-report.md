@@ -58,15 +58,15 @@ zawierają dryf warunków; zmiany etapów mierzą tabele wyżej).
 
 Siatka na `HashMap`, zapytanie o sąsiadów alokuje listę zawiniętych komórek.
 
-- sim: `sim-2026-11-20-03-05-44.jsonl`, rewizja `f43058b*`, 288 rekordów
-- grid: `grid-2026-11-20-03-42-18.jsonl`, rewizja `8f682a0`, 864 rekordów
+- sim: `sim-2026-11-20-03-05-44.parquet`, rewizja `f43058b*`, 288 rekordów
+- grid: `grid-2026-11-20-03-42-18.parquet`, rewizja `8f682a0`, 864 rekordów
 
 ### 1. płaska siatka (`7eaa030`)
 
 Komórki w płaskim `Vec`, zawinięte komórki w tablicy o stałej długości, ta sama kolejność przeglądania sąsiadów.
 
-- sim: `sim-2026-11-20-04-02-49.jsonl`, rewizja `b1e67ad*`, 288 rekordów
-- grid: `grid-2026-11-20-04-02-44.jsonl`, rewizja `b1e67ad*`, 864 rekordów
+- sim: `sim-2026-11-20-04-02-49.parquet`, rewizja `b1e67ad*`, 288 rekordów
+- grid: `grid-2026-11-20-04-02-44.parquet`, rewizja `b1e67ad*`, 864 rekordów
 
 Trajektorie identyczne jak przed zmianą (288/288 punktów), porównanie na tych samych stanach.
 
@@ -88,10 +88,10 @@ Kolumny n: offsety 256 / 1024 / 4096.
 
 Siatka trzyma pozycję i typ każdej cząstki oraz jej miejsce w komórce (pozycja aktualizowana co krok w `wrap_around` bez szukania w komórce), `compute_forces` nie pyta ECS o sąsiadów i pisze przyspieszenie bezpośrednio, bez kolejki `Parallel`.
 
-- przed, sim: `sim-2026-11-20-13-11-36.jsonl`, rewizja `2507bff`, 288 rekordów
-- przed, grid: `grid-2026-11-20-13-22-46.jsonl`, rewizja `2507bff`, 864 rekordów
-- po, sim: `sim-2026-11-20-13-22-55.jsonl`, rewizja `2507bff*`, 288 rekordów
-- po, grid: `grid-2026-11-20-13-31-14.jsonl`, rewizja `2507bff*`, 864 rekordów
+- przed, sim: `sim-2026-11-20-13-11-36.parquet`, rewizja `2507bff`, 288 rekordów
+- przed, grid: `grid-2026-11-20-13-22-46.parquet`, rewizja `2507bff`, 864 rekordów
+- po, sim: `sim-2026-11-20-13-22-55.parquet`, rewizja `2507bff*`, 288 rekordów
+- po, grid: `grid-2026-11-20-13-31-14.parquet`, rewizja `2507bff*`, 864 rekordów
 
 Porównanie z pomiarem „przed” zrobionym tuż przed pomiarem etapu.
 
@@ -115,10 +115,10 @@ Kolumny n: offsety 256 / 1024 / 4096.
 
 Sąsiedztwo każdej komórki (z zawijaniem) liczone raz w `SpatialGrid::new`; `compute_forces` przegląda komórki jako wycinki i bierze współczynnik z płaskiej tablicy z wierszem typu cząstki wyciągniętym przed pętlę. `grid: build` obejmuje `SpatialGrid::new`, więc zawiera jednorazowe liczenie tablicy (ok. 80 µs, raz na start symulacji, poza krokiem).
 
-- przed, sim: `sim-2026-11-20-14-10-33.jsonl`, rewizja `a5a1daf`, 288 rekordów
-- przed, grid: `grid-2026-11-20-14-18-51.jsonl`, rewizja `a5a1daf`, 864 rekordów
-- po, sim: `sim-2026-11-20-14-19-00.jsonl`, rewizja `a5a1daf*`, 288 rekordów
-- po, grid: `grid-2026-11-20-14-26-21.jsonl`, rewizja `a5a1daf*`, 864 rekordów
+- przed, sim: `sim-2026-11-20-14-10-33.parquet`, rewizja `a5a1daf`, 288 rekordów
+- przed, grid: `grid-2026-11-20-14-18-51.parquet`, rewizja `a5a1daf`, 864 rekordów
+- po, sim: `sim-2026-11-20-14-19-00.parquet`, rewizja `a5a1daf*`, 288 rekordów
+- po, grid: `grid-2026-11-20-14-26-21.parquet`, rewizja `a5a1daf*`, 864 rekordów
 
 Porównanie z pomiarem „przed” zrobionym tuż przed pomiarem etapu.
 
@@ -142,10 +142,10 @@ Kolumny n: offsety 256 / 1024 / 4096.
 
 Pula obliczeniowa Bevy na wszystkie rdzenie (domyślnie 4 z 10, reszta dla pul IO i async), `compute_forces` dzielone na partie po min. 64 cząstki, 16 partii na wątek. Bench `grid` jest jednowątkowy, więc bez zmian.
 
-- przed, sim: `sim-2026-11-20-14-37-44.jsonl`, rewizja `8a8d6cd`, 288 rekordów
-- przed, grid: `grid-2026-11-20-14-44-05.jsonl`, rewizja `8a8d6cd`, 864 rekordów
-- po, sim: `sim-2026-11-20-14-44-14.jsonl`, rewizja `8a8d6cd*`, 288 rekordów
-- po, grid: `grid-2026-11-20-14-48-29.jsonl`, rewizja `8a8d6cd*`, 864 rekordów
+- przed, sim: `sim-2026-11-20-14-37-44.parquet`, rewizja `8a8d6cd`, 288 rekordów
+- przed, grid: `grid-2026-11-20-14-44-05.parquet`, rewizja `8a8d6cd`, 864 rekordów
+- po, sim: `sim-2026-11-20-14-44-14.parquet`, rewizja `8a8d6cd*`, 288 rekordów
+- po, grid: `grid-2026-11-20-14-48-29.parquet`, rewizja `8a8d6cd*`, 864 rekordów
 
 Porównanie z pomiarem „przed” zrobionym tuż przed pomiarem etapu.
 
@@ -169,10 +169,10 @@ Kolumny n: offsety 256 / 1024 / 4096.
 
 `compute_forces` liczy 8 sąsiadów naraz (`wide::f32x8`). Co krok kopia siatki w osobnych tablicach (x, y, współczynnik dla każdego typu cząstki pytającej) w kolejności komórek; sąsiedztwo jako posortowane przebiegi komórek (`SpatialGrid::neighbour_runs`). Inna kolejność sumowania, więc trajektorie się rozjeżdżają (błąd sił względem wersji skalarnej do 2·10⁻⁴ względnie w gęstych skupiskach). `grid: build` obejmuje dodatkowo liczenie przebiegów w `SpatialGrid::new`.
 
-- przed, sim: `sim-2026-11-20-14-57-55.jsonl`, rewizja `03f8e51`, 288 rekordów
-- przed, grid: `grid-2026-11-20-15-02-10.jsonl`, rewizja `03f8e51`, 864 rekordów
-- po, sim: `sim-2026-11-20-15-02-19.jsonl`, rewizja `03f8e51*`, 288 rekordów
-- po, grid: `grid-2026-11-20-15-04-54.jsonl`, rewizja `03f8e51*`, 864 rekordów
+- przed, sim: `sim-2026-11-20-14-57-55.parquet`, rewizja `03f8e51`, 288 rekordów
+- przed, grid: `grid-2026-11-20-15-02-10.parquet`, rewizja `03f8e51`, 864 rekordów
+- po, sim: `sim-2026-11-20-15-02-19.parquet`, rewizja `03f8e51*`, 288 rekordów
+- po, grid: `grid-2026-11-20-15-04-54.parquet`, rewizja `03f8e51*`, 864 rekordów
 
 Porównanie z pomiarem „przed” zrobionym tuż przed pomiarem etapu.
 
@@ -196,10 +196,10 @@ Kolumny n: offsety 256 / 1024 / 4096.
 
 Stałe wektory w `Kernel::add` jako `const` zamiast `Lanes::splat(STAŁA)` w pętli: w `wide` `splat` to `transmute` tablicy i ze stałą kompilował się do `memcpy` 32 B z puli stałych przy każdym użyciu (5 na wektor), z rejestrami wektorowymi zrzucanymi na stos. Arytmetyka bez zmian, więc trajektorie identyczne.
 
-- przed, sim: `sim-2026-11-20-15-31-44.jsonl`, rewizja `6d5a6d3`, 288 rekordów
-- przed, grid: `grid-2026-11-20-15-34-21.jsonl`, rewizja `6d5a6d3`, 864 rekordów
-- po, sim: `sim-2026-11-20-15-34-30.jsonl`, rewizja `6d5a6d3*`, 288 rekordów
-- po, grid: `grid-2026-11-20-15-36-28.jsonl`, rewizja `6d5a6d3*`, 864 rekordów
+- przed, sim: `sim-2026-11-20-15-31-44.parquet`, rewizja `6d5a6d3`, 288 rekordów
+- przed, grid: `grid-2026-11-20-15-34-21.parquet`, rewizja `6d5a6d3`, 864 rekordów
+- po, sim: `sim-2026-11-20-15-34-30.parquet`, rewizja `6d5a6d3*`, 288 rekordów
+- po, grid: `grid-2026-11-20-15-36-28.parquet`, rewizja `6d5a6d3*`, 864 rekordów
 
 Porównanie z pomiarem „przed” zrobionym tuż przed pomiarem etapu.
 
@@ -223,10 +223,10 @@ Kolumny n: offsety 256 / 1024 / 4096.
 
 `ForceData::fill`: początki komórek z sumy prefiksowej, bufory ustawiane na dokładny rozmiar i zapisywane na miejsce (bez `push`), współczynniki dla wszystkich typów w tym samym przejściu z płaskiej macierzy sił (bez osobnej tablicy typów). W sondzie przy n=9000 ok. 29 → 13–15 µs; wersja równoległa była wolniejsza (koszt uruchomienia zadań). Dane identyczne, więc trajektorie też.
 
-- przed, sim: `sim-2026-11-20-15-41-28.jsonl`, rewizja `a41bf09`, 288 rekordów
-- przed, grid: `grid-2026-11-20-15-43-29.jsonl`, rewizja `a41bf09`, 864 rekordów
-- po, sim: `sim-2026-11-20-15-43-38.jsonl`, rewizja `a41bf09*`, 288 rekordów
-- po, grid: `grid-2026-11-20-15-45-36.jsonl`, rewizja `a41bf09*`, 864 rekordów
+- przed, sim: `sim-2026-11-20-15-41-28.parquet`, rewizja `a41bf09`, 288 rekordów
+- przed, grid: `grid-2026-11-20-15-43-29.parquet`, rewizja `a41bf09`, 864 rekordów
+- po, sim: `sim-2026-11-20-15-43-38.parquet`, rewizja `a41bf09*`, 288 rekordów
+- po, grid: `grid-2026-11-20-15-45-36.parquet`, rewizja `a41bf09*`, 864 rekordów
 
 Porównanie z pomiarem „przed” zrobionym tuż przed pomiarem etapu.
 
@@ -250,10 +250,10 @@ Kolumny n: offsety 256 / 1024 / 4096.
 
 Każdy przebieg komórek sąsiedztwa ma stałe przesunięcie (0 albo ± rozmiar świata w osi), policzone raz w `SpatialGrid::new`; przebiegi dzielone na granicy szwu. `compute_forces` liczy `(x − x₀) + shift` tylko dla przebiegów przez szew, a dla reszty samo `x − x₀`, zamiast porównań i dwóch `select` na każdą parę i oś. Wynik co do bitu jak przy zawijaniu (test `run_shift_gives_the_same_delta_as_wrapping`), więc trajektorie identyczne. Pomiar przed zmianą robiony z commitu 0562481, bez zmian w kodzie od ffe6723. `grid: build` obejmuje dzielenie przebiegów w `SpatialGrid::new`.
 
-- przed, sim: `sim-2026-11-20-16-06-00.jsonl`, rewizja `0562481`, 288 rekordów
-- przed, grid: `grid-2026-11-20-16-07-57.jsonl`, rewizja `0562481`, 864 rekordów
-- po, sim: `sim-2026-11-20-16-08-07.jsonl`, rewizja `0562481*`, 288 rekordów
-- po, grid: `grid-2026-11-20-16-09-50.jsonl`, rewizja `0562481*`, 864 rekordów
+- przed, sim: `sim-2026-11-20-16-06-00.parquet`, rewizja `0562481`, 288 rekordów
+- przed, grid: `grid-2026-11-20-16-07-57.parquet`, rewizja `0562481`, 864 rekordów
+- po, sim: `sim-2026-11-20-16-08-07.parquet`, rewizja `0562481*`, 288 rekordów
+- po, grid: `grid-2026-11-20-16-09-50.parquet`, rewizja `0562481*`, 864 rekordów
 
 Porównanie z pomiarem „przed” zrobionym tuż przed pomiarem etapu.
 
