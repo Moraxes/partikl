@@ -136,21 +136,27 @@ impl Kernel {
   }
 
   /// Dodaje siły od `remaining.min(LANES)` sąsiadów z wektorów.
+  ///
+  /// Stałe wektory muszą być `const`: `Lanes::splat` ze stałą w pętli kompiluje się do
+  /// `memcpy` z puli stałych przy każdym użyciu, co podwajało czas pętli.
   #[inline(always)]
   fn add(&mut self, xs: Lanes, ys: Lanes, coeffs: Lanes, remaining: usize) {
-    const LANE_INDEX: [f32; 16] = [0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.];
+    const LANE_INDEX: Lanes = Lanes::new([0., 1., 2., 3., 4., 5., 6., 7.]);
+    const RADIUS_SQ: Lanes = Lanes::splat(INTERACTION_RADIUS * INTERACTION_RADIUS);
+    const REPULSION: Lanes = Lanes::splat(-REPULSION_STRENGTH);
+    const REPULSION_R: Lanes = Lanes::splat(REPULSION_RADIUS);
+    const MIDDLE: Lanes = Lanes::splat(KERNEL_MIDDLE);
+    const WIDTH: Lanes = Lanes::splat(KERNEL_WIDTH);
     let dx = Self::wrap(xs - self.x, self.half_x);
     let dy = Self::wrap(ys - self.y, self.half_y);
     let distance_sq = dx * dx + dy * dy;
-    let valid = load(&LANE_INDEX).simd_lt(Lanes::splat(remaining as f32))
-      & distance_sq.simd_le(Lanes::splat(INTERACTION_RADIUS * INTERACTION_RADIUS))
+    let valid = LANE_INDEX.simd_lt(Lanes::splat(remaining as f32))
+      & distance_sq.simd_le(RADIUS_SQ)
       & distance_sq.simd_gt(Lanes::ZERO);
     let distance = distance_sq.sqrt();
-    let repulsion = Lanes::splat(-REPULSION_STRENGTH) * (Lanes::splat(REPULSION_RADIUS) - distance);
-    let attraction = coeffs
-      * (Lanes::ONE - ((distance - Lanes::splat(KERNEL_MIDDLE)) / Lanes::splat(KERNEL_WIDTH)).abs())
-        .max(Lanes::ZERO);
-    let magnitude = distance.simd_lt(Lanes::splat(REPULSION_RADIUS)).select(repulsion, attraction);
+    let repulsion = REPULSION * (REPULSION_R - distance);
+    let attraction = coeffs * (Lanes::ONE - ((distance - MIDDLE) / WIDTH).abs()).max(Lanes::ZERO);
+    let magnitude = distance.simd_lt(REPULSION_R).select(repulsion, attraction);
     // Poza zasięgiem `dx / distance` może być NaN, więc maska na samym wkładzie.
     self.sum_x += valid.select(magnitude * (dx / distance), Lanes::ZERO);
     self.sum_y += valid.select(magnitude * (dy / distance), Lanes::ZERO);
