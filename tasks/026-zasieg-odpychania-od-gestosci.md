@@ -12,20 +12,21 @@ relates:
 - 25
 created: 2026-11-20T23:20:35
 worked: 2026-11-20T23:47:19
+edited: 2026-11-20T23:47:19
 links:
 - kind: commit
   target: e3011d7
   at: 2026-11-20T23:47:19
   note: 'feat: density-dependent repulsion range as an overlap mode'
 ---
-Cel: trzeci tryb obsługi nakładania (obok sprężyny i rozsuwania, ten sam klawisz przełącza cyklicznie): zasięg odpychania pary `r_ij = max(r_i, r_j)` rośnie z gęstością wokół cząstki, siła na jednostkę wnikania bez zmian. Gęsta gwiazda puchnie (większe odstępy, mniej sąsiadów, słabsze przyciąganie), sztywność pary się nie zmienia. Następny krok: wygładzona gęstość jako stan cząstki, funkcja r(N̄) z ograniczeniem, sonda.
+Wynik: `--overlap adaptive-range` / klawisz O (trzeci tryb). Zasięg pary `max(r_i, r_j)`, `r = 10·√(N̄/64)` w [10, 20], `N̄` w komponencie `Crowding` (wymagany przez `Acceleration`), α = 0,02. Gwiazdy same się rozpychają: bez uśredniania chaos prawie znika, skupiska najluźniejsze ze wszystkich trybów.
 
-## Gęstość jako stan
-- N z przejścia sił kroku t, zasięg używany w kroku t+1 (zasięg pary trzeba znać przed policzeniem siły).
-- Zamiast surowego N z poprzedniego kroku: wygładzona `N̄ ← N̄ + α(N − N̄)`, z α na tyle małym, że zasięg zmienia się wolniej niż ruch cząstek (opóźnione sprzężenie zwrotne bez tego może oscylować).
-- Alternatywa bez opóźnienia: osobne przejście liczące N przed siłami; mierzyć tylko, jeśli wygładzanie nie wystarczy (koszt rzędu kolejnego przejścia po kandydatach).
+## Sonda n=100000, `spec-2026-11-20-21-48-03.ron`, krok 1500
+| wariant | prędkość med / p99 / max [j/s] | >1000 j/s | najpełniejsza komórka |
+|---|---|---|---|
+| sprężyna | 682 / 4107 / 5747 | 38,4% | 2407 |
+| zmienny zasięg | 348 / 1168 / 2155 | 2,7% | 247 |
+| zmienny zasięg + uśrednianie | 125 / 253 / 450 | 0% | 1082 |
 
-## Ograniczenia
-- r_max < `INTERACTION_RADIUS` i najlepiej ≤ 20 (wtedy poza zasięgiem przyciągania, które zaczyna się od 20).
-- Jądro: zasięg per para zamiast stałej (dodatkowy odczyt i max na wektor); `--quick` z trybem domyślnym bez zmian.
-- Pomiar: sonda n=100000, `spec-2026-11-20-21-48-03.ron`, jak 024 i 025.
+Bez zmian α, N0 i r_max (wartości z planu). Zapis do ECS przez wspólne mapowanie kolejność ECS → siatka (`slots`).
+
