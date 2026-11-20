@@ -13,6 +13,7 @@ Etapy optymalizacji symulacji i indeksu przestrzennego, mierzone benchmarkami `s
 | płaska siatka | `7eaa030` | 0,58 | 0,52 | 1,04 | 1,09 | 0,61 | 1,04 | 0,29 | 0,40 | 0,79 |
 | siły z danych w siatce | `71fd918` | 0,81 | 0,74 | 1,05 | 0,92 | 1,94 | 0,94 | 1,16 | 1,20 | 1,18 |
 | tablica sąsiedztwa i płaskie współczynniki | `3127644` | 0,92 | 0,90 | 1,01 | 0,99 | 0,98 | 1,00 | 0,69 | 3,52 | 0,99 |
+| wszystkie rdzenie i drobne partie | `5802732` | 0,89 | 0,85 | 0,97 | 1,14 | 1,05 | 0,99 | 0,96 | 1,01 | 1,00 |
 
 ## Względem punktu wyjścia
 
@@ -24,23 +25,24 @@ Iloczyn wyników kolejnych etapów.
 | płaska siatka | `7eaa030` | 0,58 | 0,52 | 1,04 | 1,09 | 0,61 | 1,04 | 0,29 | 0,40 | 0,79 |
 | siły z danych w siatce | `71fd918` | 0,48 | 0,39 | 1,09 | 0,99 | 1,17 | 0,97 | 0,33 | 0,48 | 0,93 |
 | tablica sąsiedztwa i płaskie współczynniki | `3127644` | 0,44 | 0,35 | 1,09 | 0,99 | 1,15 | 0,97 | 0,23 | 1,68 | 0,92 |
+| wszystkie rdzenie i drobne partie | `5802732` | 0,39 | 0,30 | 1,06 | 1,13 | 1,21 | 0,97 | 0,22 | 1,69 | 0,92 |
 
 ## Czas kroku symulacji
 
 Mediana po macierzach z median czasu kroku w µs, z przebiegów każdego etapu (różne dni, więc
 zawierają dryf warunków; zmiany etapów mierzą tabele wyżej).
 
-| n | offset | punkt wyjścia | płaska siatka | siły z danych w siatce | tablica sąsiedztwa i płaskie współczynniki |
-|---|---|---|---|---|---|
-| 1000 | 256 | 152 | 69 | 63 | 62 |
-| 1000 | 1024 | 152 | 72 | 65 | 67 |
-| 1000 | 4096 | 158 | 81 | 77 | 71 |
-| 3000 | 256 | 503 | 247 | 212 | 211 |
-| 3000 | 1024 | 517 | 273 | 237 | 222 |
-| 3000 | 4096 | 613 | 413 | 351 | 291 |
-| 9000 | 256 | 1877 | 1154 | 927 | 823 |
-| 9000 | 1024 | 2249 | 1603 | 1189 | 1041 |
-| 9000 | 4096 | 3927 | 3175 | 2433 | 1871 |
+| n | offset | punkt wyjścia | płaska siatka | siły z danych w siatce | tablica sąsiedztwa i płaskie współczynniki | wszystkie rdzenie i drobne partie |
+|---|---|---|---|---|---|---|
+| 1000 | 256 | 152 | 69 | 63 | 62 | 68 |
+| 1000 | 1024 | 152 | 72 | 65 | 67 | 70 |
+| 1000 | 4096 | 158 | 81 | 77 | 71 | 78 |
+| 3000 | 256 | 503 | 247 | 212 | 211 | 201 |
+| 3000 | 1024 | 517 | 273 | 237 | 222 | 214 |
+| 3000 | 4096 | 613 | 413 | 351 | 291 | 269 |
+| 9000 | 256 | 1877 | 1154 | 927 | 823 | 617 |
+| 9000 | 1024 | 2249 | 1603 | 1189 | 1041 | 722 |
+| 9000 | 4096 | 3927 | 3175 | 2433 | 1871 | 1202 |
 
 ## Etapy
 
@@ -125,5 +127,32 @@ Trajektorie identyczne jak przed zmianą (288/288 punktów), porównanie na tych
 | grid: neighbours | 0,69 [0,68; 0,70] | 0,62 / 0,66 / 0,70 | 0,68 / 0,68 / 0,71 | 0,70 / 0,73 / 0,76 |
 | grid: build | 3,52 [3,30; 3,76] | 7,12 / 6,84 / 7,46 | 3,14 / 3,26 / 3,44 | 1,80 / 1,86 / 1,94 |
 | grid: move | 0,99 [0,98; 1,00] | 0,97 / 0,96 / 0,98 | 1,04 / 1,00 / 0,99 | 1,00 / 0,98 / 1,00 |
+
+Kolumny n: offsety 256 / 1024 / 4096.
+
+### 4. wszystkie rdzenie i drobne partie (`5802732`)
+
+Pula obliczeniowa Bevy na wszystkie rdzenie (domyślnie 4 z 10, reszta dla pul IO i async), `compute_forces` dzielone na partie po min. 64 cząstki, 16 partii na wątek. Bench `grid` jest jednowątkowy, więc bez zmian.
+
+- przed, sim: `sim-2026-11-20-14-37-44.jsonl`, rewizja `8a8d6cd`, 288 rekordów
+- przed, grid: `grid-2026-11-20-14-44-05.jsonl`, rewizja `8a8d6cd`, 864 rekordów
+- po, sim: `sim-2026-11-20-14-44-14.jsonl`, rewizja `8a8d6cd*`, 288 rekordów
+- po, grid: `grid-2026-11-20-14-48-29.jsonl`, rewizja `8a8d6cd*`, 864 rekordów
+
+Porównanie z pomiarem „przed” zrobionym tuż przed pomiarem etapu.
+
+Trajektorie identyczne jak przed zmianą (288/288 punktów), porównanie na tych samych stanach.
+
+| Metryka | ogółem [95% CI] | n=1000 | n=3000 | n=9000 |
+|---|---|---|---|---|
+| krok | 0,89 [0,87; 0,91] | 1,08 / 1,07 / 1,04 | 0,97 / 0,97 / 0,84 | 0,77 / 0,72 / 0,67 |
+| compute_forces | 0,85 [0,83; 0,88] | 1,11 / 1,07 / 1,06 | 0,95 / 0,96 / 0,81 | 0,67 / 0,64 / 0,61 |
+| compute_friction | 0,97 [0,96; 0,99] | 1,07 / 1,11 / 1,05 | 0,91 / 0,92 / 0,99 | 0,87 / 0,91 / 0,97 |
+| integrate | 1,14 [1,12; 1,16] | 1,19 / 1,30 / 1,26 | 0,97 / 0,99 / 1,10 | 1,17 / 1,13 / 1,18 |
+| wrap_around | 1,05 [1,04; 1,06] | 1,04 / 1,05 / 1,02 | 1,02 / 1,02 / 1,04 | 1,10 / 1,11 / 1,10 |
+| update_shape | 0,99 [0,98; 1,01] | 0,96 / 0,98 / 0,96 | 1,02 / 1,00 / 1,00 | 1,00 / 1,01 / 1,01 |
+| grid: neighbours | 0,96 [0,95; 0,98] | 0,93 / 0,94 / 0,96 | 0,89 / 0,93 / 0,97 | 1,02 / 1,00 / 1,03 |
+| grid: build | 1,01 [0,99; 1,02] | 1,01 / 1,03 / 1,02 | 0,98 / 1,01 / 1,02 | 1,00 / 1,00 / 1,00 |
+| grid: move | 1,00 [0,99; 1,01] | 1,01 / 1,01 / 1,01 | 1,01 / 1,00 / 0,95 | 0,99 / 1,00 / 1,00 |
 
 Kolumny n: offsety 256 / 1024 / 4096.
