@@ -16,6 +16,7 @@ Etapy optymalizacji symulacji i indeksu przestrzennego, mierzone benchmarkami `s
 | wszystkie rdzenie i drobne partie | `5802732` | 0,89 | 0,85 | 0,97 | 1,14 | 1,05 | 0,99 | 0,96 | 1,01 | 1,00 |
 | SIMD (f32x8) | `ec4d863` | 0,76 | 0,68 | 1,03 | 0,96 | 0,92 | 0,95 | 1,02 | 1,31 | 1,02 |
 | stałe SIMD jako const | `1c07039` | 0,87 | 0,80 | 1,03 | 0,98 | 1,01 | 0,99 | 0,99 | 1,01 | 1,01 |
+| kopia siatki w jednym przejściu | `ffe6723` | 0,98 | 0,95 | 1,01 | 1,02 | 1,00 | 1,02 | 0,98 | 1,00 | 1,02 |
 
 ## Względem punktu wyjścia
 
@@ -30,23 +31,24 @@ Iloczyn wyników kolejnych etapów.
 | wszystkie rdzenie i drobne partie | `5802732` | 0,39 | 0,30 | 1,06 | 1,13 | 1,21 | 0,97 | 0,22 | 1,69 | 0,92 |
 | SIMD (f32x8) | `ec4d863` | 0,29 | 0,20 | 1,09 | 1,08 | 1,12 | 0,92 | 0,22 | 2,22 | 0,94 |
 | stałe SIMD jako const | `1c07039` | 0,25 | 0,16 | 1,12 | 1,06 | 1,13 | 0,91 | 0,22 | 2,24 | 0,95 |
+| kopia siatki w jednym przejściu | `ffe6723` | 0,25 | 0,15 | 1,13 | 1,08 | 1,13 | 0,93 | 0,22 | 2,25 | 0,96 |
 
 ## Czas kroku symulacji
 
 Mediana po macierzach z median czasu kroku w µs, z przebiegów każdego etapu (różne dni, więc
 zawierają dryf warunków; zmiany etapów mierzą tabele wyżej).
 
-| n | offset | punkt wyjścia | płaska siatka | siły z danych w siatce | tablica sąsiedztwa i płaskie współczynniki | wszystkie rdzenie i drobne partie | SIMD (f32x8) | stałe SIMD jako const |
-|---|---|---|---|---|---|---|---|---|
-| 1000 | 256 | 152 | 69 | 63 | 62 | 68 | 62 | 59 |
-| 1000 | 1024 | 152 | 72 | 65 | 67 | 70 | 62 | 58 |
-| 1000 | 4096 | 158 | 81 | 77 | 71 | 78 | 68 | 60 |
-| 3000 | 256 | 503 | 247 | 212 | 211 | 201 | 155 | 148 |
-| 3000 | 1024 | 517 | 273 | 237 | 222 | 214 | 169 | 150 |
-| 3000 | 4096 | 613 | 413 | 351 | 291 | 269 | 205 | 161 |
-| 9000 | 256 | 1877 | 1154 | 927 | 823 | 617 | 482 | 432 |
-| 9000 | 1024 | 2249 | 1603 | 1189 | 1041 | 722 | 534 | 472 |
-| 9000 | 4096 | 3927 | 3175 | 2433 | 1871 | 1202 | 662 | 543 |
+| n | offset | punkt wyjścia | płaska siatka | siły z danych w siatce | tablica sąsiedztwa i płaskie współczynniki | wszystkie rdzenie i drobne partie | SIMD (f32x8) | stałe SIMD jako const | kopia siatki w jednym przejściu |
+|---|---|---|---|---|---|---|---|---|---|
+| 1000 | 256 | 152 | 69 | 63 | 62 | 68 | 62 | 59 | 55 |
+| 1000 | 1024 | 152 | 72 | 65 | 67 | 70 | 62 | 58 | 56 |
+| 1000 | 4096 | 158 | 81 | 77 | 71 | 78 | 68 | 60 | 57 |
+| 3000 | 256 | 503 | 247 | 212 | 211 | 201 | 155 | 148 | 142 |
+| 3000 | 1024 | 517 | 273 | 237 | 222 | 214 | 169 | 150 | 147 |
+| 3000 | 4096 | 613 | 413 | 351 | 291 | 269 | 205 | 161 | 160 |
+| 9000 | 256 | 1877 | 1154 | 927 | 823 | 617 | 482 | 432 | 421 |
+| 9000 | 1024 | 2249 | 1603 | 1189 | 1041 | 722 | 534 | 472 | 463 |
+| 9000 | 4096 | 3927 | 3175 | 2433 | 1871 | 1202 | 662 | 543 | 513 |
 
 ## Etapy
 
@@ -212,5 +214,32 @@ Trajektorie identyczne jak przed zmianą (288/288 punktów), porównanie na tych
 | grid: neighbours | 0,99 [0,98; 1,00] | 1,00 / 0,96 / 1,00 | 1,00 / 0,99 / 0,99 | 0,99 / 1,00 / 0,99 |
 | grid: build | 1,01 [1,00; 1,02] | 1,00 / 1,00 / 1,00 | 0,99 / 1,00 / 1,00 | 1,04 / 1,04 / 1,00 |
 | grid: move | 1,01 [1,00; 1,02] | 1,01 / 1,01 / 1,00 | 1,00 / 1,00 / 1,00 | 1,03 / 1,00 / 1,04 |
+
+Kolumny n: offsety 256 / 1024 / 4096.
+
+### 7. kopia siatki w jednym przejściu (`ffe6723`)
+
+`ForceData::fill`: początki komórek z sumy prefiksowej, bufory ustawiane na dokładny rozmiar i zapisywane na miejsce (bez `push`), współczynniki dla wszystkich typów w tym samym przejściu z płaskiej macierzy sił (bez osobnej tablicy typów). W sondzie przy n=9000 ok. 29 → 13–15 µs; wersja równoległa była wolniejsza (koszt uruchomienia zadań). Dane identyczne, więc trajektorie też.
+
+- przed, sim: `sim-2026-11-20-15-41-28.jsonl`, rewizja `a41bf09`, 288 rekordów
+- przed, grid: `grid-2026-11-20-15-43-29.jsonl`, rewizja `a41bf09`, 864 rekordów
+- po, sim: `sim-2026-11-20-15-43-38.jsonl`, rewizja `a41bf09*`, 288 rekordów
+- po, grid: `grid-2026-11-20-15-45-36.jsonl`, rewizja `a41bf09*`, 864 rekordów
+
+Porównanie z pomiarem „przed” zrobionym tuż przed pomiarem etapu.
+
+Trajektorie identyczne jak przed zmianą (288/288 punktów), porównanie na tych samych stanach.
+
+| Metryka | ogółem [95% CI] | n=1000 | n=3000 | n=9000 |
+|---|---|---|---|---|
+| krok | 0,98 [0,96; 0,99] | 0,97 / 0,96 / 0,95 | 1,01 / 0,99 / 0,98 | 0,98 / 0,98 / 0,96 |
+| compute_forces | 0,95 [0,93; 0,96] | 0,93 / 0,93 / 0,94 | 0,96 / 0,97 / 0,95 | 0,95 / 0,95 / 0,94 |
+| compute_friction | 1,01 [1,00; 1,03] | 0,99 / 0,97 / 0,97 | 1,05 / 1,02 / 1,05 | 1,05 / 1,01 / 1,01 |
+| integrate | 1,02 [1,01; 1,03] | 1,05 / 1,02 / 1,02 | 1,01 / 0,99 / 1,01 | 1,02 / 1,01 / 1,02 |
+| wrap_around | 1,00 [0,99; 1,02] | 1,00 / 0,98 / 1,01 | 1,05 / 1,00 / 1,02 | 0,99 / 1,00 / 0,98 |
+| update_shape | 1,02 [1,00; 1,03] | 1,06 / 0,97 / 1,00 | 1,07 / 1,02 / 1,02 | 1,01 / 1,00 / 1,01 |
+| grid: neighbours | 0,98 [0,98; 0,99] | 0,97 / 0,96 / 1,01 | 1,01 / 1,00 / 0,97 | 0,98 / 0,98 / 0,98 |
+| grid: build | 1,00 [1,00; 1,01] | 1,00 / 1,01 / 1,00 | 1,02 / 1,01 / 0,99 | 1,00 / 1,00 / 1,00 |
+| grid: move | 1,02 [1,01; 1,02] | 1,01 / 1,01 / 1,01 | 1,01 / 1,00 / 1,06 | 1,01 / 1,01 / 1,03 |
 
 Kolumny n: offsety 256 / 1024 / 4096.
