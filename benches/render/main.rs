@@ -59,12 +59,20 @@ struct Args {
   /// Katalog na zrzuty (PNG, pełny obraz) pierwszej klatki trybu `draw` każdego wariantu.
   #[arg(long)]
   screenshots: Option<PathBuf>,
+  /// Zamiast pomiaru: galeria porównań wyglądu w katalogu (PNG): ten sam stan (po `--steps`
+  /// krokach rozbiegu, `--sizes`, `--seed`) w HDR i LDR oraz bez i z analitycznym AA, z kolorami
+  /// jak w aplikacji, panele obok siebie (lewy = obecny wygląd), w skali 1:1 i 4×.
+  #[arg(long)]
+  gallery: Option<PathBuf>,
   /// Tryby pomiaru: draw (sam render) i draw+step (klatka z krokiem).
   #[arg(long, value_delimiter = ',', default_value = "draw,draw+step")]
   modes: Vec<String>,
   /// Kroki symulacji przed pomiarem (stan w kolejności siatki).
   #[arg(long, default_value_t = 5)]
   steps: u64,
+  /// Kroki rozbiegu stanu w trybie `--gallery`.
+  #[arg(long, default_value_t = 800)]
+  gallery_steps: u64,
   /// Ziarno macierzy sił i rozmieszczenia.
   #[arg(long, default_value_t = 0)]
   seed: u64,
@@ -118,8 +126,89 @@ fn save_screenshot(harness: &mut Harness, dir: &std::path::Path, name: &str) {
   image.try_into_dynamic().expect("PNG").save(dir.join(name)).expect("cannot save screenshot");
 }
 
+/// Wycinek `w`×`h` od `(x0, y0)` powiększony `scale` razy (najbliższy sąsiad), RGBA8.
+fn panel(pixels: &[u8], x0: u32, y0: u32, w: u32, h: u32, scale: u32) -> Vec<u8> {
+  let mut out = Vec::with_capacity((w * h * scale * scale * 4) as usize);
+  for y in 0..h * scale {
+    for x in 0..w * scale {
+      let i = (((y0 + y / scale) * TARGET.x + x0 + x / scale) * 4) as usize;
+      out.extend_from_slice(&pixels[i..i + 4]);
+    }
+  }
+  out
+}
+
+/// Dwa panele `w`×`h` obok siebie, rozdzielone szarym pasem.
+fn side_by_side(left: &[u8], right: &[u8], w: u32, h: u32) -> (Vec<u8>, u32) {
+  const GAP: u32 = 16;
+  let mut out = Vec::new();
+  for y in 0..h as usize {
+    let row = y * w as usize * 4;
+    out.extend_from_slice(&left[row..row + w as usize * 4]);
+    out.extend((0..GAP).flat_map(|_| [128u8, 128, 128, 255]));
+    out.extend_from_slice(&right[row..row + w as usize * 4]);
+  }
+  (out, 2 * w + GAP)
+}
+
+fn save_png(path: &std::path::Path, width: u32, height: u32, rgba: Vec<u8>) {
+  use bevy::asset::RenderAssetUsages;
+  use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+  let image = Image::new(
+    Extent3d { width, height, depth_or_array_layers: 1 },
+    TextureDimension::D2,
+    rgba,
+    TextureFormat::Rgba8UnormSrgb,
+    RenderAssetUsages::default(),
+  );
+  image.try_into_dynamic().expect("PNG").save(path).expect("cannot save image");
+}
+
+/// Galeria porównań wyglądu: jeden stan (po rozbiegu), rysowany w parach wariantów.
+fn gallery(args: &Args, dir: &std::path::Path) {
+  std::fs::create_dir_all(dir).expect("cannot create gallery directory");
+  let options = SimOptions { average_forces: true, overlap: Overlap::default() };
+  let n = args.sizes[0];
+  let spec = || particle_spec(args.types, args.seed);
+  let initial = Scene::Uniform.particles(n, args.types, WORLD, &mut rng(args.seed));
+  // Rozbieg: stan z prawdziwej dynamiki (struktury), potem ten sam stan dla każdego wariantu.
+  let Some(mut harness) = Harness::new(options, spec(), initial, WORLD) else { return };
+  let state = harness.run(args.gallery_steps);
+  drop(harness);
+  let render = |quality: RenderQuality| -> Vec<u8> {
+    let offscreen = Offscreen { size: TARGET, quality, app_colors: true };
+    let mut harness = Harness::with_render(options, spec(), state.clone(), WORLD, Some(offscreen)).expect("GPU");
+    for _ in 0..6 {
+      harness.update();
+    }
+    harness.target_pixels()
+  };
+  let base = RenderQuality::default();
+  let pairs = [
+    ("hdr_vs_ldr", base, RenderQuality { hdr: false, ..base }),
+    ("noaa_vs_aa", base, RenderQuality { analytic_aa: true, ..base }),
+  ];
+  // Środek obrazu: 900×700 pikseli fizycznych w skali 1:1, 225×175 w skali 4×.
+  let (cx, cy) = (TARGET.x / 2, TARGET.y / 2);
+  for (name, left, right) in pairs {
+    let (a, b) = (render(left), render(right));
+    for (scale, w, h) in [(1u32, 900u32, 700u32), (4, 225, 175)] {
+      let (x0, y0) = (cx - w / 2, cy - h / 2);
+      let (pa, pb) = (panel(&a, x0, y0, w, h, scale), panel(&b, x0, y0, w, h, scale));
+      let (image, width) = side_by_side(&pa, &pb, w * scale, h * scale);
+      let path = dir.join(format!("{name}_{scale}x.png"));
+      save_png(&path, width, h * scale, image);
+      println!("{}", path.display());
+    }
+  }
+}
+
 fn main() {
   let args = Args::parse();
+  if let Some(dir) = &args.gallery {
+    gallery(&args, dir);
+    return;
+  }
   let measured = args.measured.unwrap_or(if args.quick { QUICK_MEASURED } else { 60 });
   let schema = Arc::new(Schema::new(vec![
     Field::new("n", DataType::UInt32, false),
@@ -142,7 +231,7 @@ fn main() {
           let candidates = candidates_mean(&state, WORLD);
           let spec = particle_spec(args.types, args.seed);
           let quality = RenderQuality { msaa: msaa(samples), hdr, tonemapping, analytic_aa };
-          let offscreen = Offscreen { size: TARGET, quality };
+          let offscreen = Offscreen { size: TARGET, quality, app_colors: false };
           let Some(mut harness) = Harness::with_render(options, spec, state, WORLD, Some(offscreen)) else {
             break 'cases;
           };

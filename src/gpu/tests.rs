@@ -259,7 +259,7 @@ fn render_still_particles(quality: RenderQuality) -> Option<(Vec<u8>, UVec2, Vec
   // Zerowe siły: cząstki stoją w miejscu.
   let spec = zero_forces(spec(&mut StdRng::seed_from_u64(1), 2));
   let size = (world * 2.0).as_uvec2();
-  let mut harness = Harness::with_render(SimOptions::default(), spec, particles, world, Some(Offscreen { size, quality }))?;
+  let mut harness = Harness::with_render(SimOptions::default(), spec, particles, world, Some(Offscreen { size, quality, app_colors: false }))?;
   // Kilka klatek: zasoby (siatka, materiał, pipeline) trafiają na GPU z opóźnieniem.
   for _ in 0..6 {
     harness.update();

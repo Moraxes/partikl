@@ -105,7 +105,7 @@ pub fn initial_particles(n: usize, types: usize, world: Vec2, rng: &mut impl Rng
 }
 
 /// Kolory typów cząstek: odcienie rozłożone od losowej fazy o losową rozpiętość.
-fn random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
+pub fn random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
   let phase = 360.0 * rng.random::<f32>();
   let spread = 60.0 + 300.0 * rng.random::<f32>();
   (0..n)

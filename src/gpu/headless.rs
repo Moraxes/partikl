@@ -27,6 +27,8 @@ static LOCK: Mutex<()> = Mutex::new(());
 pub struct Offscreen {
   pub size: UVec2,
   pub quality: RenderQuality,
+  /// Kolory typów jak w aplikacji (losowe LCH, stałe ziarno) zamiast białych.
+  pub app_colors: bool,
 }
 
 /// Aplikacja bez okna, z własnym kołem aktualizacji; `None` bez adaptera GPU.
@@ -247,12 +249,17 @@ fn spawn_test_sim(
   materials: ResMut<Assets<ParticleMaterial>>,
   mut images: ResMut<Assets<Image>>,
 ) {
-  let colors = vec![Color::WHITE; spec.interactions.len()];
+  let types = spec.interactions.len();
+  let colors = if initial.2.is_some_and(|o| o.app_colors) {
+    random_colors(types, &mut StdRng::seed_from_u64(7))
+  } else {
+    vec![Color::WHITE; types]
+  };
   let world = initial.1;
   let analytic_aa = initial.2.is_some_and(|o| o.quality.analytic_aa);
   let look = ParticleLook { size: 2.0, colors, analytic_aa };
   spawn_sim(&mut commands, buffers, meshes, materials, initial.0.take().unwrap(), &spec, world, look);
-  if let Some(Offscreen { size, quality }) = initial.2 {
+  if let Some(Offscreen { size, quality, .. }) = initial.2 {
     let mut image = Image::new_target_texture(size.x, size.y, TextureFormat::Rgba8UnormSrgb, None);
     // Odczyt obrazu (`target_pixels`) kopiuje teksturę.
     image.texture_descriptor.usage |= TextureUsages::COPY_SRC;
