@@ -2,7 +2,7 @@
 id: 48
 title: Test rysowania GPU
 summary: 'Render kilku cząstek poza ekranem: nic nie wychodzi poza ich promień'
-status: todo
+status: done
 priority: soon
 branch: compute-shader-1
 relates:
