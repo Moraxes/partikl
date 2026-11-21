@@ -1,6 +1,10 @@
 // Reguły modelu (fizyka) wymienne bez ruszania silnika siatki.
-// Opcje przez flagi: OVERLAP_RESOLVE (rozsuwanie), OVERLAP_ADAPTIVE (zmienny zasięg),
-// AVERAGE_FORCES; bez żadnej z dwóch pierwszych działa sprężyna.
+// Opcje deklaruje nagłówek (`//@option`): użytkownik wybiera je klawiszem albo `--option`, a wybór
+// włącza flagę shadera (nazwa po `=`); pierwszy wybór jest domyślny. Bez żadnej z dwóch pierwszych
+// flag nakładania działa sprężyna.
+//@option average_forces key=N: on=AVERAGE_FORCES, off
+//@option overlap key=O: spring, resolve=OVERLAP_RESOLVE, adaptive_range=OVERLAP_ADAPTIVE
+// Silnik podaje jeszcze flagi TYPES_AT_MOST_4 / TYPES_AT_MOST_8 (liczba typów, dla `matrix.wesl`).
 // Kontrakt (silnik tylko to woła): RuleAccum, accum_init, RuleSelf, prepare_self, pair_interact,
 // integrate_particle. Reguły same importują swoje wiązania (parametry, macierz sił).
 

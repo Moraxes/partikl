@@ -1,5 +1,4 @@
 use super::*;
-use crate::options::Overlap;
 use crate::ui::test_util::*;
 use bevy::camera::{OrthographicProjection, Projection};
 use bevy::input::mouse::MouseScrollUnit;
@@ -71,10 +70,11 @@ fn unrelated_key_does_not_change_sim_state() {
 fn n_toggles_force_averaging() {
   let mut app = input_app();
   app.add_systems(Update, handle_keyboard_input);
+  let averaging = |app: &App| app.world().resource::<SimOptions>().value("average_forces").map(str::to_owned);
   tap_key(&mut app, KeyCode::KeyN);
-  assert!(app.world().resource::<SimOptions>().average_forces);
+  assert_eq!(averaging(&app).as_deref(), Some("off"));
   tap_key(&mut app, KeyCode::KeyN);
-  assert!(!app.world().resource::<SimOptions>().average_forces);
+  assert_eq!(averaging(&app).as_deref(), Some("on"));
 }
 
 #[test]
@@ -84,10 +84,21 @@ fn o_cycles_overlap_modes() {
   let mut modes = vec![];
   for _ in 0..3 {
     tap_key(&mut app, KeyCode::KeyO);
-    modes.push(app.world().resource::<SimOptions>().overlap);
+    modes.push(app.world().resource::<SimOptions>().value("overlap").unwrap().to_owned());
   }
-  assert_eq!(modes, [Overlap::Resolve, Overlap::AdaptiveRange, Overlap::Spring]);
-  assert!(!app.world().resource::<SimOptions>().average_forces);
+  assert_eq!(modes, ["resolve", "adaptive_range", "spring"]);
+  assert_eq!(app.world().resource::<SimOptions>().value("average_forces"), None);
+}
+
+/// Klawisze opcji pochodzą z deklaracji reguł: bez deklaracji N i O nic nie robią.
+#[test]
+fn option_keys_come_from_the_rules() {
+  let mut app = input_app();
+  app.insert_resource(RuleSchema::default());
+  app.add_systems(Update, handle_keyboard_input);
+  tap_key(&mut app, KeyCode::KeyN);
+  tap_key(&mut app, KeyCode::KeyO);
+  assert_eq!(*app.world().resource::<SimOptions>(), SimOptions::default());
 }
 
 #[test]
@@ -121,18 +132,19 @@ fn h_toggles_hud_visibility() {
 
 #[test]
 fn hud_text_shows_fps_and_options() {
-  let options = SimOptions { average_forces: true, overlap: Overlap::AdaptiveRange };
+  let schema = builtin_schema();
+  let options = SimOptions::default().with("average_forces", "on").with("overlap", "adaptive_range");
   let quality = RenderQuality { hdr: true, ..RenderQuality::default() };
-  let text = hud_text(Some(59.6), Some(100.0), &options, &quality);
+  let text = hud_text(Some(59.6), Some(100.0), &schema, &options, &quality);
   assert!(text.contains("60 fps"), "{text}");
-  assert!(text.contains("averaging on"), "{text}");
-  assert!(text.contains("overlap adaptive range"), "{text}");
+  assert!(text.contains("average forces on  N"), "{text}");
+  assert!(text.contains("overlap adaptive range  O"), "{text}");
   assert!(text.contains("hdr on"), "{text}");
   assert!(text.contains("antialiasing off"), "{text}");
-  assert!(hud_text(None, None, &SimOptions::default(), &RenderQuality::default()).contains("– fps"));
+  assert!(hud_text(None, None, &schema, &SimOptions::default(), &RenderQuality::default()).contains("– fps"));
   // Prędkość symulacji widać tylko, gdy zwalnia.
   assert!(!text.contains("speed"), "{text}");
-  let slow = hud_text(Some(55.0), Some(54.6), &options, &quality);
+  let slow = hud_text(Some(55.0), Some(54.6), &schema, &options, &quality);
   assert!(slow.contains("sim speed 55%"), "{slow}");
 }
 

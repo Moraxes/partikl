@@ -9,7 +9,7 @@ use bevy::shader::ShaderDefVal;
 
 use super::{SCAN_BLOCK, WORKGROUP, bindings};
 use crate::gpu::GpuSim;
-use crate::options::{Overlap, SimOptions};
+use crate::gpu::rules::RuleFlags;
 
 /// Plik shadera z entry pointem przebiegu.
 #[derive(Clone, Copy)]
@@ -150,43 +150,44 @@ impl TypeClass {
   }
 }
 
-/// Wariant pipeline'u sił: opcje symulacji i klasa liczby typów (flagi shadera). Kod reguł to
-/// osobny moduł (`gpu::rules`), podmieniany bez nowego wariantu.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+/// Wariant pipeline'u sił: flagi zadeklarowane przez reguły (`gpu::rules`) i klasa liczby typów
+/// (flagi silnika dla `rules/matrix.wesl`). Kod reguł to osobny moduł, podmieniany bez nowego wariantu.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ForcesVariant {
-  pub options: SimOptions,
+  pub flags: Vec<(String, bool)>,
   pub types: TypeClass,
 }
 
 impl ForcesVariant {
-  pub fn new(options: SimOptions, num_types: u32) -> Self {
-    ForcesVariant { options, types: TypeClass::of(num_types) }
+  pub fn new(flags: &RuleFlags, num_types: u32) -> Self {
+    ForcesVariant { flags: flags.0.clone(), types: TypeClass::of(num_types) }
   }
 }
 
 /// Kolejkuje kompilację wariantu sił dla bieżących opcji i liczby typów, jeśli jeszcze go nie ma.
 pub fn queue_forces(
-  options: Res<SimOptions>,
+  flags: Res<RuleFlags>,
   sim: Option<Res<GpuSim>>,
   mut pipelines: ResMut<Pipelines>,
   cache: Res<PipelineCache>,
 ) {
   let Some(sim) = sim else { return };
-  let variant = ForcesVariant::new(*options, sim.num_types);
+  let variant = ForcesVariant::new(&flags, sim.num_types);
   if !pipelines.forces.contains_key(&variant) {
     let id = pipelines.queue(&cache, &FORCES, forces_defs(&variant));
     pipelines.forces.insert(variant, id);
   }
 }
 
-/// Wariant jako flagi shadera; patrz nagłówek `rules/default_rules.wesl` i `step_driver.wesl`.
+/// Wariant jako flagi shadera: te z reguł (`//@option` w ich nagłówku) i dwie silnika (klasa typów).
 fn forces_defs(variant: &ForcesVariant) -> Vec<ShaderDefVal> {
-  let options = &variant.options;
-  vec![
-    ShaderDefVal::Bool("OVERLAP_RESOLVE".into(), options.overlap == Overlap::Resolve),
-    ShaderDefVal::Bool("OVERLAP_ADAPTIVE".into(), options.overlap == Overlap::AdaptiveRange),
-    ShaderDefVal::Bool("AVERAGE_FORCES".into(), options.average_forces),
-    ShaderDefVal::Bool("TYPES_AT_MOST_4".into(), variant.types == TypeClass::AtMost4),
-    ShaderDefVal::Bool("TYPES_AT_MOST_8".into(), variant.types == TypeClass::AtMost8),
-  ]
+  variant
+    .flags
+    .iter()
+    .map(|(flag, on)| ShaderDefVal::Bool(flag.clone().into(), *on))
+    .chain([
+      ShaderDefVal::Bool("TYPES_AT_MOST_4".into(), variant.types == TypeClass::AtMost4),
+      ShaderDefVal::Bool("TYPES_AT_MOST_8".into(), variant.types == TypeClass::AtMost8),
+    ])
+    .collect()
 }

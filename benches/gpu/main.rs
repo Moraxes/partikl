@@ -28,7 +28,8 @@ use clap::Parser;
 
 use common::{Output, WORLD, median, nanos, particle_spec, rng};
 use partikl::gpu::headless::Harness;
-use partikl::options::{Overlap, SimOptions};
+use partikl::gpu::RuleSource;
+use partikl::options::SimOptions;
 use scenes::{Scene, candidates_mean};
 
 /// Macierz trybu `--quick`.
@@ -106,9 +107,9 @@ fn main() {
   .collect::<Vec<_>>()));
   let mut output = Output::new("gpu", &args.out_dir, WORLD, args.warmup, measured, schema.clone());
   let variants: Vec<SimOptions> = if args.all_variants {
-    Overlap::ALL.iter().flat_map(|&overlap| [false, true].map(|average_forces| SimOptions { average_forces, overlap })).collect()
+    RuleSource::Builtin.read().expect("wbudowane reguły").schema.combinations()
   } else {
-    vec![SimOptions { average_forces: true, overlap: Overlap::default() }]
+    vec![SimOptions::default()]
   };
   println!(
     "{:>9} {:<9} {:<16} {:>9} {:>9} {:>9} {:>9} {:>9}",
@@ -116,10 +117,10 @@ fn main() {
   );
   'cases: for &n in &sizes {
     for &scene in &args.scenes {
-      for &options in &variants {
+      for options in &variants {
         let spec = particle_spec(args.types, seed);
         let state = scene.particles(n, args.types, WORLD, &mut rng(seed));
-        let Some(mut harness) = Harness::new(options, spec, state.clone(), WORLD) else {
+        let Some(mut harness) = Harness::new(options.clone(), spec, state.clone(), WORLD) else {
           // Zapisane już wiersze trafiają do pliku (`finish` poniżej).
           break 'cases;
         };
@@ -143,7 +144,9 @@ fn main() {
         }
         let samples = &times[args.warmup..];
         let gpu = &gpu[args.warmup..];
-        let variant = format!("{}{}", options.overlap, if options.average_forces { "+average" } else { "" });
+        // Nazwy wariantów jak dawniej (wyniki z poprzednich rewizji): nakładanie i `+average`.
+        let overlap = options.value("overlap").unwrap_or("spring").replace('_', " ");
+        let variant = format!("{overlap}{}", if options.value("average_forces").unwrap_or("on") == "on" { "+average" } else { "" });
         let rows = samples.len();
         let batch = RecordBatch::try_new(
           schema.clone(),

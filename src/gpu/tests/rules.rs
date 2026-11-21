@@ -18,7 +18,7 @@ fn setup() -> (ParticleSpec, Vec<GpuParticle>) {
 fn rules_from_a_file_match_the_builtin_ones() {
   let (spec, particles) = setup();
   let options = SimOptions::default();
-  let Some(mut builtin) = Harness::new(options, spec.clone(), particles.clone(), WORLD) else { return };
+  let Some(mut builtin) = Harness::new(options.clone(), spec.clone(), particles.clone(), WORLD) else { return };
   builtin.set_deterministic(true);
   let expected = builtin.run(3);
   // Harness trzyma blokadę GPU: drugi można utworzyć dopiero po zwolnieniu pierwszego.
@@ -68,6 +68,6 @@ fn unreadable_rules_file_keeps_the_previous_module() {
 
 #[test]
 fn missing_rules_file_is_a_load_error() {
-  let error = RuleSource::File(std::env::temp_dir().join("partikl-rules-nope.wesl")).read().unwrap_err();
+  let error = RuleSource::File(std::env::temp_dir().join("partikl-rules-nope.wesl")).read().err().expect("brak pliku");
   assert!(error.to_string().contains("partikl-rules-nope"));
 }

@@ -2,7 +2,7 @@
 //!
 //! Jeden krok to ciąg przebiegów z tabeli [`pipelines::GRID_PASSES`] (budowa siatki:
 //! zerowanie, histogram, suma prefiksowa, scatter) i na końcu [`pipelines::FORCES`] (siły
-//! i całkowanie, specjalizowane opcjami `SimOptions` przez shader defs).
+//! i całkowanie, specjalizowane flagami z opcji reguł przez shader defs).
 //!
 //! Co klatkę w świecie renderowania:
 //! 1. [`buffers::create`] (raz, gdy stan cząstek jest już w świecie renderowania): bufory

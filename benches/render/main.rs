@@ -27,7 +27,7 @@ use clap::Parser;
 use common::{Output, median, nanos, particle_spec, rng};
 use partikl::gpu::RenderQuality;
 use partikl::gpu::headless::{Harness, Offscreen};
-use partikl::options::{Overlap, SimOptions};
+use partikl::options::SimOptions;
 use scenes::{Scene, candidates_mean};
 
 /// Świat jak na ekranie 3600×2338 przy skali 2 (jednostki logiczne).
@@ -177,17 +177,17 @@ fn save_png(path: &std::path::Path, width: u32, height: u32, rgba: Vec<u8>) {
 /// Galeria porównań wyglądu: jeden stan (po rozbiegu), rysowany w parach wariantów.
 fn gallery(args: &Args, dir: &std::path::Path) {
   std::fs::create_dir_all(dir).expect("cannot create gallery directory");
-  let options = SimOptions { average_forces: true, overlap: Overlap::default() };
+  let options = SimOptions::default();
   let n = args.sizes[0];
   let spec = || particle_spec(args.types, args.seed);
   let initial = Scene::Uniform.particles(n, args.types, WORLD, &mut rng(args.seed));
   // Rozbieg: stan z prawdziwej dynamiki (struktury), potem ten sam stan dla każdego wariantu.
-  let Some(mut harness) = Harness::new(options, spec(), initial, WORLD) else { return };
+  let Some(mut harness) = Harness::new(options.clone(), spec(), initial, WORLD) else { return };
   let state = harness.run(args.gallery_steps);
   drop(harness);
   let render = |quality: RenderQuality| -> Vec<u8> {
     let offscreen = Offscreen { size: TARGET, quality, app_colors: true, real_time: false };
-    let mut harness = Harness::with_render(options, spec(), state.clone(), WORLD, Some(offscreen)).expect("GPU");
+    let mut harness = Harness::with_render(options.clone(), spec(), state.clone(), WORLD, Some(offscreen)).expect("GPU");
     for _ in 0..6 {
       harness.update();
     }
@@ -232,7 +232,7 @@ fn main() {
     Field::new("sim_speed", DataType::Float32, true),
   ]));
   let mut output = Output::new("render", &args.out_dir, WORLD, args.warmup, measured, schema.clone());
-  let options = SimOptions { average_forces: true, overlap: Overlap::default() };
+  let options = SimOptions::default();
   println!("{:>9} {:<9} {:<26} {:>9} {:>10} {:>8}", "n", "scene", "variant", "kandydaci", "klatka ms", "symul.");
   'cases: for &n in &args.sizes {
     for &scene in &args.scenes {
@@ -243,7 +243,7 @@ fn main() {
           let spec = particle_spec(args.types, args.seed);
           let quality = RenderQuality { msaa: msaa(samples), hdr, tonemapping, analytic_aa };
           let offscreen = Offscreen { size: TARGET, quality, app_colors: false, real_time: args.modes.iter().any(|m| m == "loop") };
-          let Some(mut harness) = Harness::with_render(options, spec, state, WORLD, Some(offscreen)) else {
+          let Some(mut harness) = Harness::with_render(options.clone(), spec, state, WORLD, Some(offscreen)) else {
             break 'cases;
           };
           harness.step(args.steps);

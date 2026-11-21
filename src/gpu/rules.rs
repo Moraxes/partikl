@@ -6,6 +6,10 @@
 //! Źródło ma kontrakt z nagłówka `default_rules.wesl` i importuje moduły względem
 //! `shaders/rules/` (np. `super::matrix`, `super::super::engine::bindings`).
 //!
+//! Opcje reguł (klawisze, flagi shadera) deklaruje nagłówek źródła (`//@option`, patrz
+//! [`crate::options::RuleSchema`]); [`RuleFlags`] to flagi dla bieżących wyborów, które widzi świat
+//! renderowania i które wybierają wariant pipeline'u sił.
+//!
 //! Wymiana źródła podmienia zasób `Shader`, więc pipeline'y sił kompilują się od nowa; błąd
 //! kompilacji (np. literówka w pliku) trafia do logu i kroki czekają na poprawkę.
 
@@ -14,9 +18,12 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use bevy::prelude::*;
+use bevy::render::RenderApp;
+use bevy::render::extract_resource::ExtractResource;
 use bevy::shader::Shader;
 
 use crate::loading::LoadError;
+use crate::options::{RuleSchema, SimOptions};
 
 /// Ścieżka shadera, pod którą żyje moduł reguł; jej moduł WESL to `partikl::gpu::shaders::rules::model`.
 const MODULE_PATH: &str = "embedded://partikl/gpu/shaders/rules/model.wesl";
@@ -38,18 +45,34 @@ pub enum RuleSource {
   File(PathBuf),
 }
 
+/// Kod modułu reguł i opcje, które deklaruje.
+#[derive(Debug)]
+pub struct Loaded {
+  pub code: Cow<'static, str>,
+  pub schema: RuleSchema,
+}
+
 impl RuleSource {
-  /// Kod modułu; dla pliku czyta go z dysku.
-  pub fn read(&self) -> Result<Cow<'static, str>, LoadError> {
-    match self {
-      RuleSource::Builtin => Ok(BUILTIN.into()),
-      RuleSource::Diagnostic => Ok(DIAGNOSTIC.into()),
-      RuleSource::File(path) => {
-        std::fs::read_to_string(path).map(Cow::Owned).map_err(|source| LoadError::Io { path: path.clone(), source })
-      }
-    }
+  /// Kod modułu i jego opcje; dla pliku czyta go z dysku.
+  pub fn read(&self) -> Result<Loaded, LoadError> {
+    let (code, path): (Cow<'static, str>, PathBuf) = match self {
+      RuleSource::Builtin => (BUILTIN.into(), "wbudowane reguły".into()),
+      RuleSource::Diagnostic => (DIAGNOSTIC.into(), "reguły diagnostyczne".into()),
+      RuleSource::File(path) => (
+        std::fs::read_to_string(path).map_err(|source| LoadError::Io { path: path.clone(), source })?.into(),
+        path.clone(),
+      ),
+    };
+    let schema = RuleSchema::parse(&code).map_err(|reason| LoadError::Malformed { path, reason })?;
+    Ok(Loaded { code, schema })
   }
 }
+
+/// Flagi shadera dla bieżących opcji (wszystkie zadeklarowane flagi z wartościami); świat
+/// renderowania nie zna opcji, tylko to.
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq, ExtractResource)]
+#[extract_app(RenderApp)]
+pub struct RuleFlags(pub Vec<(String, bool)>);
 
 /// Zasób `Shader` z modułem reguł i to, co z niego jest zastosowane.
 #[derive(Resource)]
@@ -73,11 +96,13 @@ impl Plugin for RulesPlugin {
     // Moduł musi być w zasobach shaderów, zanim ruszy kompilacja `step_driver`, więc powstaje
     // od razu, a nie w systemie.
     let source = app.world().resource::<RuleSource>().clone();
-    let code = source.read().unwrap_or_else(|error| panic!("reguły: {error}"));
+    let Loaded { code, schema } = source.read().unwrap_or_else(|error| panic!("reguły: {error}"));
+    let flags = RuleFlags(schema.flags(app.world().resource::<SimOptions>()));
+    app.insert_resource(schema).insert_resource(flags);
     let handle = app.world_mut().resource_mut::<Assets<Shader>>().add(Shader::from_wesl(code, MODULE_PATH));
     let modified = if let RuleSource::File(path) = &source { modified(path) } else { None };
     app.insert_resource(RulesModule { handle, applied: source, modified, poll: Timer::new(POLL, TimerMode::Repeating) });
-    app.add_systems(Update, reload_rules);
+    app.add_systems(Update, (reload_rules, resolve_flags).chain());
   }
 }
 
@@ -87,6 +112,7 @@ fn reload_rules(
   time: Res<Time<Real>>,
   mut module: ResMut<RulesModule>,
   mut shaders: ResMut<Assets<Shader>>,
+  mut schema: ResMut<RuleSchema>,
 ) {
   let changed_source = *source != module.applied;
   let mut changed_file = false;
@@ -102,10 +128,24 @@ fn reload_rules(
   module.applied = source.clone();
   module.modified = if let RuleSource::File(path) = &*source { modified(path) } else { None };
   match source.read() {
-    Ok(code) => {
+    Ok(Loaded { code, schema: declared }) => {
       info!("reguły: wczytano {source:?}");
+      if *schema != declared {
+        *schema = declared;
+      }
       let _ = shaders.insert(&module.handle, Shader::from_wesl(code, MODULE_PATH));
     }
     Err(error) => error!("reguły: {error}; zostaje poprzedni moduł"),
+  }
+}
+
+/// Przelicza flagi shadera, gdy zmieniły się opcje albo ich deklaracje.
+fn resolve_flags(schema: Res<RuleSchema>, options: Res<SimOptions>, mut flags: ResMut<RuleFlags>) {
+  if !schema.is_changed() && !options.is_changed() {
+    return;
+  }
+  let resolved = RuleFlags(schema.flags(&options));
+  if *flags != resolved {
+    *flags = resolved;
   }
 }

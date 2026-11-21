@@ -1,7 +1,6 @@
 use bevy::prelude::Resource;
 
 use crate::gpu::RuleSource;
-use crate::options::{Overlap, SimOptions};
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -75,28 +74,21 @@ pub struct ProgramArgs {
   #[arg(long)]
   pub gpu_deterministic: bool,
 
-  /// Don't scale each particle's force down when it has more neighbours than usual.
+  /// Set a rules option at startup, as NAME=CHOICE (repeatable).
   ///
-  /// Averaging is on by default; toggled at runtime with N.
-  #[arg(long)]
-  pub no_average_forces: bool,
-
-  /// How overlapping particles push each other apart.
-  ///
-  /// Cycled at runtime with O.
-  #[arg(long, value_enum, default_value_t = Overlap::Spring)]
-  pub overlap: Overlap,
+  /// The rules declare their options (see `//@option` in
+  /// `src/gpu/shaders/rules/default_rules.wesl`); the built-in rules have `average_forces`
+  /// (on, off) and `overlap` (spring, resolve, adaptive_range). Options toggle at runtime with
+  /// the key the rules declare (N and O for the built-in ones). Unset options take the first
+  /// choice.
+  #[arg(long = "option", value_name = "NAME=CHOICE")]
+  pub options: Vec<String>,
 }
 
 impl ProgramArgs {
   /// Źródło modułu reguł.
   pub fn rule_source(&self) -> RuleSource {
     self.rules.clone().map_or(RuleSource::Builtin, RuleSource::File)
-  }
-
-  /// Opcje symulacji na start.
-  pub fn sim_options(&self) -> SimOptions {
-    SimOptions { average_forces: !self.no_average_forces, overlap: self.overlap }
   }
 }
 

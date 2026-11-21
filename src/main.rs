@@ -4,6 +4,7 @@ use bevy::window::WindowMode;
 use bevy_brp_extras::BrpExtrasPlugin;
 use clap::Parser;
 
+use partikl::options::SimOptions;
 use partikl::{args, gpu, loading, ui};
 
 fn main() {
@@ -13,14 +14,18 @@ fn main() {
     std::process::exit(1);
   });
   let rules = program_args.rule_source();
-  if let Err(error) = rules.read() {
-    eprintln!("błąd: {error}");
-    std::process::exit(1);
-  }
+  let options = rules
+    .read()
+    .map_err(|error| error.to_string())
+    .and_then(|loaded| SimOptions::from_overrides(&loaded.schema, &program_args.options))
+    .unwrap_or_else(|error| {
+      eprintln!("błąd: {error}");
+      std::process::exit(1);
+    });
   let mut app = App::new();
   app
     .insert_resource(spec)
-    .insert_resource(program_args.sim_options())
+    .insert_resource(options)
     .insert_resource(rules)
     .insert_resource(program_args)
     .add_plugins(

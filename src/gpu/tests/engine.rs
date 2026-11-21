@@ -31,12 +31,12 @@ fn geometry_covers_interaction_radius() {
 
 #[test]
 fn deterministic_mode_repeats_bit_for_bit() {
-  let options = SimOptions { average_forces: false, overlap: Overlap::Spring };
+  let options = Mode { average_forces: false, overlap: Overlap::Spring }.sim();
   let run = || {
     let mut rng = StdRng::seed_from_u64(5);
     let spec = spec(&mut rng, 3);
     let particles = random_particles(&mut rng, 5_000, 3, false);
-    let mut harness = Harness::new(options, spec, particles, WORLD)?;
+    let mut harness = Harness::new(options.clone(), spec, particles, WORLD)?;
     harness.set_deterministic(true);
     Some(harness.run(32))
   };
@@ -109,7 +109,7 @@ fn timed_step_gives_the_same_state() {
     let mut rng = StdRng::seed_from_u64(17);
     let spec = spec(&mut rng, 3);
     let particles = random_particles(&mut rng, 5_000, 3, false);
-    let mut harness = Harness::new(options, spec, particles, WORLD)?;
+    let mut harness = Harness::new(options.clone(), spec, particles, WORLD)?;
     harness.set_deterministic(true);
     harness.set_gpu_timing(timed);
     harness.step(MAX_STEPS_PER_FRAME as u64);

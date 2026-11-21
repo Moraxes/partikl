@@ -10,13 +10,40 @@ use bevy::render::render_resource::ShaderType;
 use super::compute::{EngineUniforms, RuleParams};
 use super::headless::Harness;
 use super::*;
-use crate::options::{Overlap, SimOptions};
+use crate::options::SimOptions;
 use crate::spec::Interaction;
 
 mod default_rules;
 mod engine;
 mod render;
 mod rules;
+
+/// Opcje wbudowanych reguł tak, jak widzi je wyrocznia f64 (`default_rules.rs`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Mode {
+  average_forces: bool,
+  overlap: Overlap,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+enum Overlap {
+  #[default]
+  Spring,
+  Resolve,
+  AdaptiveRange,
+}
+
+impl Mode {
+  /// Te same opcje w postaci wyborów z deklaracji reguł (`//@option` w `default_rules.wesl`).
+  fn sim(self) -> SimOptions {
+    let overlap = match self.overlap {
+      Overlap::Spring => "spring",
+      Overlap::Resolve => "resolve",
+      Overlap::AdaptiveRange => "adaptive_range",
+    };
+    SimOptions::default().with("average_forces", if self.average_forces { "on" } else { "off" }).with("overlap", overlap)
+  }
+}
 
 const WORLD: Vec2 = Vec2::new(500.0, 330.0);
 

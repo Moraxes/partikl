@@ -27,7 +27,7 @@ use step_budget::StepBudgetPlugin;
 pub mod headless;
 mod material;
 mod rules;
-pub use rules::RuleSource;
+pub use rules::{RuleFlags, RuleSource};
 
 use crate::args::ProgramArgs;
 use crate::config::*;
@@ -136,7 +136,7 @@ pub struct GpuSim {
   pub geometry: Geometry,
 }
 
-/// Parametry silnika inne niż `SimOptions` i licznik kroków: świat renderowania wykonuje
+/// Parametry silnika inne niż opcje reguł i licznik kroków: świat renderowania wykonuje
 /// różnicę kroków od ostatniej klatki.
 #[derive(Resource, Clone, Copy, Debug, Default, ExtractResource)]
 #[extract_app(RenderApp)]
@@ -151,15 +151,6 @@ pub struct GpuParams {
 #[derive(Resource, Clone, Default, ExtractResource)]
 #[extract_app(RenderApp)]
 pub struct GpuProgress(pub Arc<AtomicU64>);
-
-/// Opcje symulacji wybierają wariant pipeline'u sił, więc świat renderowania dostaje je wprost.
-impl ExtractResource<RenderApp> for SimOptions {
-  type Source = SimOptions;
-
-  fn extract_resource(source: &SimOptions) -> Self {
-    *source
-  }
-}
 
 pub struct GpuPlugin;
 
@@ -187,7 +178,7 @@ impl Plugin for GpuPlugin {
         MaterialPlugin::<ParticleMaterial>::default(),
         ExtractResourcePlugin::<GpuSim>::default(),
         ExtractResourcePlugin::<ParticleSpec>::default(),
-        ExtractResourcePlugin::<SimOptions>::default(),
+        ExtractResourcePlugin::<rules::RuleFlags>::default(),
         ExtractResourcePlugin::<GpuParams>::default(),
         ExtractResourcePlugin::<GpuProgress>::default(),
         rules::RulesPlugin,

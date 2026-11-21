@@ -2,7 +2,7 @@ use super::*;
 
 /// Jeden krok fizyki wprost w f64, po wszystkich parach, z odległością na torusie.
 /// Ta sama fizyka co `rules/default_rules.wesl`, bez próbkowania sąsiadów; parametry z `spec.params`.
-fn reference_step(spec: &ParticleSpec, particles: &[GpuParticle], options: SimOptions, world: Vec2) -> Vec<GpuParticle> {
+fn reference_step(spec: &ParticleSpec, particles: &[GpuParticle], options: Mode, world: Vec2) -> Vec<GpuParticle> {
   let u = &spec.params;
   let radius = |crowding: f64| {
     (u.repulsion_radius as f64 * (crowding / u.adaptive_neighbours as f64).sqrt()).clamp(u.repulsion_radius as f64, u.adaptive_range_max as f64)
@@ -92,13 +92,13 @@ fn one_step_matches_reference() {
     (false, Overlap::AdaptiveRange),
     (true, Overlap::AdaptiveRange),
   ] {
-    let options = SimOptions { average_forces, overlap };
+    let options = Mode { average_forces, overlap };
     let mut rng = StdRng::seed_from_u64(7);
     let spec = spec(&mut rng, 4);
     // Mało kandydatów w sąsiedztwie (poniżej progu próbkowania), ale dość gęsto na pary.
     let particles = random_particles(&mut rng, 700, 4, overlap == Overlap::AdaptiveRange);
     let expected = reference_step(&spec, &particles, options, WORLD);
-    let Some(mut harness) = Harness::new(options, spec, particles, WORLD) else { return };
+    let Some(mut harness) = Harness::new(options.sim(), spec, particles, WORLD) else { return };
     assert_close(&harness.run(1), &expected, &format!("{options:?}"));
   }
 }
@@ -108,7 +108,7 @@ fn one_step_matches_reference() {
 fn large_world_matches_reference() {
   let world = Vec2::new(7680.0, 4320.0);
   assert!(Geometry::new(world).cell_size.x > INTERACTION_RADIUS / GRID_REACH as f32);
-  let options = SimOptions::default();
+  let options = Mode::default();
   let mut rng = StdRng::seed_from_u64(3);
   let spec = spec(&mut rng, 3);
   // Gęsto w pasie, żeby było dość par w zasięgu, i rzadko poza nim.
@@ -118,7 +118,7 @@ fn large_world_matches_reference() {
     p.last[1] = p.pos[1];
   }
   let expected = reference_step(&spec, &particles, options, world);
-  let Some(mut harness) = Harness::new(options, spec, particles, world) else { return };
+  let Some(mut harness) = Harness::new(options.sim(), spec, particles, world) else { return };
   assert_close(&harness.run(1), &expected, "duży świat");
 }
 
@@ -127,31 +127,31 @@ fn large_world_matches_reference() {
 #[test]
 fn one_step_matches_reference_for_any_number_of_types() {
   for types in [1, 2, 4, 5, 8, 9, 13] {
-    let options = SimOptions { average_forces: true, overlap: Overlap::Spring };
+    let options = Mode { average_forces: true, overlap: Overlap::Spring };
     let mut rng = StdRng::seed_from_u64(40 + types as u64);
     let spec = spec(&mut rng, types);
     let particles = random_particles(&mut rng, 700, types, false);
     let expected = reference_step(&spec, &particles, options, WORLD);
-    let Some(mut harness) = Harness::new(options, spec, particles, WORLD) else { return };
+    let Some(mut harness) = Harness::new(options.sim(), spec, particles, WORLD) else { return };
     assert_close(&harness.run(1), &expected, &format!("{types} typów"));
   }
 }
 
-/// Zmiana `SimOptions` w trakcie działa od następnego kroku: wariant sił dla nowych opcji.
+/// Zmiana opcji w trakcie działa od następnego kroku: wariant sił dla nowych opcji.
 #[test]
 fn options_switch_at_runtime() {
-  let first = SimOptions { average_forces: false, overlap: Overlap::Spring };
+  let first = Mode { average_forces: false, overlap: Overlap::Spring };
   let make_spec = || spec(&mut StdRng::seed_from_u64(21), 4);
   let spec = make_spec();
   let particles = random_particles(&mut StdRng::seed_from_u64(22), 700, 4, true);
-  let Some(mut harness) = Harness::new(first, make_spec(), particles.clone(), WORLD) else { return };
+  let Some(mut harness) = Harness::new(first.sim(), make_spec(), particles.clone(), WORLD) else { return };
   assert_close(&harness.run(1), &reference_step(&spec, &particles, first, WORLD), "start");
   for next in [
-    SimOptions { average_forces: true, overlap: Overlap::AdaptiveRange },
-    SimOptions { average_forces: false, overlap: Overlap::Resolve },
+    Mode { average_forces: true, overlap: Overlap::AdaptiveRange },
+    Mode { average_forces: false, overlap: Overlap::Resolve },
     first,
   ] {
-    harness.set_options(next);
+    harness.set_options(next.sim());
     harness.set_state(particles.clone());
     assert_close(&harness.run(1), &reference_step(&spec, &particles, next, WORLD), &format!("{next:?}"));
   }
@@ -159,12 +159,12 @@ fn options_switch_at_runtime() {
 
 #[test]
 fn many_steps_keep_invariants() {
-  let options = SimOptions { average_forces: true, overlap: Overlap::AdaptiveRange };
+  let options = Mode { average_forces: true, overlap: Overlap::AdaptiveRange };
   let mut rng = StdRng::seed_from_u64(11);
   let spec = spec(&mut rng, 3);
   // Gęsty stan: ponad 512 kandydatów w sąsiedztwie, więc działa próbkowanie.
   let particles = random_particles(&mut rng, 20_000, 3, false);
-  let Some(mut harness) = Harness::new(options, spec, particles, WORLD) else { return };
+  let Some(mut harness) = Harness::new(options.sim(), spec, particles, WORLD) else { return };
   assert_invariants(&harness.run(40), WORLD, "reguły domyślne, 40 kroków");
 }
 
@@ -172,11 +172,11 @@ fn many_steps_keep_invariants() {
 /// kroku, bez rekompilacji i bez nowego `GpuSim`.
 #[test]
 fn spec_changes_at_runtime() {
-  let options = SimOptions { average_forces: true, overlap: Overlap::Spring };
+  let options = Mode { average_forces: true, overlap: Overlap::Spring };
   let mut rng = StdRng::seed_from_u64(31);
   let first = spec(&mut rng, 4);
   let particles = random_particles(&mut rng, 700, 4, false);
-  let Some(mut harness) = Harness::new(options, first.clone(), particles.clone(), WORLD) else { return };
+  let Some(mut harness) = Harness::new(options.sim(), first.clone(), particles.clone(), WORLD) else { return };
   assert_close(&harness.run(1), &reference_step(&first, &particles, options, WORLD), "start");
 
   let mut second = spec(&mut rng, 4);

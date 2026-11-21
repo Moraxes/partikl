@@ -7,7 +7,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowMode};
 
 use crate::args::ProgramArgs;
 use crate::gpu::{RenderQuality, SIM_SPEED};
-use crate::options::{SimOptions, SimState};
+use crate::options::{RuleSchema, SimOptions, SimState};
 
 pub struct UiPlugin;
 
@@ -66,14 +66,21 @@ pub fn init_ui(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
 
 /// Treść napisów: FPS (`None`, dopóki nie ma średniej), prędkość symulacji w procentach czasu
 /// rzeczywistego (tylko gdy zwalnia poniżej 97%) i opcje z klawiszami.
-pub fn hud_text(fps: Option<f64>, speed: Option<f64>, options: &SimOptions, quality: &RenderQuality) -> String {
+pub fn hud_text(fps: Option<f64>, speed: Option<f64>, schema: &RuleSchema, options: &SimOptions, quality: &RenderQuality) -> String {
   let fps = fps.map_or("–".to_string(), |fps| format!("{fps:.0}"));
   let speed = speed.filter(|speed| *speed < 97.0).map_or(String::new(), |speed| format!("sim speed {speed:.0}%\n"));
   let on_off = |on: bool| if on { "on" } else { "off" };
+  // Opcje reguł z klawiszami zadeklarowanymi przez moduł reguł.
+  let rule_options: String = schema
+    .options
+    .iter()
+    .map(|decl| {
+      let value = options.choice(decl).label.replace('_', " ");
+      format!("{} {value}  {}\n", decl.title(), decl.key.map_or(String::new(), String::from))
+    })
+    .collect();
   format!(
-    "{fps} fps\n{speed}averaging {}  N\noverlap {}  O\nhdr {}  B\nantialiasing {}  A\nhide  H",
-    on_off(options.average_forces),
-    options.overlap,
+    "{fps} fps\n{speed}{rule_options}hdr {}  B\nantialiasing {}  A\nhide  H",
     on_off(quality.hdr),
     on_off(quality.analytic_aa),
   )
@@ -81,6 +88,7 @@ pub fn hud_text(fps: Option<f64>, speed: Option<f64>, options: &SimOptions, qual
 
 pub fn update_text(
   diagnostics: Res<DiagnosticsStore>,
+  schema: Res<RuleSchema>,
   options: Res<SimOptions>,
   quality: Res<RenderQuality>,
   query: Query<Entity, With<Hud>>,
@@ -89,7 +97,7 @@ pub fn update_text(
   let Ok(entity) = query.single() else { return };
   let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS).and_then(|fps| fps.average());
   let speed = diagnostics.get(&SIM_SPEED).and_then(|speed| speed.value());
-  let text = hud_text(fps, speed, &options, &quality);
+  let text = hud_text(fps, speed, &schema, &options, &quality);
   let mut current = writer.text(entity, 0);
   // Bez zapisu, gdy bez zmian: zapis oznacza tekst do ponownego układu.
   if *current != text {
@@ -129,6 +137,7 @@ pub fn handle_keyboard_input(
   keyboard: Res<ButtonInput<KeyCode>>,
   state: Res<State<SimState>>,
   mut next_state: ResMut<NextState<SimState>>,
+  schema: Res<RuleSchema>,
   mut options: ResMut<SimOptions>,
   mut quality: ResMut<RenderQuality>,
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
@@ -141,11 +150,11 @@ pub fn handle_keyboard_input(
     };
     next_state.set(new_state);
   }
-  if keyboard.just_pressed(KeyCode::KeyN) {
-    options.average_forces = !options.average_forces;
-  }
-  if keyboard.just_pressed(KeyCode::KeyO) {
-    options.overlap = options.overlap.next();
+  // Klawisze opcji reguł deklaruje moduł reguł.
+  for decl in &schema.options {
+    if decl.keycode().is_some_and(|key| keyboard.just_pressed(key)) {
+      options.cycle(decl);
+    }
   }
   if keyboard.just_pressed(KeyCode::KeyB) {
     quality.hdr = !quality.hdr;
