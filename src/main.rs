@@ -7,7 +7,7 @@ use partikl::{args, gpu, loading, render, sim, ui};
 
 fn main() {
   let program_args = args::ProgramArgs::parse();
-  let use_gpu = program_args.gpu;
+  let use_cpu = program_args.cpu;
   let mut app = App::new();
   app
     .insert_resource(loading::get_particle_spec(&program_args))
@@ -32,10 +32,11 @@ fn main() {
         }),
     )
     ;
-  if use_gpu {
-    app.add_plugins((gpu::GpuPlugin, ui::UiPlugin));
-  } else {
+  if use_cpu {
+    // Ścieżka legacy (silnik CPU sprzed portu na GPU).
     app.add_plugins((sim::SimPlugin, render::RenderPlugin, ui::UiPlugin));
+  } else {
+    app.add_plugins((gpu::GpuPlugin, ui::UiPlugin));
   }
   app.run();
 }
