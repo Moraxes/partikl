@@ -1,5 +1,6 @@
 // Rysowanie cząstek wprost z bufora stanu: 6 wierzchołków na cząstkę (quad z elipsą),
-// kształt z prędkości jak na CPU (`update_shape`), obrót bez trygonometrii.
+// kształt z prędkości jak na CPU (`update_shape`), obrót bez trygonometrii. Wierzchołek
+// niesie (narożnik quada, numer cząstki), patrz `particle_quads` w `src/gpu/mod.rs`.
 
 import bevy_pbr::render::mesh_view_bindings::view;
 import super::types::Particle;
@@ -10,7 +11,7 @@ import super::types::Particle;
 @group(constants::MATERIAL_BIND_GROUP) @binding(2) var<uniform> params: vec4<f32>;
 
 struct Vertex {
-  @builtin(vertex_index) index: u32,
+  // xy: narożnik quada w jednostkach promienia, z: numer cząstki.
   @location(0) position: vec3<f32>,
 }
 
@@ -20,15 +21,10 @@ struct VertexOutput {
   @location(1) @interpolate(flat) species: u32,
 }
 
-const CORNERS = array<vec2<f32>, 6>(
-  vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
-  vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0),
-);
-
 @vertex
 fn vertex(v: Vertex) -> VertexOutput {
-  let p = particles[v.index / 6u];
-  let corner = CORNERS[v.index % 6u];
+  let p = particles[u32(v.position.z)];
+  let corner = v.position.xy;
   let velocity = p.pos - p.last;
   let speed_sq = dot(velocity, velocity);
   var axes = vec2<f32>(params.x);

@@ -223,9 +223,8 @@ pub fn spawn_sim(
   let state = buffers.add(ShaderBuffer::new(particles, RenderAssetUsages::RENDER_WORLD));
   let colors = buffers.add(ShaderBuffer::new(colors, RenderAssetUsages::RENDER_WORLD));
 
-  // Siatka wierzchołków tylko z licznością (6 na cząstkę); pozycje czyta vertex shader z bufora.
   let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD);
-  mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0f32; 3]; 6 * n]);
+  mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, particle_quads(n));
   let material = materials.add(ParticleMaterial {
     particles: state.clone(),
     colors,
@@ -241,6 +240,18 @@ pub fn spawn_sim(
     matrix: Arc::new(flatten_matrix(spec)),
   });
   state
+}
+
+/// Narożniki quada (dwa trójkąty) w jednostkach promienia cząstki.
+const QUAD: [[f32; 2]; 6] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
+
+/// Wierzchołki do rysowania: 6 na cząstkę, `(narożnik.x, narożnik.y, numer cząstki)`. Pozycję
+/// cząstki czyta vertex shader z bufora stanu. Numer jest w wierzchołku, bo `vertex_index`
+/// nie zaczyna się od 0: Bevy pakuje siatki do wspólnego bufora i rysuje od przesunięcia.
+fn particle_quads(n: usize) -> Vec<[f32; 3]> {
+  // Numer w f32 jest dokładny do 2^24.
+  assert!(n <= 1 << 24, "za dużo cząstek do rysowania: {n}");
+  (0..n).flat_map(|i| QUAD.map(|[x, y]| [x, y, i as f32])).collect()
 }
 
 #[cfg(test)]
