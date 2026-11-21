@@ -11,7 +11,7 @@ use bevy::render::storage::GpuShaderBuffer;
 use super::SimUniforms;
 use super::bindings;
 use super::buffers::Buffers;
-use super::pipelines::{FORCES, GRID_PASSES, Pipelines};
+use super::pipelines::{FORCES, ForcesVariant, GRID_PASSES, Pipelines};
 use super::timing::{GpuTimings, Timer};
 use crate::gpu::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME};
 use crate::options::SimOptions;
@@ -24,7 +24,7 @@ pub struct Plan {
   done: u64,
   /// Kroki do wykonania w tej klatce (0: nic).
   count: u32,
-  options: SimOptions,
+  variant: ForcesVariant,
   deterministic: bool,
   /// Uniformy kolejnych kroków (różnią się `step_index`) i ich przesunięcia w buforze.
   uniforms: DynamicUniformBuffer<SimUniforms>,
@@ -48,11 +48,11 @@ pub fn plan(
   plan.count = 0;
   let (Some(sim), Some(buffers)) = (sim, buffers) else { return };
   let Some(state) = gpu_buffers.get(&sim.state) else { return };
-  plan.options = *options;
+  plan.variant = ForcesVariant::new(*options, sim.num_types);
   plan.deterministic = params.deterministic;
 
   // Gdy pipeline się kompiluje (start, hot reload, nowy wariant), kroki czekają.
-  if !pipelines.ready(&cache, &plan.options) {
+  if !pipelines.ready(&cache, &plan.variant) {
     return;
   }
   // Zaległość ponad `MAX_STEPS_PER_FRAME` (zacięcie) pomijamy.
@@ -94,11 +94,11 @@ pub fn run(
   let Some(sim) = sim else { return };
   let Some(bind_group) = &plan.bind_group else { return };
   // Ponowne sprawdzenie: hot reload może unieważnić pipeline między `plan` a `run`.
-  if plan.count == 0 || !pipelines.ready(&cache, &plan.options) {
+  if plan.count == 0 || !pipelines.ready(&cache, &plan.variant) {
     return;
   }
   let get = |id| cache.get_compute_pipeline(id).unwrap();
-  let forces = pipelines.forces[&plan.options];
+  let forces = pipelines.forces[&plan.variant];
   // Dispatche kroku w kolejności: (entry point, pipeline, liczba grup).
   let mut dispatches = Vec::new();
   for (def, &id) in GRID_PASSES.iter().zip(&pipelines.grid) {

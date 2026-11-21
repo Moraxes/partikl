@@ -92,8 +92,8 @@ pub struct Pipelines {
   pub layout: BindGroupLayoutDescriptor,
   /// Pipeline'y `GRID_PASSES` (te same indeksy).
   pub grid: Vec<CachedComputePipelineId>,
-  /// Warianty `FORCES` wg opcji symulacji, kolejkowane przy pierwszym użyciu.
-  pub forces: HashMap<SimOptions, CachedComputePipelineId>,
+  /// Warianty `FORCES` wg opcji symulacji i liczby typów, kolejkowane przy pierwszym użyciu.
+  pub forces: HashMap<ForcesVariant, CachedComputePipelineId>,
   shaders: HashMap<&'static str, Handle<Shader>>,
 }
 
@@ -109,9 +109,9 @@ impl Pipelines {
     })
   }
 
-  /// Wszystkie pipeline'y kroku z wariantem sił dla `options` są skompilowane.
-  pub fn ready(&self, cache: &PipelineCache, options: &SimOptions) -> bool {
-    let Some(&forces) = self.forces.get(options) else { return false };
+  /// Wszystkie pipeline'y kroku z wariantem sił `variant` są skompilowane.
+  pub fn ready(&self, cache: &PipelineCache, variant: &ForcesVariant) -> bool {
+    let Some(&forces) = self.forces.get(variant) else { return false };
     self.grid.iter().copied().chain([forces]).all(|id| cache.get_compute_pipeline(id).is_some())
   }
 }
@@ -126,19 +126,66 @@ pub fn init(mut commands: Commands, asset_server: Res<AssetServer>, cache: Res<P
   commands.insert_resource(pipelines);
 }
 
-/// Kolejkuje kompilację wariantu sił dla bieżących opcji, jeśli jeszcze go nie ma.
-pub fn queue_forces(options: Res<SimOptions>, mut pipelines: ResMut<Pipelines>, cache: Res<PipelineCache>) {
-  if !pipelines.forces.contains_key(&*options) {
-    let id = pipelines.queue(&cache, &FORCES, forces_defs(&options));
-    pipelines.forces.insert(*options, id);
+/// Jak shader sił czyta współczynniki macierzy sił: dla małej liczby typów kolumna macierzy dla
+/// własnego typu cząstki leży w rejestrach (`vec4`), bo odczyt macierzy w pętli po sąsiadach
+/// kosztował ok. 20% przebiegu sił (zależny odczyt: sąsiad → typ → macierz).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum TypeClass {
+  /// Do 4 typów: jeden `vec4`.
+  #[default]
+  AtMost4,
+  /// Do 8 typów: dwa `vec4` i `select`.
+  AtMost8,
+  /// Więcej: odczyt macierzy z bufora.
+  Many,
+}
+
+impl TypeClass {
+  pub fn of(num_types: u32) -> TypeClass {
+    match num_types {
+      0..=4 => TypeClass::AtMost4,
+      5..=8 => TypeClass::AtMost8,
+      _ => TypeClass::Many,
+    }
   }
 }
 
-/// Opcje jako flagi shadera; patrz nagłówek `rules/default_rules.wesl`.
-fn forces_defs(options: &SimOptions) -> Vec<ShaderDefVal> {
+/// Wariant pipeline'u sił: opcje symulacji i klasa liczby typów (flagi shadera).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct ForcesVariant {
+  pub options: SimOptions,
+  pub types: TypeClass,
+}
+
+impl ForcesVariant {
+  pub fn new(options: SimOptions, num_types: u32) -> Self {
+    ForcesVariant { options, types: TypeClass::of(num_types) }
+  }
+}
+
+/// Kolejkuje kompilację wariantu sił dla bieżących opcji i liczby typów, jeśli jeszcze go nie ma.
+pub fn queue_forces(
+  options: Res<SimOptions>,
+  sim: Option<Res<GpuSim>>,
+  mut pipelines: ResMut<Pipelines>,
+  cache: Res<PipelineCache>,
+) {
+  let Some(sim) = sim else { return };
+  let variant = ForcesVariant::new(*options, sim.num_types);
+  if !pipelines.forces.contains_key(&variant) {
+    let id = pipelines.queue(&cache, &FORCES, forces_defs(&variant));
+    pipelines.forces.insert(variant, id);
+  }
+}
+
+/// Wariant jako flagi shadera; patrz nagłówek `rules/default_rules.wesl` i `step_driver.wesl`.
+fn forces_defs(variant: &ForcesVariant) -> Vec<ShaderDefVal> {
+  let options = &variant.options;
   vec![
     ShaderDefVal::Bool("OVERLAP_RESOLVE".into(), options.overlap == Overlap::Resolve),
     ShaderDefVal::Bool("OVERLAP_ADAPTIVE".into(), options.overlap == Overlap::AdaptiveRange),
     ShaderDefVal::Bool("AVERAGE_FORCES".into(), options.average_forces),
+    ShaderDefVal::Bool("TYPES_AT_MOST_4".into(), variant.types == TypeClass::AtMost4),
+    ShaderDefVal::Bool("TYPES_AT_MOST_8".into(), variant.types == TypeClass::AtMost8),
   ]
 }

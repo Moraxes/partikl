@@ -192,6 +192,21 @@ fn large_world_matches_reference() {
   assert_close(&harness.run(1), &expected, "duży świat");
 }
 
+/// Krok zgodny z wyrocznią dla różnej liczby typów: shader czyta współczynniki sił inaczej dla
+/// do 4 typów (`vec4`), do 8 (dwa `vec4`) i więcej (macierz z bufora).
+#[test]
+fn one_step_matches_reference_for_any_number_of_types() {
+  for types in [1, 2, 4, 5, 8, 9, 13] {
+    let options = SimOptions { average_forces: true, overlap: Overlap::Spring };
+    let mut rng = StdRng::seed_from_u64(40 + types as u64);
+    let spec = spec(&mut rng, types);
+    let particles = random_particles(&mut rng, 700, types, false);
+    let expected = reference_step(&spec, &particles, options, WORLD);
+    let Some(mut harness) = Harness::new(options, spec, particles, WORLD) else { return };
+    assert_close(&harness.run(1), &expected, &format!("{types} typów"));
+  }
+}
+
 /// Zmiana `SimOptions` w trakcie działa od następnego kroku: wariant sił dla nowych opcji.
 #[test]
 fn options_switch_at_runtime() {
