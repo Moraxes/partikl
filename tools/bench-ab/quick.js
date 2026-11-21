@@ -13,6 +13,8 @@ const D = require('../bench-viz/data.js');
 
 const METRICS = [
   ['step_ns', 'krok'],
+  // Bench `render`: czas klatki (aktualizacja, render, czekanie na GPU).
+  ['frame_ns', 'klatka'],
   // Bench `gpu`: czas GPU ze znaczników (bez narzutu klatki), cały krok i główne przebiegi.
   ['gpu_step_ns', 'GPU krok'],
   ['gpu_forces_ns', 'GPU forces'],

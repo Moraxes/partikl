@@ -53,6 +53,7 @@
     const series = {
       sim: ['candidates', 'step_ns', ...SIM_SYSTEMS.map((s) => `${s}_ns`)],
       gpu: ['step_ns', 'gpu_step_ns', ...GPU_PASSES.map((p) => `gpu_${p}_ns`)],
+      render: ['frame_ns'],
     }[kv.bench] ?? ['ns'];
     const records = new Map();
     for (const row of rows) {

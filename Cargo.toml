@@ -45,3 +45,8 @@ debug = "line-tables-only"
 name = "gpu"
 path = "benches/gpu/main.rs"
 harness = false
+
+[[bench]]
+name = "render"
+path = "benches/render/main.rs"
+harness = false

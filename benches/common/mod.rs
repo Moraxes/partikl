@@ -68,8 +68,8 @@ pub struct Output {
 }
 
 impl Output {
-  /// `warmup` i `measured` trafiają do metadanych pliku (opis przebiegu).
-  pub fn new(bench: &str, out_dir: &Path, warmup: usize, measured: usize, schema: SchemaRef) -> Self {
+  /// `world`, `warmup` i `measured` trafiają do metadanych pliku (opis przebiegu).
+  pub fn new(bench: &str, out_dir: &Path, world: Vec2, warmup: usize, measured: usize, schema: SchemaRef) -> Self {
     fs::create_dir_all(out_dir).expect("cannot create output directory");
     let started = chrono::Local::now();
     let path = out_dir.join(format!("{bench}-{}.parquet", started.format("%Y-%m-%d-%H-%M-%S")));
@@ -79,7 +79,7 @@ impl Output {
       started: started.to_rfc3339(),
       warmup,
       measured,
-      world: [WORLD.x, WORLD.y],
+      world: [world.x, world.y],
     };
     let file = ResultsFile::create(path.clone(), schema, &run);
     Output { file, path, run }

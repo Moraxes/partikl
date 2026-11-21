@@ -104,7 +104,7 @@ fn main() {
   .into_iter()
   .chain(passes.iter().map(|entry| Field::new(format!("gpu_{entry}_ns"), DataType::UInt64, true)))
   .collect::<Vec<_>>()));
-  let mut output = Output::new("gpu", &args.out_dir, args.warmup, measured, schema.clone());
+  let mut output = Output::new("gpu", &args.out_dir, WORLD, args.warmup, measured, schema.clone());
   let variants: Vec<SimOptions> = if args.all_variants {
     Overlap::ALL.iter().flat_map(|&overlap| [false, true].map(|average_forces| SimOptions { average_forces, overlap })).collect()
   } else {
