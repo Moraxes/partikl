@@ -9,7 +9,6 @@ use clap::ValueEnum;
 
 /// Jak cząstki reagują na nakładanie się (odległość poniżej `REPULSION_RADIUS`).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, ValueEnum)]
-#[repr(u8)]
 pub enum Overlap {
   /// Sprężyna odpychania o stałym zasięgu i sztywności.
   #[default]
@@ -39,12 +38,8 @@ impl fmt::Display for Overlap {
   }
 }
 
-/// Wartości `Overlap` jako klucze wariantów pipeline'u sił.
-pub const SPRING: u8 = Overlap::Spring as u8;
-pub const RESOLVE: u8 = Overlap::Resolve as u8;
-pub const ADAPTIVE_RANGE: u8 = Overlap::AdaptiveRange as u8;
-
-#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
+/// Opcje wybierają wariant pipeline'u sił: zasób jest kluczem cache'u wariantów.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SimOptions {
   /// Siła cząstki skalowana w dół, gdy ma więcej sąsiadów niż typowo (zadanie 024).
   pub average_forces: bool,

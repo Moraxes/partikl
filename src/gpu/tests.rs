@@ -192,6 +192,26 @@ fn large_world_matches_reference() {
   assert_close(&harness.run(1), &expected, "duży świat");
 }
 
+/// Zmiana `SimOptions` w trakcie działa od następnego kroku: wariant sił dla nowych opcji.
+#[test]
+fn options_switch_at_runtime() {
+  let first = SimOptions { average_forces: false, overlap: Overlap::Spring };
+  let make_spec = || spec(&mut StdRng::seed_from_u64(21), 4);
+  let spec = make_spec();
+  let particles = random_particles(&mut StdRng::seed_from_u64(22), 700, 4, true);
+  let Some(mut harness) = Harness::new(first, make_spec(), particles.clone(), WORLD) else { return };
+  assert_close(&harness.run(1), &reference_step(&spec, &particles, first, WORLD), "start");
+  for next in [
+    SimOptions { average_forces: true, overlap: Overlap::AdaptiveRange },
+    SimOptions { average_forces: false, overlap: Overlap::Resolve },
+    first,
+  ] {
+    harness.set_options(next);
+    harness.set_state(particles.clone());
+    assert_close(&harness.run(1), &reference_step(&spec, &particles, next, WORLD), &format!("{next:?}"));
+  }
+}
+
 #[test]
 fn many_steps_keep_invariants() {
   let options = SimOptions { average_forces: true, overlap: Overlap::AdaptiveRange };

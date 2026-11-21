@@ -62,6 +62,12 @@ impl Harness {
     }
   }
 
+  /// Zmienia opcje symulacji w trakcie, jak klawisze w `ui`: od następnego kroku działa
+  /// wariant sił dla nowych opcji.
+  pub fn set_options(&mut self, options: SimOptions) {
+    *self.world().resource_mut::<SimOptions>() = options;
+  }
+
   /// Tryb deterministyczny (sortowanie komórek po id).
   pub fn set_deterministic(&mut self, deterministic: bool) {
     self.world().resource_mut::<GpuParams>().deterministic = deterministic;

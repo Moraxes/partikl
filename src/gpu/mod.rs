@@ -134,12 +134,11 @@ pub struct GpuSim {
   pub matrix: Arc<Vec<f32>>,
 }
 
-/// Opcje i licznik kroków: świat renderowania wykonuje różnicę kroków od ostatniej klatki.
+/// Parametry silnika inne niż `SimOptions` i licznik kroków: świat renderowania wykonuje
+/// różnicę kroków od ostatniej klatki.
 #[derive(Resource, Clone, Copy, Debug, Default, ExtractResource)]
 #[extract_app(RenderApp)]
 pub struct GpuParams {
-  pub overlap: u8,
-  pub average: bool,
   /// Kolejność cząstek w komórce po id: trajektorie takie same co do bitu (wolniej).
   pub deterministic: bool,
   pub step_count: u64,
@@ -150,6 +149,15 @@ pub struct GpuParams {
 #[derive(Resource, Clone, Default, ExtractResource)]
 #[extract_app(RenderApp)]
 pub struct GpuProgress(pub Arc<AtomicU64>);
+
+/// Opcje symulacji wybierają wariant pipeline'u sił, więc świat renderowania dostaje je wprost.
+impl ExtractResource<RenderApp> for SimOptions {
+  type Source = SimOptions;
+
+  fn extract_resource(source: &SimOptions) -> Self {
+    *source
+  }
+}
 
 pub struct GpuPlugin;
 
@@ -175,22 +183,14 @@ impl Plugin for GpuPlugin {
       .add_plugins((
         MaterialPlugin::<ParticleMaterial>::default(),
         ExtractResourcePlugin::<GpuSim>::default(),
+        ExtractResourcePlugin::<SimOptions>::default(),
         ExtractResourcePlugin::<GpuParams>::default(),
         ExtractResourcePlugin::<GpuProgress>::default(),
         compute::GpuComputePlugin,
       ))
       // Bez okna (testy headless) stan dostarcza wywołujący przez `spawn_sim`.
       .add_systems(Startup, init_gpu.run_if(any_with_component::<PrimaryWindow>))
-      .add_systems(Update, sync_options)
       .add_systems(FixedUpdate, count_step.run_if(in_state(SimState::Running)));
-  }
-}
-
-fn sync_options(options: Res<SimOptions>, mut params: ResMut<GpuParams>) {
-  let (overlap, average) = (options.overlap as u8, options.average_forces);
-  if params.overlap != overlap || params.average != average {
-    params.overlap = overlap;
-    params.average = average;
   }
 }
 

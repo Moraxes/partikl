@@ -11,9 +11,10 @@ use bevy::render::storage::GpuShaderBuffer;
 use super::SimUniforms;
 use super::bindings;
 use super::buffers::Buffers;
-use super::pipelines::{FORCES, GRID_PASSES, Pipelines, Variant, variant};
+use super::pipelines::{FORCES, GRID_PASSES, Pipelines};
 use super::timing::{GpuTimings, Timer};
 use crate::gpu::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME};
+use crate::options::SimOptions;
 
 /// Kroki tej klatki. Świat główny tylko zwiększa `GpuParams::step_count`; tu wykonujemy
 /// różnicę od ostatniej klatki.
@@ -23,7 +24,7 @@ pub struct Plan {
   done: u64,
   /// Kroki do wykonania w tej klatce (0: nic).
   count: u32,
-  variant: Variant,
+  options: SimOptions,
   deterministic: bool,
   /// Uniformy kolejnych kroków (różnią się `step_index`) i ich przesunięcia w buforze.
   uniforms: DynamicUniformBuffer<SimUniforms>,
@@ -35,6 +36,7 @@ pub struct Plan {
 pub fn plan(
   sim: Option<Res<GpuSim>>,
   params: Res<GpuParams>,
+  options: Res<SimOptions>,
   mut plan: ResMut<Plan>,
   pipelines: Res<Pipelines>,
   buffers: Option<Res<Buffers>>,
@@ -46,11 +48,11 @@ pub fn plan(
   plan.count = 0;
   let (Some(sim), Some(buffers)) = (sim, buffers) else { return };
   let Some(state) = gpu_buffers.get(&sim.state) else { return };
-  plan.variant = variant(&params);
+  plan.options = *options;
   plan.deterministic = params.deterministic;
 
   // Gdy pipeline się kompiluje (start, hot reload, nowy wariant), kroki czekają.
-  if !pipelines.ready(&cache, plan.variant) {
+  if !pipelines.ready(&cache, &plan.options) {
     return;
   }
   // Zaległość ponad `MAX_STEPS_PER_FRAME` (zacięcie) pomijamy.
@@ -92,11 +94,11 @@ pub fn run(
   let Some(sim) = sim else { return };
   let Some(bind_group) = &plan.bind_group else { return };
   // Ponowne sprawdzenie: hot reload może unieważnić pipeline między `plan` a `run`.
-  if plan.count == 0 || !pipelines.ready(&cache, plan.variant) {
+  if plan.count == 0 || !pipelines.ready(&cache, &plan.options) {
     return;
   }
   let get = |id| cache.get_compute_pipeline(id).unwrap();
-  let forces = pipelines.forces[&plan.variant];
+  let forces = pipelines.forces[&plan.options];
   // Dispatche kroku w kolejności: (entry point, pipeline, liczba grup).
   let mut dispatches = Vec::new();
   for (def, &id) in GRID_PASSES.iter().zip(&pipelines.grid) {

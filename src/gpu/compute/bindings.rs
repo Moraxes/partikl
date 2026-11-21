@@ -45,7 +45,8 @@ impl Binding {
     Binding::ForceMatrix,
   ];
 
-  /// Nazwa zmiennej w `bindings.wesl`.
+  /// Nazwa zmiennej w `bindings.wesl` (do testu zgodności z plikiem).
+  #[cfg(test)]
   pub fn wesl_name(self) -> &'static str {
     match self {
       Binding::Uniforms => "uniforms",
