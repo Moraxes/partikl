@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowMode};
 
 use crate::args::ProgramArgs;
-use crate::gpu::RenderQuality;
+use crate::gpu::{RenderQuality, SIM_SPEED};
 use crate::options::{SimOptions, SimState};
 
 pub struct UiPlugin;
@@ -64,12 +64,14 @@ pub fn init_ui(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
   ));
 }
 
-/// Treść napisów: FPS (`None`, dopóki nie ma średniej) i opcje z klawiszami.
-pub fn hud_text(fps: Option<f64>, options: &SimOptions, quality: &RenderQuality) -> String {
+/// Treść napisów: FPS (`None`, dopóki nie ma średniej), prędkość symulacji w procentach czasu
+/// rzeczywistego (tylko gdy zwalnia poniżej 97%) i opcje z klawiszami.
+pub fn hud_text(fps: Option<f64>, speed: Option<f64>, options: &SimOptions, quality: &RenderQuality) -> String {
   let fps = fps.map_or("–".to_string(), |fps| format!("{fps:.0}"));
+  let speed = speed.filter(|speed| *speed < 97.0).map_or(String::new(), |speed| format!("sim speed {speed:.0}%\n"));
   let on_off = |on: bool| if on { "on" } else { "off" };
   format!(
-    "{fps} fps\naveraging {}  N\noverlap {}  O\nhdr {}  B\nantialiasing {}  A\nhide  H",
+    "{fps} fps\n{speed}averaging {}  N\noverlap {}  O\nhdr {}  B\nantialiasing {}  A\nhide  H",
     on_off(options.average_forces),
     options.overlap,
     on_off(quality.hdr),
@@ -86,7 +88,8 @@ pub fn update_text(
 ) {
   let Ok(entity) = query.single() else { return };
   let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS).and_then(|fps| fps.average());
-  let text = hud_text(fps, &options, &quality);
+  let speed = diagnostics.get(&SIM_SPEED).and_then(|speed| speed.value());
+  let text = hud_text(fps, speed, &options, &quality);
   let mut current = writer.text(entity, 0);
   // Bez zapisu, gdy bez zmian: zapis oznacza tekst do ponownego układu.
   if *current != text {

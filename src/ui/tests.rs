@@ -123,13 +123,17 @@ fn h_toggles_hud_visibility() {
 fn hud_text_shows_fps_and_options() {
   let options = SimOptions { average_forces: true, overlap: Overlap::AdaptiveRange };
   let quality = RenderQuality { hdr: true, ..RenderQuality::default() };
-  let text = hud_text(Some(59.6), &options, &quality);
+  let text = hud_text(Some(59.6), Some(100.0), &options, &quality);
   assert!(text.contains("60 fps"), "{text}");
   assert!(text.contains("averaging on"), "{text}");
   assert!(text.contains("overlap adaptive range"), "{text}");
   assert!(text.contains("hdr on"), "{text}");
   assert!(text.contains("antialiasing off"), "{text}");
-  assert!(hud_text(None, &SimOptions::default(), &RenderQuality::default()).contains("– fps"));
+  assert!(hud_text(None, None, &SimOptions::default(), &RenderQuality::default()).contains("– fps"));
+  // Prędkość symulacji widać tylko, gdy zwalnia.
+  assert!(!text.contains("speed"), "{text}");
+  let slow = hud_text(Some(55.0), Some(54.6), &options, &quality);
+  assert!(slow.contains("sim speed 55%"), "{slow}");
 }
 
 #[test]

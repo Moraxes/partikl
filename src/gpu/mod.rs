@@ -19,7 +19,10 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
 mod compute;
+mod step_budget;
 pub use compute::timing::{GpuTimings, PassTimes, entries as timing_entries};
+pub use step_budget::{SIM_SPEED, StepBudget, count_step};
+use step_budget::StepBudgetPlugin;
 pub mod headless;
 mod material;
 
@@ -31,7 +34,8 @@ use crate::spec::ParticleSpec;
 use crate::ui::MainCamera;
 use material::ParticleMaterial;
 
-/// Największa liczba kroków fizyki na klatkę obrazu; nadwyżkę (zacięcie) pomijamy.
+/// Największa liczba kroków fizyki na klatkę obrazu; nadwyżkę (zacięcie) pomijamy. Poniżej
+/// tego limitu zakres kroków w klatce wyznacza `StepBudget` (symulacja zwalnia przy przeciążeniu).
 pub const MAX_STEPS_PER_FRAME: u32 = 16;
 
 /// Cząstka w buforach GPU; układ jak `Particle` w `engine/types.wesl`.
@@ -193,6 +197,7 @@ impl Plugin for GpuPlugin {
       // Bez okna (testy headless) stan dostarcza wywołujący przez `spawn_sim`.
       .add_systems(Startup, init_gpu.run_if(any_with_component::<PrimaryWindow>))
       .add_systems(Update, apply_render_quality.run_if(resource_changed::<RenderQuality>))
+      .add_plugins(StepBudgetPlugin)
       .add_systems(FixedUpdate, count_step.run_if(in_state(SimState::Running)));
   }
 }
@@ -223,10 +228,6 @@ fn apply_render_quality(
     material.analytic_aa = quality.analytic_aa;
     material.params.z = if quality.analytic_aa { 1.0 } else { 0.0 };
   }
-}
-
-fn count_step(mut params: ResMut<GpuParams>) {
-  params.step_count += 1;
 }
 
 fn init_gpu(
