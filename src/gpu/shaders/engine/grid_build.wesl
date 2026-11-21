@@ -1,7 +1,7 @@
 // Budowa siatki: zerowanie, histogram (atomicAdd), scatter w kolejności komórek.
 
 import super::types::{Particle, cell_index};
-import super::bindings::{uniforms, state, sorted_hot, sorted_ids, cell_counts, cell_offsets, cell_cursors};
+import super::bindings::{uniforms, state, sorted_ids, cell_counts, cell_offsets, cell_cursors, store_neighbour};
 
 @compute @workgroup_size(64)
 fn clear(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -27,7 +27,7 @@ fn scatter(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
   let p = state[i];
   let dst = atomicAdd(&cell_cursors[cell_index(p.pos, uniforms)], 1u);
-  sorted_hot[dst] = vec4<f32>(p.pos, bitcast<f32>(p.species), p.crowding);
+  store_neighbour(dst, p);
   sorted_ids[dst] = i;
 }
 
@@ -53,7 +53,6 @@ fn sort_cells(@builtin(global_invocation_id) gid: vec3<u32>) {
     sorted_ids[start + j] = key;
   }
   for (var s = start; s < start + n; s++) {
-    let p = state[sorted_ids[s]];
-    sorted_hot[s] = vec4<f32>(p.pos, bitcast<f32>(p.species), p.crowding);
+    store_neighbour(s, state[sorted_ids[s]]);
   }
 }

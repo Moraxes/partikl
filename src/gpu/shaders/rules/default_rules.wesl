@@ -3,7 +3,7 @@
 // AVERAGE_FORCES; bez żadnej z dwóch pierwszych działa sprężyna.
 // Kontrakt: RuleAccum, accum_init, pair_interact, integrate_particle.
 
-import super::super::engine::types::{Particle, SimUniforms};
+import super::super::engine::types::{Particle, Neighbour, SimUniforms};
 
 struct RuleAccum {
   force: vec2<f32>,
@@ -24,15 +24,15 @@ fn adaptive_radius(crowding: f32, u: SimUniforms) -> f32 {
 }
 
 // Wkład jednego sąsiada (już w zasięgu oddziaływania, `dist_sq > 0`). `delta` wskazuje od
-// `self_p` do `other_p` (po torusie), `coeff` to siła typu sąsiada na typ `self_p`, `weight`
-// waga próbkowania (1 bez próbkowania).
-fn pair_interact(self_p: Particle, other_p: Particle, delta: vec2<f32>, dist_sq: f32, coeff: f32, weight: f32, u: SimUniforms, accum: ptr<function, RuleAccum>) {
+// `self_p` do `other` (po torusie; `other.pos` jest bez przesunięcia torusa), `coeff` to
+// siła typu sąsiada na typ `self_p`, `weight` waga próbkowania (1 bez próbkowania).
+fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: f32, coeff: f32, weight: f32, u: SimUniforms, accum: ptr<function, RuleAccum>) {
   let inv = inverseSqrt(dist_sq);
   let dist = dist_sq * inv;
   let dir = delta * inv;
   var reach = u.repulsion_radius;
 @if(OVERLAP_ADAPTIVE) {
-  reach = max(adaptive_radius(self_p.crowding, u), adaptive_radius(other_p.crowding, u));
+  reach = max(adaptive_radius(self_p.crowding, u), adaptive_radius(other.crowding, u));
 }
   let attraction = coeff * max(0.0, 1.0 - abs((dist - u.kernel_middle) / u.kernel_width));
   var magnitude = 0.0;

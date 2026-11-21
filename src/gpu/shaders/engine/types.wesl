@@ -7,10 +7,17 @@ struct Particle {
   species: u32,
   // Wygładzona liczba sąsiadów (tryb zmiennego zasięgu).
   crowding: f32,
-  // Stały indeks cząstki w buforze stanu. Sąsiedzi w `pair_interact` są składani z
-  // `sorted_hot` i mają tu 0 (oraz `last == pos`).
+  // Stały indeks cząstki w buforze stanu.
   id: u32,
   _pad: u32,
+}
+
+// To, co reguły widzą o sąsiedzie w `pair_interact`: część `Particle` czytana w pętli po
+// sąsiadach. W pamięci jako `vec4` w `sorted_hot` (patrz `store_neighbour`).
+struct Neighbour {
+  pos: vec2<f32>,
+  species: u32,
+  crowding: f32,
 }
 
 struct SimUniforms {

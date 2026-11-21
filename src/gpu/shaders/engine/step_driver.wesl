@@ -2,7 +2,7 @@
 // liczonym na przebieg komórek, próbkowanie powyżej `max_candidates` kandydatów.
 
 import super::types::{Particle, SimUniforms, cell_xy};
-import super::bindings::{uniforms, state, sorted_hot, sorted_ids, cell_counts, cell_offsets, force_matrix};
+import super::bindings::{uniforms, state, sorted_ids, cell_counts, cell_offsets, force_matrix, load_neighbour};
 import super::super::rules::default_rules::{RuleAccum, accum_init, pair_interact, integrate_particle};
 
 const REACH: i32 = 2;
@@ -100,13 +100,11 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
       }
       var s = r.start + (offset + every - k % every) % every;
       while s < r.end {
-        let hot = sorted_hot[s];
-        let delta = hot.xy + r.shift - me.pos;
+        let other = load_neighbour(s);
+        let delta = other.pos + r.shift - me.pos;
         let dist_sq = dot(delta, delta);
         if dist_sq > 0.0 && dist_sq <= radius_sq {
-          let other_species = bitcast<u32>(hot.z);
-          let other = Particle(hot.xy, hot.xy, other_species, hot.w, 0u, 0u);
-          let coeff = force_matrix[other_species * uniforms.num_types + me.species];
+          let coeff = force_matrix[other.species * uniforms.num_types + me.species];
           pair_interact(me, other, delta, dist_sq, coeff, weight, uniforms, &accum);
         }
         s += every;
