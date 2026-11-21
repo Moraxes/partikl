@@ -5,7 +5,6 @@ summary: Readback stanu po K krokach do .cache z rewizji bazowej; A/B od tych sa
 status: todo
 priority: later
 branch: compute-shader-1
-part_of: 50
 blocked_by:
 - 52
 created: 2026-11-21T15:00:57
