@@ -2,7 +2,7 @@
 id: 38
 title: Wariant z SimOptions
 summary: Pipeline'y kluczowane przez SimOptions; GpuParams zostaje licznikiem kroków (StepClock)
-status: doing
+status: done
 priority: soon
 branch: compute-shader-1
 part_of: 35
