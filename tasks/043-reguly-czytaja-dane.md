@@ -4,7 +4,7 @@ title: Reguły czytają dane
 summary: Reguły importują własne wiązania i same czytają macierze zamiast gotowego coeff
 status: todo
 priority: soon
-branch: compute-shader-1
+branch: main
 part_of: 35
 created: 2026-11-21T12:39:03
 ---

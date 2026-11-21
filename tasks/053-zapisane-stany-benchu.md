@@ -4,7 +4,7 @@ title: Zapisane stany benchu
 summary: Readback stanu po K krokach do .cache z rewizji bazowej; A/B od tych samych stanów
 status: todo
 priority: later
-branch: compute-shader-1
+branch: main
 blocked_by:
 - 52
 created: 2026-11-21T15:00:57

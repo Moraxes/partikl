@@ -4,7 +4,7 @@ title: Schemat cząstki
 summary: Minimalny silnikowy Particle; pola modelu shared/private w buforach reguł
 status: todo
 priority: soon
-branch: compute-shader-1
+branch: main
 part_of: 35
 blocked_by:
 - 39

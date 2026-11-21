@@ -4,7 +4,7 @@ title: Refaktor GPU
 summary: 'Czytelny silnik GPU i reguły jako dane (A, B, C): granica silnik/model we właściwym miejscu'
 status: todo
 priority: soon
-branch: compute-shader-1
+branch: main
 relates:
 - 28
 created: 2026-11-21T12:39:02

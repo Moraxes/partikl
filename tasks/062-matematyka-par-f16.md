@@ -4,7 +4,7 @@ title: Matematyka par f16
 summary: 'Ścieżka par w f16 (jednostki F16 bezczynne, F32 na 84% limitera): wariant shadera, dokładność, sąsiedzi 8 B'
 status: todo
 priority: later
-branch: compute-shader-1
+branch: main
 relates:
 - 58
 - 60

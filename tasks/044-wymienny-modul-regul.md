@@ -4,7 +4,7 @@ title: Wymienny moduł reguł
 summary: Stały moduł rules, którego źródło wybiera Rust (wbudowany, --rules plik, M3 codegen)
 status: todo
 priority: soon
-branch: compute-shader-1
+branch: main
 part_of: 35
 blocked_by:
 - 43

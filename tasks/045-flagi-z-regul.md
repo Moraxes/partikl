@@ -4,7 +4,7 @@ title: Flagi z reguł
 summary: Flagi wariantów deklaruje moduł reguł, nie forces_defs w Ruście
 status: todo
 priority: soon
-branch: compute-shader-1
+branch: main
 part_of: 35
 blocked_by:
 - 44

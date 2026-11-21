@@ -6,8 +6,6 @@ status: done
 priority: later
 branch: compute-shader-1
 part_of: 62
-blocked_by:
-- 64
 created: 2026-11-21T19:19:16
 worked: 2026-11-21T19:57:41
 edited: 2026-11-21T19:57:41

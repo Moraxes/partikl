@@ -4,7 +4,7 @@ title: Wyścig ładowania shaderów
 summary: Sporadyczny błąd module not found default_rules przy starcie
 status: todo
 priority: later
-branch: compute-shader-1
+branch: main
 relates:
 - 28
 created: 2026-11-21T13:33:33

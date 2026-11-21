@@ -4,7 +4,7 @@ title: Próg próbkowania w locie
 summary: max_candidates jako zasób sterowany w runtime (klawisz, HUD), opcjonalnie adaptacyjny z StepBudget
 status: todo
 priority: later
-branch: compute-shader-1
+branch: main
 part_of: 54
 created: 2026-11-21T19:25:55
 edited: 2026-11-21T22:43:15
