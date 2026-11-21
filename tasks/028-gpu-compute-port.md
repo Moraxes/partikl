@@ -6,7 +6,7 @@ status: doing
 priority: soon
 branch: compute-shader-1
 created: 2026-11-21T00:51:19
-worked: 2026-11-21T12:59:26
+worked: 2026-11-21T13:31:13
 links:
 - kind: commit
   target: 4195c6a
@@ -24,5 +24,9 @@ links:
   target: cb39173
   at: 2026-11-21T12:59:26
   note: 'fix(gpu): draw each particle from its own vertices'
+- kind: commit
+  target: d340ac1
+  at: 2026-11-21T13:31:13
+  note: 'fix(gpu): wait for every thread to read the block sum before clearing it'
 ---
 Cel: M1a (szkielet GPU, render instanced) i M1b (siatka + siły na GPU, testy, bench). Next step: moduł src/gpu z buforami ping-pong.
