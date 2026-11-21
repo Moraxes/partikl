@@ -3,7 +3,7 @@ id: 53
 title: Zapisane stany benchu
 summary: Readback stanu po K krokach do .cache z rewizji bazowej; A/B od tych samych stanów
 status: todo
-priority: soon
+priority: later
 branch: compute-shader-1
 part_of: 50
 blocked_by:
