@@ -84,3 +84,23 @@ fn malformed_declarations_are_errors() {
 fn source_without_declarations_has_no_options() {
   assert_eq!(RuleSchema::parse("fn f() {}").unwrap(), RuleSchema::default());
 }
+
+#[test]
+fn model_fields_have_wgsl_layout_and_limits() {
+  let one = RuleSchema::parse("//@field crowding: f32 shared").unwrap();
+  assert_eq!(one.fields, [ModelField { name: "crowding".into(), ty: FieldType::F32, shared: true }]);
+  assert_eq!((one.model_stride(), one.shared_bytes()), (4, 4));
+  assert!(one.validate_model().is_ok());
+
+  // vec2f wyrównany do 8: f32 (0..4), przerwa, vec2f (8..16).
+  let mixed = RuleSchema::parse("//@field a: f32\n//@field b: vec2f\n//@field c: u32 shared").unwrap();
+  assert_eq!(mixed.model_stride(), 24);
+  assert_eq!(mixed.shared_bytes(), 4);
+
+  assert!(RuleSchema::default().validate_model().is_err(), "pusty model");
+  let too_much = RuleSchema::parse("//@field a: f32 shared\n//@field b: f32 shared").unwrap();
+  assert!(too_much.validate_model().unwrap_err().contains("M3"));
+  for bad in ["//@field a f32", "//@field a: f64", "//@field a: f32 sharedd", "//@field a: f32\n//@field a: u32", "//@field 1a: f32"] {
+    assert!(RuleSchema::parse(bad).is_err(), "{bad}");
+  }
+}

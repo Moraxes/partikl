@@ -47,7 +47,7 @@ pub fn plan(
 ) {
   plan.count = 0;
   let (Some(sim), Some(buffers)) = (sim, buffers) else { return };
-  let Some(state) = gpu_buffers.get(&sim.state) else { return };
+  let (Some(state), Some(model)) = (gpu_buffers.get(&sim.state), gpu_buffers.get(&sim.model)) else { return };
   plan.variant = ForcesVariant::new(&flags, sim.num_types);
   plan.deterministic = params.deterministic;
 
@@ -74,7 +74,7 @@ pub fn plan(
   let Some(uniforms) = plan.uniforms.binding() else { return };
   // Bind group co klatkę: bufor uniformów może zmienić się przy zapisie.
   let layout = cache.get_bind_group_layout(&pipelines.layout);
-  plan.bind_group = Some(bindings::create_group(&device, &layout, uniforms, &state.buffer, &buffers));
+  plan.bind_group = Some(bindings::create_group(&device, &layout, uniforms, &state.buffer, &model.buffer, &buffers));
 }
 
 /// Dla każdego kroku planu: przebiegi siatki, potem siły. Zwykle jeden przebieg compute na

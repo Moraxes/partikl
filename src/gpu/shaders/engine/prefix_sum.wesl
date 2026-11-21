@@ -1,7 +1,8 @@
 // Wielopoziomowa suma prefiksowa (Blelloch) po `cell_counts`:
 // bloki po 256 -> suma sum bloków (jedna grupa, do 256 bloków) -> dodanie przesunięć.
 
-import super::bindings::{uniforms, cell_counts, cell_offsets, cell_cursors};
+import super::uniforms::uniforms;
+import super::bindings::{cell_counts, cell_offsets, cell_cursors};
 
 const BLOCK: u32 = 256u;
 var<workgroup> temp: array<u32, 256>;

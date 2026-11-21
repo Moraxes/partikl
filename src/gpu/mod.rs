@@ -31,7 +31,7 @@ pub use rules::{RuleFlags, RuleSource};
 
 use crate::args::ProgramArgs;
 use crate::config::*;
-use crate::options::{SimOptions, SimState};
+use crate::options::{RuleSchema, SimOptions, SimState};
 use crate::screen::ScreenSize;
 use crate::spec::ParticleSpec;
 use crate::ui::MainCamera;
@@ -41,7 +41,8 @@ use material::ParticleMaterial;
 /// tego limitu zakres kroków w klatce wyznacza `StepBudget` (symulacja zwalnia przy przeciążeniu).
 pub const MAX_STEPS_PER_FRAME: u32 = 16;
 
-/// Cząstka w buforach GPU; układ jak `Particle` w `engine/types.wesl`.
+/// Cząstka silnika w buforach GPU; układ jak `Particle` w `engine/types.wesl` (24 B). Pola modelu
+/// (np. `crowding`) są w osobnych buforach deklarowanych przez reguły (`GpuSim::model`).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct GpuParticle {
@@ -49,10 +50,8 @@ pub struct GpuParticle {
   /// Pozycja z poprzedniego kroku (całkowanie Verleta).
   pub last: [f32; 2],
   pub species: u32,
-  pub crowding: f32,
   /// Stały identyfikator cząstki; bufor stanu jest w kolejności siatki, nie id.
   pub id: u32,
-  pub pad: u32,
 }
 
 /// Geometria siatki: komórki o boku co najmniej `INTERACTION_RADIUS / GRID_REACH`, więc
@@ -103,9 +102,7 @@ pub fn initial_particles(n: usize, types: usize, world: Vec2, rng: &mut impl Rng
         pos: pos.to_array(),
         last: (pos - dt * velocity).to_array(),
         species: rng.random_range(0..types) as u32,
-        crowding: 0.0,
         id: id as u32,
-        pad: 0,
       }
     })
     .collect()
@@ -131,6 +128,9 @@ pub fn random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
 #[extract_app(RenderApp)]
 pub struct GpuSim {
   pub state: Handle<ShaderBuffer>,
+  /// Model cząstek (pola z reguł) równolegle do `state`: `model_stride` bajtów na cząstkę.
+  pub model: Handle<ShaderBuffer>,
+  pub model_stride: u32,
   pub num_particles: u32,
   pub num_types: u32,
   pub geometry: Geometry,
@@ -161,6 +161,8 @@ impl Plugin for GpuPlugin {
     // modułami wbudowanymi nie doczytują się same. Z feature `dev` zapis pliku przeładowuje
     // shader.
     load_shader_library!(app, "shaders/engine/types.wesl");
+    load_shader_library!(app, "shaders/engine/uniforms.wesl");
+    load_shader_library!(app, "shaders/rules/bindings.wesl");
     load_shader_library!(app, "shaders/engine/bindings.wesl");
     load_shader_library!(app, "shaders/engine/grid_build.wesl");
     load_shader_library!(app, "shaders/engine/prefix_sum.wesl");
@@ -224,6 +226,7 @@ fn init_gpu(
   mut commands: Commands,
   args: Res<ProgramArgs>,
   spec: Res<ParticleSpec>,
+  schema: Res<RuleSchema>,
   screen: ScreenSize,
   mut params: ResMut<GpuParams>,
   buffers: ResMut<Assets<ShaderBuffer>>,
@@ -238,7 +241,7 @@ fn init_gpu(
   let quality = RenderQuality { analytic_aa: args.antialias, hdr: args.hdr, ..RenderQuality::default() };
   commands.insert_resource(quality);
   let look = ParticleLook { size: args.particle_size, colors: random_colors(spec.interactions.len(), &mut rng), analytic_aa: quality.analytic_aa };
-  spawn_sim(&mut commands, buffers, meshes, materials, particles, &spec, world, look);
+  spawn_sim(&mut commands, buffers, meshes, materials, particles, &spec, &schema, world, look);
 
   spawn_camera(&mut commands, None, ScalingMode::WindowSize, &quality);
 }
@@ -305,12 +308,15 @@ pub fn spawn_sim(
   mut materials: ResMut<Assets<ParticleMaterial>>,
   particles: Vec<GpuParticle>,
   spec: &ParticleSpec,
+  schema: &RuleSchema,
   world: Vec2,
   look: ParticleLook,
 ) -> Handle<ShaderBuffer> {
   let n = particles.len();
   let colors: Vec<[f32; 4]> = look.colors.into_iter().map(|color| LinearRgba::from(color).to_f32_array()).collect();
   let state = buffers.add(ShaderBuffer::new(particles, RenderAssetUsages::RENDER_WORLD));
+  let model_stride = schema.model_stride();
+  let model = buffers.add(ShaderBuffer::new(vec![0u32; n * model_stride as usize / 4], RenderAssetUsages::RENDER_WORLD));
   let colors = buffers.add(ShaderBuffer::new(colors, RenderAssetUsages::RENDER_WORLD));
 
   let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD);
@@ -325,6 +331,8 @@ pub fn spawn_sim(
 
   commands.insert_resource(GpuSim {
     state: state.clone(),
+    model,
+    model_stride,
     num_particles: n as u32,
     num_types: spec.interactions.len() as u32,
     geometry: Geometry::new(world),

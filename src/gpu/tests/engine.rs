@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn layout_matches_wgsl() {
-  assert_eq!(size_of::<GpuParticle>(), 32);
+  assert_eq!(size_of::<GpuParticle>(), 24);
   assert_eq!(EngineUniforms::min_size().get(), 56);
   assert_eq!(RuleParams::min_size().get(), 44);
 }
@@ -35,7 +35,7 @@ fn deterministic_mode_repeats_bit_for_bit() {
   let run = || {
     let mut rng = StdRng::seed_from_u64(5);
     let spec = spec(&mut rng, 3);
-    let particles = random_particles(&mut rng, 5_000, 3, false);
+    let particles = random_particles(&mut rng, 5_000, 3);
     let mut harness = Harness::new(options.clone(), spec, particles, WORLD)?;
     harness.set_deterministic(true);
     Some(harness.run(32))
@@ -51,7 +51,7 @@ fn real_time_loop_runs_the_fixed_step_clock() {
   use crate::gpu::headless::Offscreen;
   let mut rng = StdRng::seed_from_u64(31);
   let spec = spec(&mut rng, 3);
-  let particles = random_particles(&mut rng, 2_000, 3, false);
+  let particles = random_particles(&mut rng, 2_000, 3);
   let offscreen = Offscreen { size: UVec2::new(64, 40), quality: RenderQuality::default(), app_colors: false, real_time: true };
   let Some(mut harness) = Harness::with_render(SimOptions::default(), spec, particles, WORLD, Some(offscreen)) else { return };
   harness.run_loop(std::time::Duration::from_millis(500));
@@ -67,8 +67,8 @@ fn real_time_loop_runs_the_fixed_step_clock() {
 fn set_state_replaces_particles_on_gpu() {
   let mut rng = StdRng::seed_from_u64(9);
   let spec = spec(&mut rng, 3);
-  let first = random_particles(&mut rng, 2000, 3, false);
-  let second = random_particles(&mut rng, 2000, 3, true);
+  let first = random_particles(&mut rng, 2000, 3);
+  let second = random_particles(&mut rng, 2000, 3);
   let Some(mut harness) = Harness::new(SimOptions::default(), spec, first, WORLD) else { return };
   harness.run(4);
   harness.set_state(second.clone());
@@ -79,7 +79,7 @@ fn set_state_replaces_particles_on_gpu() {
 fn timed_step_reports_every_pass() {
   let mut rng = StdRng::seed_from_u64(13);
   let spec = spec(&mut rng, 3);
-  let particles = random_particles(&mut rng, 20_000, 3, false);
+  let particles = random_particles(&mut rng, 20_000, 3);
   let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
   harness.run(4);
   harness.set_gpu_timing(true);
@@ -108,7 +108,7 @@ fn timed_step_gives_the_same_state() {
   let run = |timed: bool| {
     let mut rng = StdRng::seed_from_u64(17);
     let spec = spec(&mut rng, 3);
-    let particles = random_particles(&mut rng, 5_000, 3, false);
+    let particles = random_particles(&mut rng, 5_000, 3);
     let mut harness = Harness::new(options.clone(), spec, particles, WORLD)?;
     harness.set_deterministic(true);
     harness.set_gpu_timing(timed);
@@ -153,17 +153,26 @@ fn brute_force_neighbourhoods(spec: &ParticleSpec, particles: &[GpuParticle], wo
     .collect()
 }
 
-/// Jeden krok z regułami diagnostycznymi: wynik w polach cząstek (patrz `diagnostic_rules.wesl`).
+/// Jeden krok z regułami diagnostycznymi: wynik w `last` cząstki i w jej modelu (patrz
+/// `diagnostic_rules.wesl`).
 fn diagnostic_step(spec: ParticleSpec, particles: Vec<GpuParticle>, world: Vec2) -> Option<Vec<Neighbourhood>> {
-  let mut harness = Harness::new(SimOptions::default(), spec, particles, world)?;
-  harness.set_rules(RuleSource::Diagnostic);
+  let mut harness = Harness::with_rules(RuleSource::Diagnostic, SimOptions::default(), spec, particles, world)?;
+  let (particles, model) = harness.run_with_model::<DiagnosticModel>(1);
   Some(
-    harness
-      .run(1)
+    particles
       .iter()
-      .map(|p| Neighbourhood { count: p.crowding as f64, delta: [p.last[0] as f64, p.last[1] as f64], coeff: f32::from_bits(p.pad) as f64 })
+      .zip(&model)
+      .map(|(p, m)| Neighbourhood { count: m.count as f64, delta: [p.last[0] as f64, p.last[1] as f64], coeff: m.coeff as f64 })
       .collect(),
   )
+}
+
+/// `Model` reguł diagnostycznych (`//@field count`, `coeff`).
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct DiagnosticModel {
+  count: f32,
+  coeff: f32,
 }
 
 // ---- Silnik siatki z regułami diagnostycznymi (bez fizyki) ----
@@ -185,7 +194,7 @@ fn assert_neighbourhoods(actual: &[Neighbourhood], expected: &[Neighbourhood], c
 fn engine_finds_every_neighbour_in_range() {
   let mut rng = StdRng::seed_from_u64(50);
   let spec = spec(&mut rng, 3);
-  let particles = random_particles(&mut rng, 700, 3, false);
+  let particles = random_particles(&mut rng, 700, 3);
   let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
   let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
   assert!(expected.iter().any(|n| n.count > 10.0), "scena bez sąsiadów nic nie sprawdza");
@@ -199,7 +208,7 @@ fn engine_passes_the_right_coefficient_for_any_number_of_types() {
   for types in [1, 2, 4, 5, 8, 9, 13] {
     let mut rng = StdRng::seed_from_u64(60 + types as u64);
     let spec = spec(&mut rng, types);
-    let particles = random_particles(&mut rng, 500, types, false);
+    let particles = random_particles(&mut rng, 500, types);
     let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
     let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
     assert_neighbourhoods(&actual, &expected, &format!("{types} typów"));
@@ -213,10 +222,10 @@ fn engine_finds_neighbours_across_the_world_seam() {
   let mut particles: Vec<GpuParticle> = corners
     .iter()
     .enumerate()
-    .map(|(id, p)| GpuParticle { pos: p.to_array(), last: p.to_array(), species: 0, crowding: 0.0, id: id as u32, pad: 0 })
+    .map(|(id, p)| GpuParticle { pos: p.to_array(), last: p.to_array(), species: 0, id: id as u32 })
     .collect();
   // Samotna cząstka w środku, bez sąsiadów.
-  particles.push(GpuParticle { pos: [0.0, 0.0], last: [0.0, 0.0], species: 0, crowding: 0.0, id: 4, pad: 0 });
+  particles.push(GpuParticle { pos: [0.0, 0.0], last: [0.0, 0.0], species: 0, id: 4 });
   let spec = spec(&mut StdRng::seed_from_u64(1), 2);
   let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
   let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
@@ -252,7 +261,7 @@ fn engine_counts_the_same_with_bigger_cells_in_a_large_world() {
 fn engine_samples_dense_states_without_bias() {
   let mut rng = StdRng::seed_from_u64(51);
   let spec = spec(&mut rng, 3);
-  let particles = random_particles(&mut rng, 20_000, 3, false);
+  let particles = random_particles(&mut rng, 20_000, 3);
   let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
   let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
   let (sum_actual, sum_expected): (f64, f64) = (actual.iter().map(|n| n.count).sum(), expected.iter().map(|n| n.count).sum());
@@ -270,9 +279,25 @@ fn engine_samples_dense_states_without_bias() {
 fn state_invariants_hold_for_the_diagnostic_rules() {
   let mut rng = StdRng::seed_from_u64(80);
   let spec = spec(&mut rng, 3);
-  let particles = random_particles(&mut rng, 5_000, 3, false);
-  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
-  harness.set_rules(RuleSource::Diagnostic);
+  let particles = random_particles(&mut rng, 5_000, 3);
+  let Some(mut harness) = Harness::with_rules(RuleSource::Diagnostic, SimOptions::default(), spec, particles, WORLD) else { return };
   assert_invariants(&harness.run(10), WORLD, "reguły diagnostyczne, 10 kroków");
 }
 
+
+/// Model cząstki (pola reguł) przenosi się razem z nią przez scatter (i sortowanie komórek w
+/// trybie deterministycznym): sprężyna nie zmienia `crowding`, więc po wielu krokach każda cząstka
+/// ma nadal swoją wartość.
+#[test]
+fn model_stays_with_its_particle() {
+  for deterministic in [false, true] {
+    let mut rng = StdRng::seed_from_u64(95);
+    let spec = spec(&mut rng, 3);
+    let mut state = State::new(random_particles(&mut rng, 6_000, 3));
+    state.crowding = (0..state.particles.len()).map(|id| id as f32).collect();
+    let Some(mut harness) = harness_for(Mode::default().sim(), spec, &state, WORLD) else { return };
+    harness.set_deterministic(deterministic);
+    let after = run_state(&mut harness, 20);
+    assert_eq!(after.crowding, state.crowding, "model rozjechał się z cząstkami (deterministic = {deterministic})");
+  }
+}

@@ -1,4 +1,4 @@
-//! Opcje symulacji, przełączane w trakcie (klawisze w `ui`) i ustawiane flagami przy starcie.
+//! Opcje symulacji i pola modelu cząstek deklarowane przez reguły. Opcje są przełączane w trakcie (klawisze w `ui`) i ustawiane flagami przy starcie.
 //!
 //! Opcje deklaruje moduł reguł ([`RuleSchema`], z nagłówka źródła), nie Rust: każda opcja to lista
 //! wyborów, z których część włącza flagę shadera. Każda kombinacja flag to osobny wariant pipeline'u
@@ -12,6 +12,10 @@ use bevy::prelude::*;
 /// Klawisze zajęte przez aplikację (jakość rysowania, ekran, HUD); opcje reguł ich nie biorą.
 const RESERVED_KEYS: [char; 4] = ['A', 'B', 'F', 'H'];
 const DIRECTIVE: &str = "//@option";
+const FIELD_DIRECTIVE: &str = "//@field";
+/// Pola `shared` mieszczą się w jednym słowie 4 B dołączonym do sąsiada w pętli sił (większe wymagają
+/// planera pamięci z M3).
+pub const MAX_SHARED_BYTES: u32 = 4;
 
 /// Jeden wybór opcji: etykieta i flaga shadera włączana przez ten wybór (jeśli jest).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,10 +52,52 @@ impl OptionDecl {
   }
 }
 
-/// Opcje zadeklarowane przez moduł reguł; zasób odświeżany przy zmianie źródła reguł.
+/// Typ pola modelu w buforze (układ jak w WGSL).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldType {
+  F32,
+  U32,
+  I32,
+  Vec2F32,
+}
+
+impl FieldType {
+  fn parse(text: &str) -> Option<FieldType> {
+    Some(match text {
+      "f32" => FieldType::F32,
+      "u32" => FieldType::U32,
+      "i32" => FieldType::I32,
+      "vec2f" => FieldType::Vec2F32,
+      _ => return None,
+    })
+  }
+
+  pub fn size(self) -> u32 {
+    match self {
+      FieldType::Vec2F32 => 8,
+      _ => 4,
+    }
+  }
+
+  pub fn align(self) -> u32 {
+    self.size()
+  }
+}
+
+/// Pole modelu cząstki zadeklarowane przez reguły (`//@field`). Pola `shared` czytają też sąsiedzi
+/// (silnik kopiuje je w scatterze do danych sąsiada), `private` tylko cząstka w całkowaniu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelField {
+  pub name: String,
+  pub ty: FieldType,
+  pub shared: bool,
+}
+
+/// Opcje i pola modelu zadeklarowane przez moduł reguł; zasób odświeżany przy zmianie źródła reguł.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 pub struct RuleSchema {
   pub options: Vec<OptionDecl>,
+  pub fields: Vec<ModelField>,
 }
 
 fn is_identifier(text: &str) -> bool {
@@ -62,6 +108,14 @@ impl RuleSchema {
   /// Czyta deklaracje z nagłówka źródła reguł: linie `//@option nazwa [key=K]: wybór[=FLAGA], ...`.
   pub fn parse(source: &str) -> Result<RuleSchema, String> {
     let mut options: Vec<OptionDecl> = Vec::new();
+    let mut fields: Vec<ModelField> = Vec::new();
+    for line in source.lines().map(str::trim).filter_map(|line| line.strip_prefix(FIELD_DIRECTIVE)) {
+      let field = Self::parse_field(line).map_err(|reason| format!("{FIELD_DIRECTIVE}{line}: {reason}"))?;
+      if fields.iter().any(|other| other.name == field.name) {
+        return Err(format!("pole `{}` zadeklarowane dwa razy", field.name));
+      }
+      fields.push(field);
+    }
     for line in source.lines().map(str::trim).filter_map(|line| line.strip_prefix(DIRECTIVE)) {
       let option = Self::parse_option(line).map_err(|reason| format!("{DIRECTIVE}{line}: {reason}"))?;
       if options.iter().any(|other| other.name == option.name) {
@@ -79,7 +133,59 @@ impl RuleSchema {
       }
       options.push(option);
     }
-    Ok(RuleSchema { options })
+    Ok(RuleSchema { options, fields })
+  }
+
+  /// Pole modelu: `nazwa: typ [shared]`.
+  fn parse_field(line: &str) -> Result<ModelField, String> {
+    let (name, rest) = line.split_once(':').ok_or("brak `:` przed typem")?;
+    let name = name.trim();
+    if !is_identifier(name) {
+      return Err(format!("zła nazwa pola `{name}`"));
+    }
+    let mut words = rest.split_whitespace();
+    let ty = words.next().and_then(FieldType::parse).ok_or("typ pola: f32, u32, i32 albo vec2f")?;
+    let shared = match words.next() {
+      None => false,
+      Some("shared") => true,
+      Some(other) => return Err(format!("nieznany znacznik `{other}` (jest `shared`)")),
+    };
+    if words.next().is_some() {
+      return Err("za dużo słów".into());
+    }
+    Ok(ModelField { name: name.to_string(), ty, shared })
+  }
+
+  /// Rozmiar struktury modelu cząstki w bajtach (układ WGSL: pola po kolei, wyrównane, rozmiar
+  /// zaokrąglony do największego wyrównania); tyle bajtów na cząstkę mają bufory modelu.
+  pub fn model_stride(&self) -> u32 {
+    let mut offset = 0u32;
+    let mut align = 4u32;
+    for field in &self.fields {
+      offset = offset.next_multiple_of(field.ty.align()) + field.ty.size();
+      align = align.max(field.ty.align());
+    }
+    offset.next_multiple_of(align)
+  }
+
+  /// Bajty pól `shared`.
+  pub fn shared_bytes(&self) -> u32 {
+    self.fields.iter().filter(|f| f.shared).map(|f| f.ty.size()).sum()
+  }
+
+  /// Czy pola modelu da się zaalokować i skopiować silnikiem: co najmniej jedno pole (pusta struktura
+  /// jest w WGSL błędem) i `shared` w granicy [`MAX_SHARED_BYTES`].
+  pub fn validate_model(&self) -> Result<(), String> {
+    if self.fields.is_empty() {
+      return Err(format!("reguły muszą zadeklarować co najmniej jedno pole modelu (`{FIELD_DIRECTIVE} nazwa: f32`)"));
+    }
+    if self.shared_bytes() > MAX_SHARED_BYTES {
+      return Err(format!(
+        "pola shared mają {} B, a dane sąsiada mieszczą {MAX_SHARED_BYTES} B (więcej wymaga planera pamięci z M3)",
+        self.shared_bytes()
+      ));
+    }
+    Ok(())
   }
 
   fn parse_option(line: &str) -> Result<OptionDecl, String> {

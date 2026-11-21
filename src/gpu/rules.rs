@@ -10,6 +10,9 @@
 //! [`crate::options::RuleSchema`]); [`RuleFlags`] to flagi dla bieżących wyborów, które widzi świat
 //! renderowania i które wybierają wariant pipeline'u sił.
 //!
+//! Pola modelu (`//@field`) ustalają rozmiar buforów na starcie, więc zmiana źródła w trakcie musi je
+//! zachować; inaczej zostaje poprzedni moduł (do zmiany pól potrzebny jest restart).
+//!
 //! Wymiana źródła podmienia zasób `Shader`, więc pipeline'y sił kompilują się od nowa; błąd
 //! kompilacji (np. literówka w pliku) trafia do logu i kroki czekają na poprawkę.
 
@@ -63,7 +66,9 @@ impl RuleSource {
         path.clone(),
       ),
     };
-    let schema = RuleSchema::parse(&code).map_err(|reason| LoadError::Malformed { path, reason })?;
+    let schema = RuleSchema::parse(&code)
+      .and_then(|schema| schema.validate_model().map(|()| schema))
+      .map_err(|reason| LoadError::Malformed { path, reason })?;
     Ok(Loaded { code, schema })
   }
 }
@@ -128,6 +133,10 @@ fn reload_rules(
   module.applied = source.clone();
   module.modified = if let RuleSource::File(path) = &*source { modified(path) } else { None };
   match source.read() {
+    // Bufory modelu mają rozmiar z pól na starcie, więc przy zmianie pól potrzebny jest restart.
+    Ok(Loaded { schema: declared, .. }) if declared.fields != schema.fields => {
+      error!("reguły: {source:?} zmienia pola modelu (`//@field`); to wymaga restartu, zostaje poprzedni moduł");
+    }
     Ok(Loaded { code, schema: declared }) => {
       info!("reguły: wczytano {source:?}");
       if *schema != declared {

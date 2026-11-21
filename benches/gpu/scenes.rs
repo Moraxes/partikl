@@ -71,9 +71,7 @@ fn blobs(blobs: &Blobs, n: usize, types: usize, world: Vec2, rng: &mut impl Rng)
         pos: pos.to_array(),
         last: (pos - dt * velocity).to_array(),
         species: rng.random_range(0..types) as u32,
-        crowding: 0.0,
         id: id as u32,
-        pad: 0,
       }
     })
     .collect()

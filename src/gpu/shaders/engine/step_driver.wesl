@@ -1,11 +1,12 @@
 // Krok symulacji: jeden wątek na cząstkę (model gather), sąsiedztwo 5x5 komórek z torusem
 // liczonym na przebieg komórek, próbkowanie powyżej `max_candidates` kandydatów.
 
-import super::types::{Particle, Neighbour, cell_xy};
-import super::bindings::{uniforms, state, sorted_state, cell_counts, cell_offsets, load_neighbour};
+import super::types::{Particle, cell_xy};
+import super::uniforms::uniforms;
+import super::bindings::{state, model, sorted_state, sorted_model, cell_counts, cell_offsets, load_neighbour};
 // Reguły: zawsze ten sam moduł `rules::model`; jego źródło wybiera Rust (`RuleSource`: wbudowane,
 // diagnostyczne albo plik `--rules`). Kontrakt w nagłówku `rules/default_rules.wesl`.
-import super::super::rules::model::{RuleAccum, RuleSelf, accum_init, prepare_self, pair_interact, integrate_particle};
+import super::super::rules::model::{Neighbour, RuleAccum, RuleSelf, accum_init, prepare_self, pair_interact, integrate_particle};
 
 const REACH: i32 = 2;
 
@@ -90,6 +91,7 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
     return;
   }
   let me = sorted_state[j];
+  var my_model = sorted_model[j];
   let cell = cell_xy(me.pos, uniforms);
 
   var candidates = 0u;
@@ -106,7 +108,7 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
   let radius_sq = uniforms.interaction_radius * uniforms.interaction_radius;
   let weight = f32(every);
 
-  let rule_self = prepare_self(me);
+  let rule_self = prepare_self(me, my_model);
   var accum = accum_init();
   var k = 0u;
   for (var dy = -REACH; dy <= REACH; dy++) {
@@ -139,5 +141,6 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
   }
   // Wynik na miejsce `j`: stan zostaje w kolejności siatki.
-  state[j] = wrap(integrate_particle(me, accum));
+  state[j] = wrap(integrate_particle(me, &my_model, accum));
+  model[j] = my_model;
 }

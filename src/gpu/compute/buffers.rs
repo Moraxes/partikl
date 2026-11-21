@@ -14,6 +14,7 @@ use crate::spec::ParticleSpec;
 pub struct Buffers {
   pub sorted_hot: Buffer,
   pub sorted_state: Buffer,
+  pub sorted_model: Buffer,
   pub cell_counts: Buffer,
   pub cell_offsets: Buffer,
   pub cell_cursors: Buffer,
@@ -36,6 +37,7 @@ pub fn create(mut commands: Commands, sim: Res<GpuSim>, spec: Res<ParticleSpec>,
     // vec4<f32> na cząstkę
     sorted_hot: storage("sorted_hot", n * 16),
     sorted_state: storage("sorted_state", n * size_of::<GpuParticle>() as u64),
+    sorted_model: storage("sorted_model", n * sim.model_stride as u64),
     cell_counts: storage("cell_counts", cells * 4),
     // Za komórkami sumy bloków sumy prefiksowej.
     cell_offsets: storage("cell_offsets", (cells + (MAX_CELLS / SCAN_BLOCK) as u64) * 4),

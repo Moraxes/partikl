@@ -10,7 +10,7 @@ fn temp_rules(name: &str, source: &str) -> PathBuf {
 
 fn setup() -> (ParticleSpec, Vec<GpuParticle>) {
   let mut rng = StdRng::seed_from_u64(90);
-  (spec(&mut rng, 3), random_particles(&mut rng, 800, 3, false))
+  (spec(&mut rng, 3), random_particles(&mut rng, 800, 3))
 }
 
 /// Moduł reguł z pliku to ten sam kod co wbudowany: wynik bit w bit taki sam (tryb deterministyczny).
@@ -31,18 +31,20 @@ fn rules_from_a_file_match_the_builtin_ones() {
   assert_eq!(from_file.run(3), expected);
 }
 
-/// Zmiana pliku reguł w trakcie działania przeładowuje moduł: diagnostyczne nic nie poruszają,
-/// wbudowane tak.
+/// Zmiana pliku reguł w trakcie działania przeładowuje moduł: reguły bez ruchu (wbudowane z
+/// wyłączonym krokiem pozycji) nic nie poruszają, po zapisie pełnych reguł cząstki się ruszają.
 #[test]
 fn saving_the_rules_file_reloads_the_module() {
+  let builtin = include_str!("../shaders/rules/default_rules.wesl");
+  let frozen = builtin.replace("p.pos = p.pos + damped;", "p.pos = p.pos;");
+  assert_ne!(frozen, builtin, "podmiana w źródle reguł nie zadziałała");
   let (spec, particles) = setup();
-  let path = temp_rules("watched", include_str!("../shaders/rules/diagnostic_rules.wesl"));
-  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles.clone(), WORLD) else { return };
-  harness.set_rules(RuleSource::File(path.clone()));
+  let path = temp_rules("watched", &frozen);
+  let Some(mut harness) = Harness::with_rules(RuleSource::File(path.clone()), SimOptions::default(), spec, particles.clone(), WORLD) else { return };
   let still = harness.run(1);
-  assert!(still.iter().zip(&particles).all(|(a, b)| a.pos == b.pos), "reguły diagnostyczne nie poruszają cząstek");
+  assert!(still.iter().zip(&particles).all(|(a, b)| a.pos == b.pos), "zamrożone reguły nie poruszają cząstek");
 
-  std::fs::write(&path, include_str!("../shaders/rules/default_rules.wesl")).unwrap();
+  std::fs::write(&path, builtin).unwrap();
   // Plik jest sprawdzany co pół sekundy.
   let deadline = Instant::now() + Duration::from_secs(30);
   loop {
@@ -53,6 +55,21 @@ fn saving_the_rules_file_reloads_the_module() {
       break;
     }
   }
+}
+
+/// Zmiana pól modelu w pliku w trakcie działania jest odrzucona (bufory mają rozmiar ze startu):
+/// zostaje poprzedni moduł.
+#[test]
+fn changing_model_fields_at_runtime_is_refused() {
+  let (spec, particles) = setup();
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  let before = harness.run(1);
+  let path = temp_rules("fields", include_str!("../shaders/rules/diagnostic_rules.wesl"));
+  harness.set_rules(RuleSource::File(path));
+  harness.update();
+  // Gdyby moduł zmienił się na diagnostyczny, cząstki przestałyby się ruszać.
+  let after = harness.run(1);
+  assert!(after.iter().zip(&before).any(|(a, b)| a.pos != b.pos));
 }
 
 /// Plik, którego nie da się wczytać, zostawia poprzedni moduł (błąd tylko w logu).

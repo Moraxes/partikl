@@ -1,15 +1,16 @@
-// Wspólny układ wiązań wszystkich przebiegów compute (grupa 0). Numery i nazwy muszą zgadzać
-// się z `Binding` w `src/gpu/compute/bindings.rs` (sprawdza to test).
+// Wiązania silnika grupy 0 wspólne dla przebiegów compute. Numery i nazwy muszą zgadzać się z
+// `Binding` w `src/gpu/compute/bindings.rs` (sprawdza to test). Uniformy (0) są w `uniforms.wesl`,
+// a dane reguł (7, 8) w `rules/bindings.wesl`.
 
-import super::types::{Particle, Neighbour, EngineUniforms, RuleParams};
+import super::types::Particle;
+import super::super::rules::model::{Model, Neighbour, pack_neighbour, unpack_neighbour};
 
-@group(0) @binding(0) var<uniform> uniforms: EngineUniforms;
 // Trwały stan cząstek (czytany też przez render). Po kroku leży w kolejności siatki (patrz
 // `sorted_state`), więc render widzi cząstki spójnie przestrzennie; `Particle::id` jest
 // stałym identyfikatorem, a nie indeksem.
 @group(0) @binding(1) var<storage, read_write> state: array<Particle>;
-// Sąsiedzi (`Neighbour`) w kolejności siatki, spakowani do `vec4` (jeden odczyt 16 B w
-// pętli po sąsiadach); zapis i odczyt tylko przez `store_neighbour` / `load_neighbour`.
+// Sąsiedzi (`Neighbour`) w kolejności siatki, spakowani przez reguły do `vec4` (jeden odczyt 16 B
+// w pętli po sąsiadach); zapis i odczyt tylko przez `store_neighbour` / `load_neighbour`.
 @group(0) @binding(2) var<storage, read_write> sorted_hot: array<vec4<f32>>;
 // Pełne cząstki w kolejności siatki: scatter kopiuje je ze `state`, siły czytają stąd własną
 // cząstkę i zapisują wynik do `state[j]`, więc stan sam układa się w kolejności siatki.
@@ -18,17 +19,15 @@ import super::types::{Particle, Neighbour, EngineUniforms, RuleParams};
 @group(0) @binding(5) var<storage, read_write> cell_offsets: array<u32>;
 @group(0) @binding(6) var<storage, read_write> cell_cursors: array<atomic<u32>>;
 // Sumy bloków sumy prefiksowej leżą w `cell_offsets` od indeksu `num_cells`.
-// Macierz sił `force_matrix[a * T + b]`: siła, z jaką typ `a` działa na typ `b`; czytają ją reguły (`rules/matrix.wesl`).
-@group(0) @binding(7) var<storage, read_write> force_matrix: array<f32>;
-// Parametry reguł (promienie, jądro, tarcie…); wspólne dla wszystkich kroków klatki.
-@group(0) @binding(8) var<uniform> rule_params: RuleParams;
+// Model cząstek (`Model` z reguł) równolegle do `state`, a `sorted_model` do `sorted_state`:
+// silnik przenosi je razem z cząstką i nie zna ich pól.
+@group(0) @binding(9) var<storage, read_write> model: array<Model>;
+@group(0) @binding(10) var<storage, read_write> sorted_model: array<Model>;
 
-// Układ `sorted_hot[slot]`: (pos.x, pos.y, bity species, crowding).
-fn store_neighbour(slot: u32, p: Particle) {
-  sorted_hot[slot] = vec4<f32>(p.pos, bitcast<f32>(p.species), p.crowding);
+fn store_neighbour(slot: u32, p: Particle, m: Model) {
+  sorted_hot[slot] = pack_neighbour(p, m);
 }
 
 fn load_neighbour(slot: u32) -> Neighbour {
-  let v = sorted_hot[slot];
-  return Neighbour(v.xy, bitcast<u32>(v.z), v.w);
+  return unpack_neighbour(sorted_hot[slot]);
 }

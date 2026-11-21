@@ -20,7 +20,7 @@ fn still_particles_harness(quality: RenderQuality) -> Option<(Harness, UVec2, Ve
   let particles: Vec<GpuParticle> = positions
     .iter()
     .enumerate()
-    .map(|(id, p)| GpuParticle { pos: p.to_array(), last: p.to_array(), species: 0, crowding: 0.0, id: id as u32, pad: 0 })
+    .map(|(id, p)| GpuParticle { pos: p.to_array(), last: p.to_array(), species: 0, id: id as u32 })
     .collect();
   // Zerowe siły: cząstki stoją w miejscu.
   let spec = zero_forces(spec(&mut StdRng::seed_from_u64(1), 2));

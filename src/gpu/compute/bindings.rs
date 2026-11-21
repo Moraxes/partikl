@@ -1,9 +1,10 @@
 //! Wiązania grupy 0 wspólne dla wszystkich przebiegów kroku (compute).
 //!
-//! Numer wiązania to numer wariantu [`Binding`], a nazwa to nazwa zmiennej w
-//! `shaders/engine/bindings.wesl`; zgodność z plikiem WESL sprawdza test. Dodanie wiązania to:
+//! Numer wiązania to numer wariantu [`Binding`], a nazwa to nazwa zmiennej w WESL: silnika
+//! (`shaders/engine/{uniforms,bindings}.wesl`) albo reguł (`shaders/rules/bindings.wesl`); zgodność
+//! z plikami WESL sprawdza test. Dodanie wiązania to:
 //! wariant tutaj (w kolejności numerów), wpis w `layout_entry` i `create_group` (kompilator
-//! pilnuje wyczerpującego `match`) i zmienna w `bindings.wesl`.
+//! pilnuje wyczerpującego `match`) i zmienna w odpowiednim pliku WESL.
 
 use bevy::render::render_resource::binding_types::{storage_buffer_sized, uniform_buffer};
 use bevy::render::render_resource::*;
@@ -33,10 +34,14 @@ pub enum Binding {
   ForceMatrix = 7,
   /// `rule_params`: parametry reguł, wspólne dla kroków klatki (bez przesunięcia dynamicznego).
   RuleParams = 8,
+  /// `model`: pola modelu cząstek z reguł, równolegle do `state` (wspólny z `GpuSim::model`).
+  Model = 9,
+  /// `sorted_model`: model w kolejności siatki, równolegle do `sorted_state`.
+  SortedModel = 10,
 }
 
 impl Binding {
-  pub const ALL: [Binding; 9] = [
+  pub const ALL: [Binding; 11] = [
     Binding::Uniforms,
     Binding::State,
     Binding::SortedHot,
@@ -46,6 +51,8 @@ impl Binding {
     Binding::CellCursors,
     Binding::ForceMatrix,
     Binding::RuleParams,
+    Binding::Model,
+    Binding::SortedModel,
   ];
 
   /// Nazwa zmiennej w `bindings.wesl` (do testu zgodności z plikiem).
@@ -61,6 +68,8 @@ impl Binding {
       Binding::CellCursors => "cell_cursors",
       Binding::ForceMatrix => "force_matrix",
       Binding::RuleParams => "rule_params",
+      Binding::Model => "model",
+      Binding::SortedModel => "sorted_model",
     }
   }
 
@@ -85,12 +94,14 @@ pub fn layout() -> BindGroupLayoutDescriptor {
   BindGroupLayoutDescriptor::new("partikl_sim", &entries)
 }
 
-/// Bind group kroku: `uniforms` to wiązanie bufora uniformów, `state` bufor stanu cząstek.
+/// Bind group kroku: `uniforms` to wiązanie bufora uniformów, `state` i `model` bufory stanu i
+/// modelu cząstek.
 pub fn create_group(
   device: &RenderDevice,
   layout: &BindGroupLayout,
   uniforms: BindingResource,
   state: &Buffer,
+  model: &Buffer,
   buffers: &Buffers,
 ) -> BindGroup {
   let entries: Vec<_> = Binding::ALL
@@ -107,6 +118,8 @@ pub fn create_group(
         Binding::CellCursors => buffers.cell_cursors.as_entire_binding(),
         Binding::ForceMatrix => buffers.force_matrix.as_entire_binding(),
         Binding::RuleParams => buffers.rule_params.as_entire_binding(),
+        Binding::Model => model.as_entire_binding(),
+        Binding::SortedModel => buffers.sorted_model.as_entire_binding(),
       },
     })
     .collect();

@@ -4,7 +4,8 @@
 // więc dla małej liczby typów kolumna macierzy leży w rejestrach (warianty shadera wg flag
 // `TYPES_AT_MOST_4` / `TYPES_AT_MOST_8`).
 
-import super::super::engine::bindings::{uniforms, force_matrix};
+import super::super::engine::uniforms::uniforms;
+import super::bindings::force_matrix;
 
 @if(TYPES_AT_MOST_4) {
   alias Coeffs = vec4<f32>;

@@ -16,7 +16,7 @@ use bevy::winit::WinitPlugin;
 
 use super::material::ParticleMaterial;
 use super::*;
-use crate::options::SimOptions;
+use crate::options::{RuleSchema, SimOptions};
 
 /// Jedna aplikacja GPU naraz w procesie (wspólne pule wątków i dziennik).
 static LOCK: Mutex<()> = Mutex::new(());
@@ -68,6 +68,29 @@ impl Harness {
     world: Vec2,
     offscreen: Option<Offscreen>,
   ) -> Option<Harness> {
+    Self::create(RuleSource::Builtin, options, spec, particles, world, offscreen)
+  }
+
+  /// Jak `new`, ale z innym źródłem reguł od startu. Pola modelu (a więc rozmiar buforów) zależą od
+  /// reguł, więc reguły o innych polach niż wbudowane trzeba podać tu, nie przez `set_rules`.
+  pub fn with_rules(
+    rules: RuleSource,
+    options: SimOptions,
+    spec: ParticleSpec,
+    particles: Vec<GpuParticle>,
+    world: Vec2,
+  ) -> Option<Harness> {
+    Self::create(rules, options, spec, particles, world, None)
+  }
+
+  fn create(
+    rules: RuleSource,
+    options: SimOptions,
+    spec: ParticleSpec,
+    particles: Vec<GpuParticle>,
+    world: Vec2,
+    offscreen: Option<Offscreen>,
+  ) -> Option<Harness> {
     let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
       let mut app = App::new();
@@ -83,7 +106,7 @@ impl Harness {
       // Jakość rysowania kamery offscreen jest też zasobem, który system `apply_render_quality`
       // stosuje co zmianę (bez tego domyślna nadpisałaby kamerę).
       app.insert_resource(offscreen.map(|o| o.quality).unwrap_or_default());
-      app.insert_resource(options).insert_resource(spec).add_plugins(GpuPlugin);
+      app.insert_resource(options).insert_resource(rules).insert_resource(spec).add_plugins(GpuPlugin);
       // Kroki liczy test, nie czas stały (chyba że `real_time`: zegar jak w aplikacji).
       if !offscreen.is_some_and(|o| o.real_time) {
         app.insert_resource(Time::<Fixed>::from_seconds(1.0e9));
@@ -112,7 +135,8 @@ impl Harness {
     }
   }
 
-  /// Wybiera źródło modułu reguł (domyślne, diagnostyczne albo plik); od następnego kroku.
+  /// Wybiera źródło modułu reguł (domyślne, diagnostyczne albo plik); od następnego kroku. Pola
+  /// modelu muszą zostać te same co na starcie (`with_rules`).
   pub fn set_rules(&mut self, rules: RuleSource) {
     *self.world().resource_mut::<RuleSource>() = rules;
   }
@@ -150,6 +174,21 @@ impl Harness {
     let buffer = ShaderBuffer::new(particles, bevy::asset::RenderAssetUsages::RENDER_WORLD);
     self.world().resource_mut::<Assets<ShaderBuffer>>().insert(&sim.state, buffer).unwrap();
     // Wysłanie nowego bufora (ekstrakcja i przygotowanie w świecie renderowania).
+    self.update();
+  }
+
+  /// Podmienia model cząstek (pola z reguł) i wysyła go na GPU, bez kroku symulacji. `model[i]`
+  /// należy do cząstki `i` z ostatniego `set_state` albo ze stanu początkowego (id = indeks), a `T`
+  /// ma układ struktury `Model` z reguł.
+  pub fn set_model<T: bytemuck::NoUninit>(&mut self, model: Vec<T>) {
+    if !self.world().contains_resource::<GpuSim>() {
+      self.update();
+    }
+    let sim = self.world().resource::<GpuSim>().clone();
+    assert_eq!(size_of::<T>() * sim.num_particles as usize, sim.model_stride as usize * sim.num_particles as usize, "zły rozmiar modelu");
+    assert_eq!(model.len(), sim.num_particles as usize, "inna liczba cząstek");
+    let buffer = ShaderBuffer::new(model, bevy::asset::RenderAssetUsages::RENDER_WORLD);
+    self.world().resource_mut::<Assets<ShaderBuffer>>().insert(&sim.model, buffer).unwrap();
     self.update();
   }
 
@@ -227,18 +266,43 @@ impl Harness {
   /// Wykonuje `steps` kroków (czeka na kompilację shaderów) i zwraca stan cząstek z GPU.
   pub fn run(&mut self, steps: u64) -> Vec<GpuParticle> {
     self.step(steps);
-    let deadline = Instant::now() + Duration::from_secs(120);
-    let slot: Arc<Mutex<Option<Vec<u8>>>> = Arc::default();
-    self.world().insert_resource(Request(Some(slot.clone())));
-    while slot.lock().unwrap().is_none() {
-      assert!(Instant::now() < deadline, "brak odpowiedzi readbacku");
-      self.update();
-    }
-    let bytes = slot.lock().unwrap().take().unwrap();
+    self.read_state()
+  }
+
+  /// Jak `run`, ale zwraca też model cząstek (`T` to struktura `Model` z reguł), w tej samej
+  /// kolejności co stan (po id).
+  pub fn run_with_model<T: bytemuck::Pod>(&mut self, steps: u64) -> (Vec<GpuParticle>, Vec<T>) {
+    self.step(steps);
+    let state_bytes = self.read_buffer(|sim| sim.state.clone());
+    let model_bytes = self.read_buffer(|sim| sim.model.clone());
+    let state: Vec<GpuParticle> = bytemuck::cast_slice(&state_bytes).to_vec();
+    let model: Vec<T> = model_bytes.chunks_exact(size_of::<T>()).map(bytemuck::pod_read_unaligned).collect();
+    assert_eq!(state.len(), model.len());
+    // Model leży w tej samej kolejności co stan (siatki); do kolejności po id.
+    let mut pairs: Vec<(GpuParticle, T)> = state.into_iter().zip(model).collect();
+    pairs.sort_by_key(|(p, _)| p.id);
+    pairs.into_iter().unzip()
+  }
+
+  fn read_state(&mut self) -> Vec<GpuParticle> {
+    let bytes = self.read_buffer(|sim| sim.state.clone());
     // Stan na GPU jest w kolejności siatki; testy i benchmarki widzą kolejność id.
     let mut particles: Vec<GpuParticle> = bytemuck::cast_slice(&bytes).to_vec();
     particles.sort_by_key(|p| p.id);
     particles
+  }
+
+  /// Zawartość bufora `GpuSim` (wybranego przez `buffer`) z GPU.
+  fn read_buffer(&mut self, buffer: impl Fn(&GpuSim) -> Handle<ShaderBuffer>) -> Vec<u8> {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let slot: Arc<Mutex<Option<Vec<u8>>>> = Arc::default();
+    let handle = buffer(self.world().resource::<GpuSim>());
+    self.world().insert_resource(Request(Some((slot.clone(), handle))));
+    while slot.lock().unwrap().is_none() {
+      assert!(Instant::now() < deadline, "brak odpowiedzi readbacku");
+      self.update();
+    }
+    slot.lock().unwrap().take().unwrap()
   }
 
   /// Piksele obrazu, do którego rysuje kamera (`with_render`): RGBA8, wiersz po wierszu od góry.
@@ -278,12 +342,12 @@ fn request_image(mut commands: Commands, mut request: ResMut<ImageRequest>, targ
 
 /// Prośba o readback stanu; `ReadbackOnce` musi powstać w trakcie klatki (czyszczone w `First`).
 #[derive(Resource)]
-struct Request(Option<Arc<Mutex<Option<Vec<u8>>>>>);
+struct Request(Option<(Arc<Mutex<Option<Vec<u8>>>>, Handle<ShaderBuffer>)>);
 
-fn request_readback(mut commands: Commands, mut request: ResMut<Request>, sim: Res<GpuSim>) {
-  if let Some(sink) = request.0.take() {
+fn request_readback(mut commands: Commands, mut request: ResMut<Request>) {
+  if let Some((sink, buffer)) = request.0.take() {
     commands
-      .spawn(ReadbackOnce::buffer(sim.state.clone()))
+      .spawn(ReadbackOnce::buffer(buffer))
       .observe(move |event: On<ReadbackComplete>| *sink.lock().unwrap() = Some(event.data.clone()));
   }
 }
@@ -301,6 +365,7 @@ fn spawn_test_sim(
   mut commands: Commands,
   mut initial: ResMut<Initial>,
   spec: Res<ParticleSpec>,
+  schema: Res<RuleSchema>,
   buffers: ResMut<Assets<ShaderBuffer>>,
   meshes: ResMut<Assets<Mesh>>,
   materials: ResMut<Assets<ParticleMaterial>>,
@@ -315,7 +380,7 @@ fn spawn_test_sim(
   let world = initial.1;
   let analytic_aa = initial.2.is_some_and(|o| o.quality.analytic_aa);
   let look = ParticleLook { size: 2.0, colors, analytic_aa };
-  spawn_sim(&mut commands, buffers, meshes, materials, initial.0.take().unwrap(), &spec, world, look);
+  spawn_sim(&mut commands, buffers, meshes, materials, initial.0.take().unwrap(), &spec, &schema, world, look);
   if let Some(Offscreen { size, quality, .. }) = initial.2 {
     let mut image = Image::new_target_texture(size.x, size.y, TextureFormat::Rgba8UnormSrgb, None);
     // Odczyt obrazu (`target_pixels`) kopiuje teksturę.
