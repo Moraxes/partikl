@@ -3,10 +3,15 @@ name = "partikl"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+# Przeładowanie shaderów GPU (wkompilowanych w binarkę) po zapisie pliku źródłowego.
+# Działa, gdy program startuje z katalogu repozytorium: `cargo dev -- --gpu`.
+dev = [ "bevy/embedded_watcher" ]
+
 [dependencies]
 ron = "0.12.3"
 clap = { version = "4.6.8", features = [ "derive" ] }
-bevy = { version = "0.20", features = [ "file_watcher" ] }
+bevy = "0.20"
 bytemuck = { version = "1", features = [ "derive" ] }
 wide = "1.7.1"
 

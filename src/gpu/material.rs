@@ -4,7 +4,7 @@ use bevy::render::render_resource::AsBindGroup;
 use bevy::render::storage::ShaderBuffer;
 use bevy::shader::ShaderRef;
 
-const SHADER: &str = "shaders/engine/render.wesl";
+const SHADER: &str = "embedded://partikl/gpu/shaders/engine/render.wesl";
 
 /// Materiał cząstek: vertex shader czyta stan wprost z bufora (bez encji na cząstkę).
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]

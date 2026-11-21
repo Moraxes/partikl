@@ -1,5 +1,5 @@
 //! Symulacja na GPU: stan cząstek w buforach, siatka (counting sort) i siły w compute
-//! shaderach (`assets/shaders`), rysowanie wprost z bufora stanu. Silnik CPU (`sim`) zostaje
+//! shaderach (`src/gpu/shaders`), rysowanie wprost z bufora stanu. Silnik CPU (`sim`) zostaje
 //! jako punkt odniesienia i wyrocznia w testach. Włączane flagą `--gpu`.
 
 use bevy::asset::RenderAssetUsages;
@@ -10,6 +10,7 @@ use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
 use bevy::render::storage::ShaderBuffer;
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::render::RenderApp;
+use bevy::shader::load_shader_library;
 use bevy::window::PrimaryWindow;
 use bytemuck::{Pod, Zeroable};
 use rand::prelude::*;
@@ -131,6 +132,17 @@ pub struct GpuPlugin;
 
 impl Plugin for GpuPlugin {
   fn build(&self, app: &mut App) {
+    // Shadery są wkompilowane w binarkę (`embedded://partikl/gpu/shaders/...`), więc nie
+    // potrzeba katalogu `assets/`. Ładujemy wszystkie moduły, bo importy WESL między
+    // modułami wbudowanymi nie doczytują się same. Z feature `dev` zapis pliku przeładowuje
+    // shader.
+    load_shader_library!(app, "shaders/engine/types.wesl");
+    load_shader_library!(app, "shaders/engine/bindings.wesl");
+    load_shader_library!(app, "shaders/engine/grid_build.wesl");
+    load_shader_library!(app, "shaders/engine/prefix_sum.wesl");
+    load_shader_library!(app, "shaders/engine/step_driver.wesl");
+    load_shader_library!(app, "shaders/engine/render.wesl");
+    load_shader_library!(app, "shaders/rules/default_rules.wesl");
     app
       .insert_resource(Time::<Fixed>::from_seconds(DELTA_TIME))
       .init_state::<SimState>()

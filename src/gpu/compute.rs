@@ -19,9 +19,9 @@ use super::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME};
 use crate::config::*;
 use crate::sim::{ADAPTIVE_RANGE, RESOLVE};
 
-const GRID_SHADER: &str = "shaders/engine/grid_build.wesl";
-const SCAN_SHADER: &str = "shaders/engine/prefix_sum.wesl";
-const STEP_SHADER: &str = "shaders/engine/step_driver.wesl";
+const GRID_SHADER: &str = "embedded://partikl/gpu/shaders/engine/grid_build.wesl";
+const SCAN_SHADER: &str = "embedded://partikl/gpu/shaders/engine/prefix_sum.wesl";
+const STEP_SHADER: &str = "embedded://partikl/gpu/shaders/engine/step_driver.wesl";
 const WORKGROUP: u32 = 64;
 /// Rozmiar grupy przebiegu sił; musi zgadzać się z `@workgroup_size` w `step_driver.wesl`.
 const FORCES_WORKGROUP: u32 = 64;

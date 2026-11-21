@@ -1,0 +1,3 @@
+[alias]
+# Uruchomienie z przeładowaniem shaderów GPU, np. `cargo dev -- --gpu`.
+dev = "run --features dev"
