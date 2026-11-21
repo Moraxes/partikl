@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use bevy::app::SubApps;
 use bevy::render::RenderPlugin;
 use bevy::render::gpu_readback::{ReadbackComplete, ReadbackOnce};
+use bevy::render::pipelined_rendering::PipelinedRenderingPlugin;
 use bevy::render::render_resource::PollType;
 use bevy::render::renderer::RenderDevice;
 use bevy::render::storage::ShaderBuffer;
@@ -35,7 +36,10 @@ impl Harness {
         DefaultPlugins
           .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
           .set(RenderPlugin { synchronous_pipeline_compilation: true, ..default() })
-          .disable::<WinitPlugin>(),
+          .disable::<WinitPlugin>()
+          // Render w tym samym wywołaniu `update` co świat główny: po `update` i `poll(Wait)`
+          // praca kroków jest już wysłana i skończona (pomiar czasu w benchu tego wymaga).
+          .disable::<PipelinedRenderingPlugin>(),
       );
       app.insert_resource(options).insert_resource(spec).add_plugins(GpuPlugin);
       // Kroki liczy test, nie czas stały.
