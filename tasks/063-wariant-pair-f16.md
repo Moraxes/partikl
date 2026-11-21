@@ -3,7 +3,7 @@ id: 63
 title: Wariant PAIR_F16
 summary: 'Shader sił: matematyka par w f16 jako wariant pipeline''u; zapasowo f32 bez SHADER_F16'
 status: todo
-priority: soon
+priority: later
 branch: compute-shader-1
 part_of: 62
 created: 2026-11-21T19:19:16
