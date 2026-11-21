@@ -3,7 +3,7 @@ id: 64
 title: Dokładność f16
 summary: Testy i kryteria dokładności ścieżki f16, ocena wyglądu, decyzja o domyślnym
 status: todo
-priority: soon
+priority: later
 branch: compute-shader-1
 part_of: 62
 blocked_by:
