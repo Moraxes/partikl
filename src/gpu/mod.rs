@@ -20,6 +20,7 @@ use std::sync::atomic::AtomicU64;
 
 mod compute;
 mod step_budget;
+pub use compute::RuleParams;
 pub use compute::timing::{GpuTimings, PassTimes, entries as timing_entries};
 pub use step_budget::{SIM_SPEED, StepBudget, count_step};
 use step_budget::StepBudgetPlugin;
@@ -123,11 +124,6 @@ pub fn random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
     .collect()
 }
 
-/// Macierz sił spłaszczona jako `m[a * T + b]` (siła typu `a` na typ `b`).
-pub fn flatten_matrix(spec: &ParticleSpec) -> Vec<f32> {
-  spec.interactions.iter().flat_map(|row| row.force_coeffs.iter().copied()).collect()
-}
-
 /// Opis symulacji przekazywany do świata renderowania.
 #[derive(Resource, Clone, ExtractResource)]
 #[extract_app(RenderApp)]
@@ -136,7 +132,6 @@ pub struct GpuSim {
   pub num_particles: u32,
   pub num_types: u32,
   pub geometry: Geometry,
-  pub matrix: Arc<Vec<f32>>,
 }
 
 /// Parametry silnika inne niż `SimOptions` i licznik kroków: świat renderowania wykonuje
@@ -210,6 +205,7 @@ impl Plugin for GpuPlugin {
       .add_plugins((
         MaterialPlugin::<ParticleMaterial>::default(),
         ExtractResourcePlugin::<GpuSim>::default(),
+        ExtractResourcePlugin::<ParticleSpec>::default(),
         ExtractResourcePlugin::<SimOptions>::default(),
         ExtractResourcePlugin::<RuleSet>::default(),
         ExtractResourcePlugin::<GpuParams>::default(),
@@ -360,7 +356,6 @@ pub fn spawn_sim(
     num_particles: n as u32,
     num_types: spec.interactions.len() as u32,
     geometry: Geometry::new(world),
-    matrix: Arc::new(flatten_matrix(spec)),
   });
   state
 }

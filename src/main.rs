@@ -8,9 +8,13 @@ use partikl::{args, gpu, loading, ui};
 
 fn main() {
   let program_args = args::ProgramArgs::parse();
+  let spec = loading::get_particle_spec(&program_args).unwrap_or_else(|error| {
+    eprintln!("błąd: {error}");
+    std::process::exit(1);
+  });
   let mut app = App::new();
   app
-    .insert_resource(loading::get_particle_spec(&program_args))
+    .insert_resource(spec)
     .insert_resource(program_args.sim_options())
     .insert_resource(program_args)
     .add_plugins(

@@ -20,11 +20,11 @@ mod render;
 const WORLD: Vec2 = Vec2::new(500.0, 330.0);
 
 fn spec(rng: &mut StdRng, types: usize) -> ParticleSpec {
-  ParticleSpec {
-    interactions: (0..types)
+  ParticleSpec::new(
+    (0..types)
       .map(|_| Interaction { force_coeffs: (0..types).map(|_| rng.random_range(-500.0..500.0)).collect() })
       .collect(),
-  }
+  )
 }
 
 fn random_particles(rng: &mut StdRng, n: usize, types: usize, crowding: bool) -> Vec<GpuParticle> {

@@ -6,7 +6,8 @@
 //!
 //! Co klatkę w świecie renderowania:
 //! 1. [`buffers::create`] (raz, gdy stan cząstek jest już w świecie renderowania): bufory
-//!    siatki i macierz sił,
+//!    siatki, macierz sił i parametry reguł; [`buffers::upload_spec`] zapisuje je ponownie, gdy
+//!    zmieni się `ParticleSpec`,
 //! 2. [`pipelines::queue_forces`]: kolejkuje kompilację wariantu sił dla bieżących opcji,
 //! 3. [`step::plan`]: ile kroków w tej klatce, uniformy na każdy krok, bind group,
 //! 4. [`step::run`] (w `RenderGraph`, przed kamerą): dispatch przebiegów każdego kroku.
@@ -22,11 +23,13 @@ pub mod timing;
 use bevy::core_pipeline::schedule::camera_driver;
 use bevy::prelude::*;
 use bevy::render::render_resource::ShaderType;
+use serde::{Deserialize, Serialize};
 use bevy::render::extract_resource::ExtractResourcePlugin;
 use bevy::render::renderer::{RenderGraph, RenderGraphSystems};
 use bevy::render::{Render, RenderApp, RenderStartup, RenderSystems};
 
 use super::GpuSim;
+use crate::spec::ParticleSpec;
 use crate::config::*;
 
 /// Rozmiar grupy przebiegów po cząstkach i komórkach; musi zgadzać się z
@@ -74,8 +77,13 @@ impl EngineUniforms {
 /// Parametry reguł (promienie, jądro, tarcie…) w osobnym buforze, wspólnym dla wszystkich kroków;
 /// układ jak `RuleParams` w `engine/types.wesl`. Silnik ich nie czyta, więc zmiana reguł nie dotyka
 /// geometrii.
-#[derive(ShaderType, Clone, Copy, Debug)]
+///
+/// Pliki `.ron` ustawiają je w polu `params` (brakujące pola: wartości z `config.rs`). `dt` i
+/// `velocity_threshold` zostają stałe: krok czasowy i próg ruchu dzielą z silnikiem i renderem.
+#[derive(ShaderType, Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct RuleParams {
+  #[serde(skip)]
   pub dt: f32,
   pub repulsion_radius: f32,
   pub repulsion_strength: f32,
@@ -86,7 +94,39 @@ pub struct RuleParams {
   pub adaptive_range_max: f32,
   pub crowding_smoothing: f32,
   pub friction: f32,
+  #[serde(skip)]
   pub velocity_threshold: f32,
+}
+
+impl RuleParams {
+  /// Czy parametry mają sens fizyczny; zasięg oddziaływania nie może przekraczać zasięgu siatki
+  /// (`INTERACTION_RADIUS`).
+  pub fn validate(&self) -> Result<(), String> {
+    let finite = [
+      self.repulsion_radius,
+      self.repulsion_strength,
+      self.kernel_middle,
+      self.kernel_width,
+      self.average_neighbours,
+      self.adaptive_neighbours,
+      self.adaptive_range_max,
+      self.crowding_smoothing,
+      self.friction,
+    ];
+    if finite.iter().any(|v| !v.is_finite()) {
+      return Err("parametry reguł muszą być skończone".into());
+    }
+    if self.kernel_width <= 0.0 || self.adaptive_neighbours <= 0.0 || self.average_neighbours <= 0.0 {
+      return Err("kernel_width, average_neighbours i adaptive_neighbours muszą być dodatnie".into());
+    }
+    let reach = self.kernel_middle + self.kernel_width;
+    if reach > INTERACTION_RADIUS {
+      return Err(format!(
+        "kernel_middle + kernel_width = {reach} przekracza zasięg siatki {INTERACTION_RADIUS} (config::INTERACTION_RADIUS)"
+      ));
+    }
+    Ok(())
+  }
 }
 
 impl Default for RuleParams {
@@ -123,6 +163,11 @@ impl Plugin for GpuComputePlugin {
             .run_if(resource_exists::<GpuSim>)
             .run_if(not(resource_exists::<buffers::Buffers>))
             .in_set(RenderSystems::PrepareResources),
+          buffers::upload_spec
+            .run_if(resource_exists::<buffers::Buffers>)
+            .run_if(resource_changed::<ParticleSpec>)
+            .in_set(RenderSystems::PrepareResources)
+            .after(buffers::create),
           pipelines::queue_forces.in_set(RenderSystems::PrepareResources),
           step::plan.in_set(RenderSystems::PrepareBindGroups),
           timing::collect.in_set(RenderSystems::PrepareResources),

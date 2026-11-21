@@ -36,7 +36,7 @@ pub fn particle_spec(types: usize, seed: u64) -> ParticleSpec {
   let interactions = (0..types)
     .map(|_| Interaction { force_coeffs: (0..types).map(|_| rng.random_range(-500.0..500.0)).collect() })
     .collect();
-  ParticleSpec { interactions }
+  ParticleSpec::new(interactions)
 }
 
 pub fn nanos(d: Duration) -> u64 {

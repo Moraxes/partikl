@@ -117,6 +117,11 @@ impl Harness {
     *self.world().resource_mut::<RuleSet>() = rules;
   }
 
+  /// Podmienia macierz sił i parametry reguł (ta sama liczba typów); od następnego kroku.
+  pub fn set_spec(&mut self, spec: ParticleSpec) {
+    *self.world().resource_mut::<ParticleSpec>() = spec;
+  }
+
   /// Zmienia jakość rysowania w trakcie, jak klawisze B i A w aplikacji.
   pub fn set_quality(&mut self, quality: RenderQuality) {
     *self.world().resource_mut::<RenderQuality>() = quality;
