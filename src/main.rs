@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 use bevy::window::WindowMode;
+#[cfg(feature = "brp")]
+use bevy_brp_extras::BrpExtrasPlugin;
 use clap::Parser;
 
 use partikl::{args, gpu, loading, ui};
@@ -27,6 +29,8 @@ fn main() {
           ..Default::default()
         }),
     )
-    .add_plugins((gpu::GpuPlugin, ui::UiPlugin))
-    .run();
+    .add_plugins((gpu::GpuPlugin, ui::UiPlugin));
+  #[cfg(feature = "brp")]
+  app.add_plugins(BrpExtrasPlugin::default());
+  app.run();
 }

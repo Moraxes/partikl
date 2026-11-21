@@ -7,11 +7,14 @@ edition = "2024"
 # Przeładowanie shaderów GPU (wkompilowanych w binarkę) po zapisie pliku źródłowego.
 # Działa, gdy program startuje z katalogu repozytorium: `cargo dev`.
 dev = [ "bevy/embedded_watcher" ]
+# Zdalny dostęp BRP (zapytania ECS, screenshoty, symulacja wejścia) dla narzędzi MCP: `cargo run --features brp`.
+brp = [ "dep:bevy_brp_extras" ]
 
 [dependencies]
 ron = "0.12.3"
 clap = { version = "4.6.8", features = [ "derive" ] }
 bevy = "0.20"
+bevy_brp_extras = { version = "0.23", optional = true }
 bytemuck = { version = "1", features = [ "derive" ] }
 # Typy wgpu, których Bevy nie re-eksportuje (znaczniki czasu GPU); ta sama wersja co w Bevy.
 wgpu = { version = "30.0.2", default-features = false }
