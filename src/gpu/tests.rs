@@ -246,34 +246,35 @@ fn deterministic_mode_repeats_bit_for_bit() {
   assert_eq!(first, second, "trajektorie różnią się mimo trybu deterministycznego");
 }
 
-/// Cząstki są rysowane tylko tam, gdzie leżą: na obrazie nie ma linii ani rozciągniętych
-/// kształtów (błąd z `vertex_index` w `cb39173` rysował długie linie przez cały obraz).
-#[test]
-fn particles_are_drawn_only_near_their_positions() {
+/// Cztery nieruchome cząstki narysowane do obrazu 2× świata; piksele RGBA8 od lewego górnego rogu.
+fn render_still_particles(quality: RenderQuality) -> Option<(Vec<u8>, UVec2, Vec2, [Vec2; 4])> {
   use super::headless::Offscreen;
-  const SCALE: f32 = 2.0;
   let world = Vec2::new(200.0, 120.0);
-  let positions = [Vec2::new(0.0, 0.0), Vec2::new(-50.0, 20.0), Vec2::new(60.0, -30.0), Vec2::new(-80.0, -40.0)];
+  let positions = [Vec2::new(0.0, 0.0), Vec2::new(-50.3, 20.7), Vec2::new(60.1, -30.9), Vec2::new(-80.0, -40.0)];
   let particles: Vec<GpuParticle> = positions
     .iter()
     .enumerate()
     .map(|(id, p)| GpuParticle { pos: p.to_array(), last: p.to_array(), species: 0, crowding: 0.0, id: id as u32, pad: 0 })
     .collect();
-  let spec = spec(&mut StdRng::seed_from_u64(1), 2);
-  let size = (world * SCALE).as_uvec2();
-  let offscreen = Offscreen { size, msaa: Msaa::Sample4, hdr: true };
   // Zerowe siły: cząstki stoją w miejscu.
-  let Some(mut harness) = Harness::with_render(SimOptions::default(), zero_forces(spec), particles, world, Some(offscreen)) else {
-    return;
-  };
+  let spec = zero_forces(spec(&mut StdRng::seed_from_u64(1), 2));
+  let size = (world * 2.0).as_uvec2();
+  let mut harness = Harness::with_render(SimOptions::default(), spec, particles, world, Some(Offscreen { size, quality }))?;
   // Kilka klatek: zasoby (siatka, materiał, pipeline) trafiają na GPU z opóźnieniem.
   for _ in 0..6 {
     harness.update();
   }
   let pixels = harness.target_pixels();
   assert_eq!(pixels.len(), (size.x * size.y * 4) as usize);
+  Some((pixels, size, world, positions))
+}
+
+/// Cząstki są rysowane tylko tam, gdzie leżą: na obrazie nie ma linii ani rozciągniętych
+/// kształtów (błąd z `vertex_index` w `cb39173` rysował długie linie przez cały obraz).
+fn assert_drawn_only_near_positions(quality: RenderQuality) {
+  let Some((pixels, size, world, positions)) = render_still_particles(quality) else { return };
   // Piksel obrazu (od lewego górnego rogu) -> pozycja w świecie (y do góry).
-  let world_of = |x: u32, y: u32| Vec2::new((x as f32 + 0.5) / SCALE - world.x / 2.0, world.y / 2.0 - (y as f32 + 0.5) / SCALE);
+  let world_of = |x: u32, y: u32| Vec2::new((x as f32 + 0.5) / 2.0 - world.x / 2.0, world.y / 2.0 - (y as f32 + 0.5) / 2.0);
   let mut lit_near = [0u32; 4];
   for y in 0..size.y {
     for x in 0..size.x {
@@ -290,6 +291,36 @@ fn particles_are_drawn_only_near_their_positions() {
     }
   }
   assert!(lit_near.iter().all(|&n| n > 0), "cząstka bez zapalonych pikseli: {lit_near:?}");
+}
+
+#[test]
+fn particles_are_drawn_only_near_their_positions() {
+  assert_drawn_only_near_positions(RenderQuality::default());
+}
+
+#[test]
+fn antialiased_particles_are_drawn_only_near_their_positions() {
+  assert_drawn_only_near_positions(RenderQuality { analytic_aa: true, ..RenderQuality::default() });
+}
+
+/// Krawędź jest ostra (piksel albo jest cząstką, albo tłem) bez wygładzania i ma pośrednie
+/// jasności z `analytic_aa`. MSAA prawie nie zmienia krawędzi elipsy (okrąg wycina `discard`).
+#[test]
+fn analytic_aa_smooths_the_edge_and_msaa_barely_does() {
+  let intermediate = |quality| {
+    render_still_particles(quality).map(|(pixels, ..)| pixels.chunks(4).filter(|p| (40..180).contains(&p[0])).count())
+  };
+  let base = RenderQuality::default();
+  let (Some(sharp), Some(msaa), Some(smooth)) =
+    (intermediate(base), intermediate(RenderQuality { msaa: Msaa::Sample4, ..base }), intermediate(RenderQuality { analytic_aa: true, ..base }))
+  else {
+    return;
+  };
+  assert_eq!(sharp, 0, "krawędź bez wygładzania ma pośrednie jasności");
+  assert!(smooth > 0, "analityczne AA nie wygładziło krawędzi");
+  // MSAA wygładza tylko miejsca, gdzie okrąg dotyka krawędzi quada (kilka pikseli na cząstkę),
+  // a nie obwód elipsy.
+  assert!(msaa * 10 < smooth, "MSAA wygładziło obwód elipsy: {msaa} pikseli wobec {smooth} z analitycznym AA");
 }
 
 /// Macierz sił wyzerowana (cząstki nie przyspieszają).

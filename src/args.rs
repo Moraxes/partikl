@@ -52,6 +52,11 @@ pub struct ProgramArgs {
   #[arg(short = 's', long, default_value_t = 2.0)]
   pub particle_size: f32,
 
+  /// Smooth the particle edges in the fragment shader (costs about 1 ms per frame at 500k
+  /// particles; the edges are otherwise sharp).
+  #[arg(long)]
+  pub antialias: bool,
+
   /// Sort particles within grid cells so runs are bit-for-bit reproducible (slower).
   #[arg(long)]
   pub gpu_deterministic: bool,

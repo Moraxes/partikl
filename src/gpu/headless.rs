@@ -22,12 +22,11 @@ use crate::options::SimOptions;
 static LOCK: Mutex<()> = Mutex::new(());
 
 /// Rysowanie bez okna: kamera renderuje cały świat do obrazu o rozmiarze `size` (w pikselach
-/// fizycznych), z podanym MSAA i formatem HDR. Do benchmarku renderu.
+/// fizycznych) z podaną jakością. Do benchmarku renderu i testów rysowania.
 #[derive(Clone, Copy, Debug)]
 pub struct Offscreen {
   pub size: UVec2,
-  pub msaa: Msaa,
-  pub hdr: bool,
+  pub quality: RenderQuality,
 }
 
 /// Aplikacja bez okna, z własnym kołem aktualizacji; `None` bez adaptera GPU.
@@ -250,8 +249,10 @@ fn spawn_test_sim(
 ) {
   let colors = vec![Color::WHITE; spec.interactions.len()];
   let world = initial.1;
-  spawn_sim(&mut commands, buffers, meshes, materials, initial.0.take().unwrap(), &spec, world, 2.0, colors);
-  if let Some(Offscreen { size, msaa, hdr }) = initial.2 {
+  let analytic_aa = initial.2.is_some_and(|o| o.quality.analytic_aa);
+  let look = ParticleLook { size: 2.0, colors, analytic_aa };
+  spawn_sim(&mut commands, buffers, meshes, materials, initial.0.take().unwrap(), &spec, world, look);
+  if let Some(Offscreen { size, quality }) = initial.2 {
     let mut image = Image::new_target_texture(size.x, size.y, TextureFormat::Rgba8UnormSrgb, None);
     // Odczyt obrazu (`target_pixels`) kopiuje teksturę.
     image.texture_descriptor.usage |= TextureUsages::COPY_SRC;
@@ -259,7 +260,7 @@ fn spawn_test_sim(
     commands.insert_resource(OffscreenTarget(target.clone(), size));
     // Cały świat na całym obrazie, więc cząstka ma ten sam rozmiar w pikselach co w aplikacji
     // na ekranie o tym rozmiarze (`size / world` pikseli na jednostkę).
-    spawn_camera(&mut commands, Some(target), ScalingMode::Fixed { width: world.x, height: world.y }, msaa, hdr);
+    spawn_camera(&mut commands, Some(target), ScalingMode::Fixed { width: world.x, height: world.y }, &quality);
   }
 }
 

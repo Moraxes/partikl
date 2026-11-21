@@ -7,8 +7,12 @@ import super::types::Particle;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<storage, read> particles: array<Particle>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var<storage, read> colors: array<vec4<f32>>;
-// x: promień cząstki, y: próg kwadratu prędkości.
+// x: promień cząstki, y: próg kwadratu prędkości, z: 1 = wygładzona krawędź (alpha blending).
 @group(constants::MATERIAL_BIND_GROUP) @binding(2) var<uniform> params: vec4<f32>;
+
+// Obrzeże quada (w promieniach cząstki) na wygładzenie krawędzi: ok. 1 piksela przy promieniu
+// 4 pikseli.
+const AA_PAD: f32 = 1.25;
 
 struct Vertex {
   // xy: narożnik quada w jednostkach promienia, z: numer cząstki.
@@ -43,19 +47,30 @@ fn vertex(v: Vertex) -> VertexOutput {
     hv = hv / length(hv);
     rot = vec2<f32>(hv.y * hv.y - hv.x * hv.x, 2.0 * hv.x * hv.y);
   }
-  let local = corner * axes;
+  // Z wygładzaniem quad jest większy od okręgu o obrzeże na przejście krycia (poza okręgiem).
+  let pad = select(1.0, AA_PAD, params.z > 0.5);
+  let local = corner * pad * axes;
   let world = p.pos + vec2<f32>(rot.x * local.x - rot.y * local.y, rot.y * local.x + rot.x * local.y);
   var out: VertexOutput;
   out.clip = view.clip_from_world * vec4<f32>(world, 0.0, 1.0);
-  out.corner = corner;
+  out.corner = corner * pad;
   out.species = p.species;
   return out;
 }
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
+  let color = colors[in.species].rgb;
+  if params.z > 0.5 {
+    // Krycie piksela z odległości od krawędzi okręgu (w jednostkach promienia): pełne w
+    // środku, liniowe przejście na szerokość piksela. `fwidth` w jednolitym przepływie.
+    let d = length(in.corner);
+    let w = max(fwidth(d), 1.0e-4);
+    let coverage = clamp((1.0 - d) / w + 0.5, 0.0, 1.0);
+    return vec4<f32>(color, coverage);
+  }
   if dot(in.corner, in.corner) > 1.0 {
     discard;
   }
-  return vec4<f32>(colors[in.species].rgb, 1.0);
+  return vec4<f32>(color, 1.0);
 }

@@ -25,6 +25,7 @@ use bevy::prelude::*;
 use clap::Parser;
 
 use common::{Output, median, nanos, particle_spec, rng};
+use partikl::gpu::RenderQuality;
 use partikl::gpu::headless::{Harness, Offscreen};
 use partikl::options::{Overlap, SimOptions};
 use scenes::{Scene, candidates_mean};
@@ -43,12 +44,21 @@ struct Args {
   /// Sceny (gęstości).
   #[arg(long, value_delimiter = ',', default_value = "uniform")]
   scenes: Vec<Scene>,
-  /// Próbki MSAA kamery: 1 (wyłączone), 2 albo 4.
-  #[arg(long, value_delimiter = ',', default_value = "4,1")]
+  /// Próbki MSAA kamery: 1 (wyłączone, domyślne w aplikacji), 2 albo 4.
+  #[arg(long, value_delimiter = ',', default_value = "1")]
   msaa: Vec<u8>,
   /// Format głównej tekstury kamery: true = HDR (Rgba16Float), false = LDR.
   #[arg(long, value_delimiter = ',', default_value = "true")]
   hdr: Vec<bool>,
+  /// Tonemapping i dithering kamery (domyślne ustawienie Bevy); false = surowe kolory.
+  #[arg(long, value_delimiter = ',', default_value = "true")]
+  tonemap: Vec<bool>,
+  /// Analityczne wygładzanie krawędzi w fragment shaderze (alpha blending), z MSAA 1.
+  #[arg(long, value_delimiter = ',', default_value = "false")]
+  aa: Vec<bool>,
+  /// Katalog na zrzuty (PNG, pełny obraz) pierwszej klatki trybu `draw` każdego wariantu.
+  #[arg(long)]
+  screenshots: Option<PathBuf>,
   /// Tryby pomiaru: draw (sam render) i draw+step (klatka z krokiem).
   #[arg(long, value_delimiter = ',', default_value = "draw,draw+step")]
   modes: Vec<String>,
@@ -87,6 +97,27 @@ fn msaa(samples: u8) -> Msaa {
   }
 }
 
+/// Iloczyn trzech list (wszystkie kombinacje).
+fn iproduct<'a, A, B, C>(a: &'a [A], b: &'a [B], c: &'a [C]) -> impl Iterator<Item = (&'a A, &'a B, &'a C)> {
+  a.iter().flat_map(move |x| b.iter().flat_map(move |y| c.iter().map(move |z| (x, y, z))))
+}
+
+/// Zapisuje ostatnią zrenderowaną klatkę jako PNG.
+fn save_screenshot(harness: &mut Harness, dir: &std::path::Path, name: &str) {
+  use bevy::asset::RenderAssetUsages;
+  use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+  std::fs::create_dir_all(dir).expect("cannot create screenshot directory");
+  let pixels = harness.target_pixels();
+  let image = Image::new(
+    Extent3d { width: TARGET.x, height: TARGET.y, depth_or_array_layers: 1 },
+    TextureDimension::D2,
+    pixels,
+    TextureFormat::Rgba8UnormSrgb,
+    RenderAssetUsages::default(),
+  );
+  image.try_into_dynamic().expect("PNG").save(dir.join(name)).expect("cannot save screenshot");
+}
+
 fn main() {
   let args = Args::parse();
   let measured = args.measured.unwrap_or(if args.quick { QUICK_MEASURED } else { 60 });
@@ -106,11 +137,12 @@ fn main() {
   'cases: for &n in &args.sizes {
     for &scene in &args.scenes {
       for &samples in &args.msaa {
-        for &hdr in &args.hdr {
+        for (&hdr, &tonemapping, &analytic_aa) in iproduct(&args.hdr, &args.tonemap, &args.aa) {
           let state = scene.particles(n, args.types, WORLD, &mut rng(args.seed));
           let candidates = candidates_mean(&state, WORLD);
           let spec = particle_spec(args.types, args.seed);
-          let offscreen = Offscreen { size: TARGET, msaa: msaa(samples), hdr };
+          let quality = RenderQuality { msaa: msaa(samples), hdr, tonemapping, analytic_aa };
+          let offscreen = Offscreen { size: TARGET, quality };
           let Some(mut harness) = Harness::with_render(options, spec, state, WORLD, Some(offscreen)) else {
             break 'cases;
           };
@@ -127,7 +159,15 @@ fn main() {
             };
             let times: Vec<u64> = (0..args.warmup + measured).map(|_| frame()).collect();
             let samples_ns = &times[args.warmup..];
-            let variant = format!("msaa{samples} {} {mode}", if hdr { "hdr" } else { "ldr" });
+            let variant = format!(
+              "msaa{samples} {} {} {} {mode}",
+              if hdr { "hdr" } else { "ldr" },
+              if tonemapping { "tm" } else { "raw" },
+              if analytic_aa { "aa" } else { "noaa" },
+            );
+            if let (Some(dir), "draw") = (&args.screenshots, mode.as_str()) {
+              save_screenshot(&mut harness, dir, &format!("{n}-{scene}-{}.png", variant.replace(' ', "_")));
+            }
             let rows = samples_ns.len();
             let batch = RecordBatch::try_new(
               schema.clone(),

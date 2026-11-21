@@ -13,9 +13,12 @@ pub struct ParticleMaterial {
   pub particles: Handle<ShaderBuffer>,
   #[storage(1, read_only)]
   pub colors: Handle<ShaderBuffer>,
-  /// x: promień cząstki, y: próg kwadratu prędkości dla kształtu.
+  /// x: promień cząstki, y: próg kwadratu prędkości dla kształtu, z: 1 = krawędź wygładzona w
+  /// fragment shaderze (alpha blending), 0 = ostra krawędź (`discard`).
   #[uniform(2)]
   pub params: Vec4,
+  /// Jak `params.z`; wybiera tryb mieszania materiału.
+  pub analytic_aa: bool,
 }
 
 impl Material for ParticleMaterial {
@@ -25,5 +28,9 @@ impl Material for ParticleMaterial {
 
   fn fragment_shader() -> ShaderRef {
     SHADER.into()
+  }
+
+  fn alpha_mode(&self) -> AlphaMode {
+    if self.analytic_aa { AlphaMode::Blend } else { AlphaMode::Opaque }
   }
 }

@@ -4,6 +4,7 @@
 
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::{ClearColorConfig, Hdr, RenderTarget, ScalingMode};
+use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::mesh::PrimitiveTopology;
 use bevy::prelude::*;
 use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
@@ -213,25 +214,58 @@ fn init_gpu(
   let world = screen.get();
   info!("świat symulacji {world} (ekran)");
   let particles = initial_particles(args.num_particles, spec.interactions.len(), world, &mut rng);
-  let colors = random_colors(spec.interactions.len(), &mut rng);
-  spawn_sim(&mut commands, buffers, meshes, materials, particles, &spec, world, args.particle_size, colors);
+  let quality = RenderQuality { analytic_aa: args.antialias, ..RenderQuality::default() };
+  let look = ParticleLook { size: args.particle_size, colors: random_colors(spec.interactions.len(), &mut rng), analytic_aa: quality.analytic_aa };
+  spawn_sim(&mut commands, buffers, meshes, materials, particles, &spec, world, look);
 
-  spawn_camera(&mut commands, None, ScalingMode::WindowSize, Msaa::Sample4, true);
+  spawn_camera(&mut commands, None, ScalingMode::WindowSize, &quality);
+}
+
+/// Jakość rysowania: wygładzanie krawędzi (MSAA albo analitycznie w fragment shaderze, nie oba
+/// naraz), format głównej tekstury kamery (HDR to `Rgba16Float`) i tonemapping z ditheringiem.
+///
+/// MSAA nie wygładza krawędzi elips: okrąg wycina `discard` w fragment shaderze (jedna decyzja
+/// na piksel), więc MSAA kosztuje (ok. 12% renderu przy 500k), a obraz zostaje taki sam. Stąd
+/// domyślnie wyłączone. HDR z tonemappingiem zostaje, bo daje obecne (przygaszone) kolory;
+/// bez HDR kamera nie tonemapuje i kolory są żywsze (np. biały 255 zamiast 196).
+#[derive(Clone, Copy, Debug)]
+pub struct RenderQuality {
+  pub msaa: Msaa,
+  pub hdr: bool,
+  pub tonemapping: bool,
+  /// Krawędź elipsy wygładzona w fragment shaderze (alpha blending); z MSAA wyłączonym.
+  pub analytic_aa: bool,
+}
+
+impl Default for RenderQuality {
+  fn default() -> Self {
+    RenderQuality { msaa: Msaa::Off, hdr: true, tonemapping: true, analytic_aa: false }
+  }
+}
+
+/// Wygląd cząstek: promień, kolory typów, wygładzenie krawędzi.
+pub struct ParticleLook {
+  pub size: f32,
+  pub colors: Vec<Color>,
+  pub analytic_aa: bool,
 }
 
 /// Kamera symulacji: rzut ortogonalny na czarnym tle. `target` `None` to okno główne; obraz to
-/// rysowanie bez okna (benchmark renderu). `hdr` wybiera format głównej tekstury kamery.
-pub fn spawn_camera(commands: &mut Commands, target: Option<Handle<Image>>, scaling_mode: ScalingMode, msaa: Msaa, hdr: bool) {
+/// rysowanie bez okna (benchmark renderu).
+pub fn spawn_camera(commands: &mut Commands, target: Option<Handle<Image>>, scaling_mode: ScalingMode, quality: &RenderQuality) {
   let mut camera = commands.spawn((
     MainCamera { zoom_base: 1.125, zoom_exponent: 1 },
     Camera3d::default(),
     Camera { clear_color: ClearColorConfig::Custom(Color::BLACK), ..Default::default() },
-    msaa,
+    quality.msaa,
     Transform::from_xyz(0.0, 0.0, 1000.0).looking_at(Vec3::ZERO, Vec3::Y),
     Projection::from(OrthographicProjection { scaling_mode, ..OrthographicProjection::default_3d() }),
   ));
-  if hdr {
+  if quality.hdr {
     camera.insert(Hdr);
+  }
+  if !quality.tonemapping {
+    camera.insert((Tonemapping::None, DebandDither::Disabled));
   }
   if let Some(image) = target {
     camera.insert(RenderTarget::Image(image.into()));
@@ -249,11 +283,10 @@ pub fn spawn_sim(
   particles: Vec<GpuParticle>,
   spec: &ParticleSpec,
   world: Vec2,
-  particle_size: f32,
-  colors: Vec<Color>,
+  look: ParticleLook,
 ) -> Handle<ShaderBuffer> {
   let n = particles.len();
-  let colors: Vec<[f32; 4]> = colors.into_iter().map(|color| LinearRgba::from(color).to_f32_array()).collect();
+  let colors: Vec<[f32; 4]> = look.colors.into_iter().map(|color| LinearRgba::from(color).to_f32_array()).collect();
   let state = buffers.add(ShaderBuffer::new(particles, RenderAssetUsages::RENDER_WORLD));
   let colors = buffers.add(ShaderBuffer::new(colors, RenderAssetUsages::RENDER_WORLD));
 
@@ -262,7 +295,8 @@ pub fn spawn_sim(
   let material = materials.add(ParticleMaterial {
     particles: state.clone(),
     colors,
-    params: Vec4::new(particle_size, VELOCITY_THRESHOLD, 0.0, 0.0),
+    params: Vec4::new(look.size, VELOCITY_THRESHOLD, if look.analytic_aa { 1.0 } else { 0.0 }, 0.0),
+    analytic_aa: look.analytic_aa,
   });
   commands.spawn((Mesh3d(meshes.add(mesh)), MeshMaterial3d(material), NoFrustumCulling));
 
