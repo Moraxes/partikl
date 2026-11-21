@@ -1,6 +1,6 @@
 //! Symulacja na GPU: stan cząstek w buforach, siatka (counting sort) i siły w compute
 //! shaderach (`src/gpu/shaders`), rysowanie wprost z bufora stanu. Silnik CPU (`sim`) zostaje
-//! jako punkt odniesienia i wyrocznia w testach. Włączane flagą `--gpu`.
+//! jako punkt odniesienia i wyrocznia w testach. Domyślny tryb; `--cpu` wybiera silnik CPU.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::{ClearColorConfig, Hdr, ScalingMode};

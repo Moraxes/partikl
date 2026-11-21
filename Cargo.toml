@@ -5,7 +5,7 @@ edition = "2024"
 
 [features]
 # Przeładowanie shaderów GPU (wkompilowanych w binarkę) po zapisie pliku źródłowego.
-# Działa, gdy program startuje z katalogu repozytorium: `cargo dev -- --gpu`.
+# Działa, gdy program startuje z katalogu repozytorium: `cargo dev`.
 dev = [ "bevy/embedded_watcher" ]
 
 [dependencies]

@@ -1,7 +1,7 @@
 use bevy::prelude::Resource;
 
 use crate::sim::{Overlap, SimOptions};
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug, Resource)]
@@ -52,18 +52,18 @@ pub struct ProgramArgs {
   #[arg(short = 's', long, default_value_t = 2.0)]
   pub particle_size: f32,
 
-  /// Run the simulation on the GPU (compute shaders) instead of the CPU.
-  #[arg(long)]
+  /// Run the simulation on the CPU instead of the GPU (compute shaders).
+  #[arg(long = "cpu", action = ArgAction::SetFalse)]
   pub gpu: bool,
 
-  /// With --gpu: sort particles within grid cells so runs are bit-for-bit reproducible.
-  #[arg(long, requires = "gpu")]
+  /// GPU only: sort particles within grid cells so runs are bit-for-bit reproducible.
+  #[arg(long, conflicts_with = "gpu")]
   pub gpu_deterministic: bool,
 
-  /// Scale each particle's force down when it has more neighbours than usual.
+  /// Don't scale each particle's force down when it has more neighbours than usual.
   ///
-  /// Toggled at runtime with N.
-  #[arg(long)]
+  /// Averaging is on by default; toggled at runtime with N.
+  #[arg(long = "no-average-forces", action = ArgAction::SetFalse)]
   pub average_forces: bool,
 
   /// How overlapping particles push each other apart.
@@ -79,3 +79,6 @@ impl ProgramArgs {
     SimOptions { average_forces: self.average_forces, overlap: self.overlap }
   }
 }
+
+#[cfg(test)]
+mod tests;
