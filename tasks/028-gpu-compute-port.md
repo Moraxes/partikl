@@ -28,5 +28,9 @@ links:
   target: d340ac1
   at: 2026-11-21T13:31:13
   note: 'fix(gpu): wait for every thread to read the block sum before clearing it'
+- kind: commit
+  target: fb15142
+  at: 2026-11-21T13:31:13
+  note: 'fix(gpu): grow grid cells instead of panicking on large worlds'
 ---
 Cel: M1a (szkielet GPU, render instanced) i M1b (siatka + siły na GPU, testy, bench). Next step: moduł src/gpu z buforami ping-pong.
