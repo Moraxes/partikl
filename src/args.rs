@@ -41,7 +41,7 @@ pub struct ProgramArgs {
   pub num_types: usize,
 
   /// Number of particles to be generated initially.
-  #[arg(short = 'n', long, default_value_t = 1000)]
+  #[arg(short = 'n', long, default_value_t = 100000)]
   pub num_particles: usize,
 
   /// Prevents the interaction spec from being dumped.
