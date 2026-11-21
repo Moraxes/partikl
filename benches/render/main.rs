@@ -17,7 +17,7 @@ mod scenes;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use arrow_array::{ArrayRef, Float32Array, RecordBatch, StringArray, UInt16Array, UInt32Array, UInt64Array};
 use arrow_schema::{DataType, Field, Schema};
@@ -66,9 +66,17 @@ struct Args {
   /// aplikacji), w skali 1:1 i 4×.
   #[arg(long)]
   gallery: Option<PathBuf>,
-  /// Tryby pomiaru: draw (sam render) i draw+step (klatka z krokiem).
+  /// Tryby pomiaru: draw (sam render), draw+step (klatka z krokiem) i loop (pętla jak w
+  /// aplikacji: prawdziwy stały krok i `StepBudget`, klatki bez przerwy; mierzy czas klatki i
+  /// prędkość symulacji w % czasu rzeczywistego).
   #[arg(long, value_delimiter = ',', default_value = "draw,draw+step")]
   modes: Vec<String>,
+  /// Rozgrzewka trybu loop w sekundach.
+  #[arg(long, default_value_t = 2.0)]
+  loop_warmup: f32,
+  /// Czas pomiaru trybu loop w sekundach.
+  #[arg(long, default_value_t = 5.0)]
+  loop_seconds: f32,
   /// Kroki symulacji przed pomiarem (stan w kolejności siatki).
   #[arg(long, default_value_t = 5)]
   steps: u64,
@@ -178,7 +186,7 @@ fn gallery(args: &Args, dir: &std::path::Path) {
   let state = harness.run(args.gallery_steps);
   drop(harness);
   let render = |quality: RenderQuality| -> Vec<u8> {
-    let offscreen = Offscreen { size: TARGET, quality, app_colors: true };
+    let offscreen = Offscreen { size: TARGET, quality, app_colors: true, real_time: false };
     let mut harness = Harness::with_render(options, spec(), state.clone(), WORLD, Some(offscreen)).expect("GPU");
     for _ in 0..6 {
       harness.update();
@@ -221,10 +229,11 @@ fn main() {
     Field::new("candidates_mean", DataType::Float32, false),
     Field::new("rep", DataType::UInt16, false),
     Field::new("frame_ns", DataType::UInt64, false),
+    Field::new("sim_speed", DataType::Float32, true),
   ]));
   let mut output = Output::new("render", &args.out_dir, WORLD, args.warmup, measured, schema.clone());
   let options = SimOptions { average_forces: true, overlap: Overlap::default() };
-  println!("{:>9} {:<9} {:<26} {:>9} {:>10}", "n", "scene", "variant", "kandydaci", "klatka ms");
+  println!("{:>9} {:<9} {:<26} {:>9} {:>10} {:>8}", "n", "scene", "variant", "kandydaci", "klatka ms", "symul.");
   'cases: for &n in &args.sizes {
     for &scene in &args.scenes {
       for &samples in &args.msaa {
@@ -233,23 +242,37 @@ fn main() {
           let candidates = candidates_mean(&state, WORLD);
           let spec = particle_spec(args.types, args.seed);
           let quality = RenderQuality { msaa: msaa(samples), hdr, tonemapping, analytic_aa };
-          let offscreen = Offscreen { size: TARGET, quality, app_colors: false };
+          let offscreen = Offscreen { size: TARGET, quality, app_colors: false, real_time: args.modes.iter().any(|m| m == "loop") };
           let Some(mut harness) = Harness::with_render(options, spec, state, WORLD, Some(offscreen)) else {
             break 'cases;
           };
           harness.step(args.steps);
           for mode in &args.modes {
-            let mut frame = || {
-              let start = Instant::now();
-              match mode.as_str() {
-                "draw" => harness.update(),
-                "draw+step" => harness.step(1),
-                other => panic!("tryb {other}: draw albo draw+step"),
-              }
-              nanos(start.elapsed())
+            // Prędkość symulacji na klatkę (tylko `loop`), reszta trybów: brak.
+            let mut speeds: Vec<Option<f32>> = Vec::new();
+            let samples_ns: Vec<u64> = if mode == "loop" {
+              // Pętla jak w aplikacji: rozgrzewka (kompilacja, ułożenie stanu w kolejności siatki),
+              // potem pomiar przez `--loop-seconds`; do pliku trafia ostatnie 65535 klatek.
+              harness.run_loop(Duration::from_secs_f32(args.loop_warmup));
+              let stats = harness.run_loop(Duration::from_secs_f32(args.loop_seconds));
+              let keep = stats.frame_ns.len().min(u16::MAX as usize);
+              let from = stats.frame_ns.len() - keep;
+              speeds = stats.sim_speed[from..].to_vec();
+              stats.frame_ns[from..].to_vec()
+            } else {
+              let mut frame = || {
+                let start = Instant::now();
+                match mode.as_str() {
+                  "draw" => harness.update(),
+                  "draw+step" => harness.step(1),
+                  other => panic!("tryb {other}: draw, draw+step albo loop"),
+                }
+                nanos(start.elapsed())
+              };
+              let times: Vec<u64> = (0..args.warmup + measured).map(|_| frame()).collect();
+              times[args.warmup..].to_vec()
             };
-            let times: Vec<u64> = (0..args.warmup + measured).map(|_| frame()).collect();
-            let samples_ns = &times[args.warmup..];
+            let samples_ns = &samples_ns[..];
             let variant = format!(
               "msaa{samples} {} {} {} {mode}",
               if hdr { "hdr" } else { "ldr" },
@@ -271,12 +294,20 @@ fn main() {
                 Arc::new(Float32Array::from(vec![candidates as f32; rows])),
                 Arc::new(UInt16Array::from((0..rows as u16).collect::<Vec<_>>())),
                 Arc::new(UInt64Array::from(samples_ns.to_vec())),
+                Arc::new(Float32Array::from(if speeds.is_empty() { vec![None; rows] } else { speeds.clone() })),
               ],
             )
             .unwrap();
             output.write(&batch);
             let mut floats: Vec<f64> = samples_ns.iter().map(|&t| t as f64).collect();
-            println!("{n:>9} {scene:<9} {variant:<26} {candidates:>9.0} {:>10.2}", median(&mut floats) / 1e6);
+            let frame_ms = median(&mut floats) / 1e6;
+            let speed = if speeds.is_empty() {
+              "-".to_string()
+            } else {
+              let mut s: Vec<f64> = speeds.iter().flatten().map(|&v| v as f64 * 100.0).collect();
+              format!("{:.0}%", median(&mut s))
+            };
+            println!("{n:>9} {scene:<9} {variant:<26} {candidates:>9.0} {frame_ms:>10.2} {speed:>8}");
           }
         }
       }

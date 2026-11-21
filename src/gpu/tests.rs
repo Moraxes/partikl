@@ -271,7 +271,7 @@ fn still_particles_harness(quality: RenderQuality) -> Option<(Harness, UVec2, Ve
   // Zerowe siły: cząstki stoją w miejscu.
   let spec = zero_forces(spec(&mut StdRng::seed_from_u64(1), 2));
   let size = (world * 2.0).as_uvec2();
-  let harness = Harness::with_render(SimOptions::default(), spec, particles, world, Some(Offscreen { size, quality, app_colors: false }))?;
+  let harness = Harness::with_render(SimOptions::default(), spec, particles, world, Some(Offscreen { size, quality, app_colors: false, real_time: false }))?;
   Some((harness, size, world, positions))
 }
 
@@ -362,6 +362,25 @@ fn render_quality_switches_at_runtime() {
 
   harness.set_quality(base);
   assert_eq!(intermediate(&frame(&mut harness)), 0, "krawędź nadal wygładzona po wyłączeniu AA");
+}
+
+/// Pętla jak w aplikacji (`real_time`): kroki wynikają ze stałego kroku w czasie rzeczywistym,
+/// więc w sekundzie wychodzi ok. 100 kroków przy pełnej prędkości symulacji.
+#[test]
+fn real_time_loop_runs_the_fixed_step_clock() {
+  use super::headless::Offscreen;
+  let mut rng = StdRng::seed_from_u64(31);
+  let spec = spec(&mut rng, 3);
+  let particles = random_particles(&mut rng, 2_000, 3, false);
+  let offscreen = Offscreen { size: UVec2::new(64, 40), quality: RenderQuality::default(), app_colors: false, real_time: true };
+  let Some(mut harness) = Harness::with_render(SimOptions::default(), spec, particles, WORLD, Some(offscreen)) else { return };
+  harness.run_loop(std::time::Duration::from_millis(500));
+  let stats = harness.run_loop(std::time::Duration::from_secs(1));
+  assert!(stats.frame_ns.len() > 10, "klatek: {}", stats.frame_ns.len());
+  // 100 kroków na sekundę z zapasem na obciążenie maszyny.
+  assert!((50..=150).contains(&stats.steps), "kroków w sekundzie: {}", stats.steps);
+  let speed = stats.sim_speed.last().copied().flatten().expect("prędkość symulacji");
+  assert!(speed > 0.5, "prędkość {speed}");
 }
 
 /// Macierz sił wyzerowana (cząstki nie przyspieszają).

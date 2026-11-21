@@ -29,6 +29,23 @@ pub struct Offscreen {
   pub quality: RenderQuality,
   /// Kolory typów jak w aplikacji (losowe LCH, stałe ziarno) zamiast białych.
   pub app_colors: bool,
+  /// Zegar kroków jak w aplikacji (stały krok `DELTA_TIME` z `StepBudget`) zamiast kroków
+  /// liczonych przez wywołującego; dla `run_loop`.
+  pub real_time: bool,
+}
+
+/// Wynik `Harness::run_loop`: po jednym wpisie na klatkę.
+#[derive(Clone, Debug, Default)]
+pub struct LoopStats {
+  /// Czas klatki w nanosekundach.
+  pub frame_ns: Vec<u64>,
+  /// Prędkość symulacji (średnia z `StepBudget`, 1,0 = czas rzeczywisty); `None` przed pierwszym
+  /// taktem.
+  pub sim_speed: Vec<Option<f32>>,
+  /// Limit kroków na klatkę (`StepBudget::limit`).
+  pub limit: Vec<u32>,
+  /// Kroki symulacji wykonane na GPU w pętli.
+  pub steps: u64,
 }
 
 /// Aplikacja bez okna, z własnym kołem aktualizacji; `None` bez adaptera GPU.
@@ -54,21 +71,23 @@ impl Harness {
     let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
       let mut app = App::new();
-      app.add_plugins(
-        DefaultPlugins
-          .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
-          .set(RenderPlugin { synchronous_pipeline_compilation: true, ..default() })
-          .disable::<WinitPlugin>()
-          // Render w tym samym wywołaniu `update` co świat główny: po `update` i `poll(Wait)`
-          // praca kroków jest już wysłana i skończona (pomiar czasu w benchu tego wymaga).
-          .disable::<PipelinedRenderingPlugin>(),
-      );
+      let plugins = DefaultPlugins
+        .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
+        .set(RenderPlugin { synchronous_pipeline_compilation: true, ..default() })
+        .disable::<WinitPlugin>();
+      // Render w tym samym wywołaniu `update` co świat główny: po `update` i `poll(Wait)` praca
+      // kroków jest już wysłana i skończona (pomiar czasu w benchu tego wymaga). Tylko pętla
+      // `real_time` zostawia potokowanie jak w aplikacji.
+      let plugins = if offscreen.is_some_and(|o| o.real_time) { plugins } else { plugins.disable::<PipelinedRenderingPlugin>() };
+      app.add_plugins(plugins);
       // Jakość rysowania kamery offscreen jest też zasobem, który system `apply_render_quality`
       // stosuje co zmianę (bez tego domyślna nadpisałaby kamerę).
       app.insert_resource(offscreen.map(|o| o.quality).unwrap_or_default());
       app.insert_resource(options).insert_resource(spec).add_plugins(GpuPlugin);
-      // Kroki liczy test, nie czas stały.
-      app.insert_resource(Time::<Fixed>::from_seconds(1.0e9));
+      // Kroki liczy test, nie czas stały (chyba że `real_time`: zegar jak w aplikacji).
+      if !offscreen.is_some_and(|o| o.real_time) {
+        app.insert_resource(Time::<Fixed>::from_seconds(1.0e9));
+      }
       app.insert_resource(Initial(Some(particles), world, offscreen));
       app.insert_resource(Request(None)).insert_resource(ImageRequest(None));
       app.add_systems(Startup, spawn_test_sim).add_systems(
@@ -126,6 +145,26 @@ impl Harness {
 
   pub fn world(&mut self) -> &mut World {
     self.apps.main.world_mut()
+  }
+
+  /// Pętla jak w aplikacji: klatki jedna po drugiej przez `duration` (z `real_time` kroki wynikają
+  /// z czasu rzeczywistego i `StepBudget`). Bez potokowania renderu: klatka czeka na GPU, więc
+  /// czasy klatek są dłuższe niż w aplikacji, ale regulator widzi to samo obciążenie.
+  pub fn run_loop(&mut self, duration: Duration) -> LoopStats {
+    let end = Instant::now() + duration;
+    let mut stats = LoopStats::default();
+    let progress = self.world().resource::<GpuProgress>().0.clone();
+    let steps_before = progress.load(Ordering::SeqCst);
+    while Instant::now() < end {
+      let start = Instant::now();
+      self.update();
+      stats.frame_ns.push(start.elapsed().as_nanos() as u64);
+      let budget = self.world().resource::<StepBudget>();
+      stats.sim_speed.push(budget.speed());
+      stats.limit.push(budget.limit);
+    }
+    stats.steps = progress.load(Ordering::SeqCst) - steps_before;
+    stats
   }
 
   pub fn update(&mut self) {
