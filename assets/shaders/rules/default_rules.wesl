@@ -27,8 +27,9 @@ fn adaptive_radius(crowding: f32, u: SimUniforms) -> f32 {
 // `self_p` do `other_p` (po torusie), `coeff` to siła typu sąsiada na typ `self_p`, `weight`
 // waga próbkowania (1 bez próbkowania).
 fn pair_interact(self_p: Particle, other_p: Particle, delta: vec2<f32>, dist_sq: f32, coeff: f32, weight: f32, u: SimUniforms, accum: ptr<function, RuleAccum>) {
-  let dist = sqrt(dist_sq);
-  let dir = delta / dist;
+  let inv = inverseSqrt(dist_sq);
+  let dist = dist_sq * inv;
+  let dir = delta * inv;
   var reach = u.repulsion_radius;
 @if(OVERLAP_ADAPTIVE) {
   reach = max(adaptive_radius(self_p.crowding, u), adaptive_radius(other_p.crowding, u));

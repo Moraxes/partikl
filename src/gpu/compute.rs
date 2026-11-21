@@ -23,6 +23,8 @@ const GRID_SHADER: &str = "shaders/engine/grid_build.wesl";
 const SCAN_SHADER: &str = "shaders/engine/prefix_sum.wesl";
 const STEP_SHADER: &str = "shaders/engine/step_driver.wesl";
 const WORKGROUP: u32 = 64;
+/// Rozmiar grupy przebiegu sił; musi zgadzać się z `@workgroup_size` w `step_driver.wesl`.
+const FORCES_WORKGROUP: u32 = 64;
 const SCAN_BLOCK: u32 = 256;
 /// Próbkowanie sąsiadów powyżej tylu kandydatów (jak `NEIGHBOUR_CAP` na CPU).
 const MAX_CANDIDATES: u32 = 512;
@@ -306,6 +308,7 @@ fn run_steps(
   }
   let get = |id| cache.get_compute_pipeline(id).unwrap();
   let particle_groups = sim.num_particles.div_ceil(WORKGROUP);
+  let force_groups = sim.num_particles.div_ceil(FORCES_WORKGROUP);
   let cell_groups = sim.geometry.num_cells().div_ceil(WORKGROUP);
   let block_groups = sim.geometry.num_cells().div_ceil(SCAN_BLOCK);
   let mut pass = context.command_encoder().begin_compute_pass(&ComputePassDescriptor { label: Some("partikl_step"), ..default() });
@@ -319,7 +322,7 @@ fn run_steps(
       (pipelines.scan_sums, 1),
       (pipelines.add_offsets, block_groups),
       (pipelines.scatter, particle_groups),
-      (pipelines.forces[&steps.variant], particle_groups),
+      (pipelines.forces[&steps.variant], force_groups),
     ] {
       pass.set_pipeline(get(pipeline));
       pass.dispatch_workgroups(groups, 1, 1);
