@@ -3,7 +3,7 @@
 //! skalarna implementacja f64 (`tests.rs`).
 
 use bevy::asset::RenderAssetUsages;
-use bevy::camera::{ClearColorConfig, Hdr, ScalingMode};
+use bevy::camera::{ClearColorConfig, Hdr, RenderTarget, ScalingMode};
 use bevy::mesh::PrimitiveTopology;
 use bevy::prelude::*;
 use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
@@ -216,15 +216,26 @@ fn init_gpu(
   let colors = random_colors(spec.interactions.len(), &mut rng);
   spawn_sim(&mut commands, buffers, meshes, materials, particles, &spec, world, args.particle_size, colors);
 
-  commands.spawn((
+  spawn_camera(&mut commands, None, ScalingMode::WindowSize, Msaa::Sample4, true);
+}
+
+/// Kamera symulacji: rzut ortogonalny na czarnym tle. `target` `None` to okno główne; obraz to
+/// rysowanie bez okna (benchmark renderu). `hdr` wybiera format głównej tekstury kamery.
+pub fn spawn_camera(commands: &mut Commands, target: Option<Handle<Image>>, scaling_mode: ScalingMode, msaa: Msaa, hdr: bool) {
+  let mut camera = commands.spawn((
     MainCamera { zoom_base: 1.125, zoom_exponent: 1 },
     Camera3d::default(),
-    Hdr,
     Camera { clear_color: ClearColorConfig::Custom(Color::BLACK), ..Default::default() },
-    Msaa::Sample4,
+    msaa,
     Transform::from_xyz(0.0, 0.0, 1000.0).looking_at(Vec3::ZERO, Vec3::Y),
-    Projection::from(OrthographicProjection { scaling_mode: ScalingMode::WindowSize, ..OrthographicProjection::default_3d() }),
+    Projection::from(OrthographicProjection { scaling_mode, ..OrthographicProjection::default_3d() }),
   ));
+  if hdr {
+    camera.insert(Hdr);
+  }
+  if let Some(image) = target {
+    camera.insert(RenderTarget::Image(image.into()));
+  }
 }
 
 /// Wysyła `particles` na GPU, tworzy encję do rysowania i zasób `GpuSim`; zwraca uchwyt bufora

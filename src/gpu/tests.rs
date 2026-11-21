@@ -246,6 +246,60 @@ fn deterministic_mode_repeats_bit_for_bit() {
   assert_eq!(first, second, "trajektorie różnią się mimo trybu deterministycznego");
 }
 
+/// Cząstki są rysowane tylko tam, gdzie leżą: na obrazie nie ma linii ani rozciągniętych
+/// kształtów (błąd z `vertex_index` w `cb39173` rysował długie linie przez cały obraz).
+#[test]
+fn particles_are_drawn_only_near_their_positions() {
+  use super::headless::Offscreen;
+  const SCALE: f32 = 2.0;
+  let world = Vec2::new(200.0, 120.0);
+  let positions = [Vec2::new(0.0, 0.0), Vec2::new(-50.0, 20.0), Vec2::new(60.0, -30.0), Vec2::new(-80.0, -40.0)];
+  let particles: Vec<GpuParticle> = positions
+    .iter()
+    .enumerate()
+    .map(|(id, p)| GpuParticle { pos: p.to_array(), last: p.to_array(), species: 0, crowding: 0.0, id: id as u32, pad: 0 })
+    .collect();
+  let spec = spec(&mut StdRng::seed_from_u64(1), 2);
+  let size = (world * SCALE).as_uvec2();
+  let offscreen = Offscreen { size, msaa: Msaa::Sample4, hdr: true };
+  // Zerowe siły: cząstki stoją w miejscu.
+  let Some(mut harness) = Harness::with_render(SimOptions::default(), zero_forces(spec), particles, world, Some(offscreen)) else {
+    return;
+  };
+  // Kilka klatek: zasoby (siatka, materiał, pipeline) trafiają na GPU z opóźnieniem.
+  for _ in 0..6 {
+    harness.update();
+  }
+  let pixels = harness.target_pixels();
+  assert_eq!(pixels.len(), (size.x * size.y * 4) as usize);
+  // Piksel obrazu (od lewego górnego rogu) -> pozycja w świecie (y do góry).
+  let world_of = |x: u32, y: u32| Vec2::new((x as f32 + 0.5) / SCALE - world.x / 2.0, world.y / 2.0 - (y as f32 + 0.5) / SCALE);
+  let mut lit_near = [0u32; 4];
+  for y in 0..size.y {
+    for x in 0..size.x {
+      let i = ((y * size.x + x) * 4) as usize;
+      // Tło jest czarne z szumem dithering (±1/255), cząstka jest wyraźnie jaśniejsza.
+      let lit = pixels[i..i + 3].iter().any(|&c| c > 40);
+      let w = world_of(x, y);
+      let nearest = positions.iter().enumerate().map(|(k, p)| (k, p.distance(w))).min_by(|a, b| a.1.total_cmp(&b.1)).unwrap();
+      // Promień cząstki to 2 jednostki; z marginesem na krawędź i wygładzanie.
+      if lit {
+        assert!(nearest.1 < 3.5, "zapalony piksel ({x}, {y}) {w} jest {} od najbliższej cząstki", nearest.1);
+        lit_near[nearest.0] += 1;
+      }
+    }
+  }
+  assert!(lit_near.iter().all(|&n| n > 0), "cząstka bez zapalonych pikseli: {lit_near:?}");
+}
+
+/// Macierz sił wyzerowana (cząstki nie przyspieszają).
+fn zero_forces(mut spec: ParticleSpec) -> ParticleSpec {
+  for row in &mut spec.interactions {
+    row.force_coeffs.iter_mut().for_each(|c| *c = 0.0);
+  }
+  spec
+}
+
 #[test]
 fn set_state_replaces_particles_on_gpu() {
   let mut rng = StdRng::seed_from_u64(9);

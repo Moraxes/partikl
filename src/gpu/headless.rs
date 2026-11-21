@@ -8,7 +8,7 @@ use bevy::app::SubApps;
 use bevy::render::RenderPlugin;
 use bevy::render::gpu_readback::{ReadbackComplete, ReadbackOnce};
 use bevy::render::pipelined_rendering::PipelinedRenderingPlugin;
-use bevy::render::render_resource::PollType;
+use bevy::render::render_resource::{PollType, TextureFormat, TextureUsages};
 use bevy::render::renderer::RenderDevice;
 use bevy::render::storage::ShaderBuffer;
 use bevy::window::ExitCondition;
@@ -21,6 +21,15 @@ use crate::options::SimOptions;
 /// Jedna aplikacja GPU naraz w procesie (wspólne pule wątków i dziennik).
 static LOCK: Mutex<()> = Mutex::new(());
 
+/// Rysowanie bez okna: kamera renderuje cały świat do obrazu o rozmiarze `size` (w pikselach
+/// fizycznych), z podanym MSAA i formatem HDR. Do benchmarku renderu.
+#[derive(Clone, Copy, Debug)]
+pub struct Offscreen {
+  pub size: UVec2,
+  pub msaa: Msaa,
+  pub hdr: bool,
+}
+
 /// Aplikacja bez okna, z własnym kołem aktualizacji; `None` bez adaptera GPU.
 pub struct Harness {
   apps: SubApps,
@@ -29,6 +38,18 @@ pub struct Harness {
 
 impl Harness {
   pub fn new(options: SimOptions, spec: ParticleSpec, particles: Vec<GpuParticle>, world: Vec2) -> Option<Harness> {
+    Self::with_render(options, spec, particles, world, None)
+  }
+
+  /// Jak `new`, ale z kamerą rysującą do obrazu (`Some`): każda klatka (`update`, `step`) renderuje
+  /// też cząstki.
+  pub fn with_render(
+    options: SimOptions,
+    spec: ParticleSpec,
+    particles: Vec<GpuParticle>,
+    world: Vec2,
+    offscreen: Option<Offscreen>,
+  ) -> Option<Harness> {
     let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
       let mut app = App::new();
@@ -44,9 +65,15 @@ impl Harness {
       app.insert_resource(options).insert_resource(spec).add_plugins(GpuPlugin);
       // Kroki liczy test, nie czas stały.
       app.insert_resource(Time::<Fixed>::from_seconds(1.0e9));
-      app.insert_resource(Initial(Some(particles), world));
-      app.insert_resource(Request(None));
-      app.add_systems(Startup, spawn_test_sim).add_systems(Update, request_readback.run_if(resource_exists::<GpuSim>));
+      app.insert_resource(Initial(Some(particles), world, offscreen));
+      app.insert_resource(Request(None)).insert_resource(ImageRequest(None));
+      app.add_systems(Startup, spawn_test_sim).add_systems(
+        Update,
+        (
+          request_readback.run_if(resource_exists::<GpuSim>),
+          request_image.run_if(resource_exists::<OffscreenTarget>),
+        ),
+      );
       app.finish();
       app.cleanup();
       Harness { apps: std::mem::take(app.sub_apps_mut()), _guard: guard }
@@ -155,6 +182,40 @@ impl Harness {
     particles.sort_by_key(|p| p.id);
     particles
   }
+
+  /// Piksele obrazu, do którego rysuje kamera (`with_render`): RGBA8, wiersz po wierszu od góry.
+  pub fn target_pixels(&mut self) -> Vec<u8> {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let slot: Arc<Mutex<Option<Vec<u8>>>> = Arc::default();
+    self.world().insert_resource(ImageRequest(Some(slot.clone())));
+    while slot.lock().unwrap().is_none() {
+      assert!(Instant::now() < deadline, "brak odpowiedzi readbacku obrazu");
+      self.update();
+    }
+    let bytes = slot.lock().unwrap().take().unwrap();
+    // Wiersze odczytu tekstury są dopełnione do `COPY_BYTES_PER_ROW_ALIGNMENT` (256 B).
+    let size = self.world().resource::<OffscreenTarget>().1;
+    let row = (size.x * 4) as usize;
+    let stride = row.next_multiple_of(256);
+    assert_eq!(bytes.len(), stride * size.y as usize, "nieoczekiwany rozmiar odczytu obrazu");
+    bytes.chunks(stride).flat_map(|line| &line[..row]).copied().collect()
+  }
+}
+
+/// Obraz, do którego rysuje kamera offscreen.
+#[derive(Resource)]
+struct OffscreenTarget(Handle<Image>, UVec2);
+
+/// Prośba o readback obrazu docelowego.
+#[derive(Resource)]
+struct ImageRequest(Option<Arc<Mutex<Option<Vec<u8>>>>>);
+
+fn request_image(mut commands: Commands, mut request: ResMut<ImageRequest>, target: Res<OffscreenTarget>) {
+  if let Some(sink) = request.0.take() {
+    commands
+      .spawn(ReadbackOnce::texture(target.0.clone()))
+      .observe(move |event: On<ReadbackComplete>| *sink.lock().unwrap() = Some(event.data.clone()));
+  }
 }
 
 /// Prośba o readback stanu; `ReadbackOnce` musi powstać w trakcie klatki (czyszczone w `First`).
@@ -176,7 +237,7 @@ fn is_missing_gpu(payload: &(dyn std::any::Any + Send)) -> bool {
 }
 
 #[derive(Resource)]
-struct Initial(Option<Vec<GpuParticle>>, Vec2);
+struct Initial(Option<Vec<GpuParticle>>, Vec2, Option<Offscreen>);
 
 fn spawn_test_sim(
   mut commands: Commands,
@@ -185,9 +246,21 @@ fn spawn_test_sim(
   buffers: ResMut<Assets<ShaderBuffer>>,
   meshes: ResMut<Assets<Mesh>>,
   materials: ResMut<Assets<ParticleMaterial>>,
+  mut images: ResMut<Assets<Image>>,
 ) {
   let colors = vec![Color::WHITE; spec.interactions.len()];
-  spawn_sim(&mut commands, buffers, meshes, materials, initial.0.take().unwrap(), &spec, initial.1, 2.0, colors);
+  let world = initial.1;
+  spawn_sim(&mut commands, buffers, meshes, materials, initial.0.take().unwrap(), &spec, world, 2.0, colors);
+  if let Some(Offscreen { size, msaa, hdr }) = initial.2 {
+    let mut image = Image::new_target_texture(size.x, size.y, TextureFormat::Rgba8UnormSrgb, None);
+    // Odczyt obrazu (`target_pixels`) kopiuje teksturę.
+    image.texture_descriptor.usage |= TextureUsages::COPY_SRC;
+    let target = images.add(image);
+    commands.insert_resource(OffscreenTarget(target.clone(), size));
+    // Cały świat na całym obrazie, więc cząstka ma ten sam rozmiar w pikselach co w aplikacji
+    // na ekranie o tym rozmiarze (`size / world` pikseli na jednostkę).
+    spawn_camera(&mut commands, Some(target), ScalingMode::Fixed { width: world.x, height: world.y }, msaa, hdr);
+  }
 }
 
 
