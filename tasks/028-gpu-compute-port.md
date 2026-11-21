@@ -6,7 +6,7 @@ status: doing
 priority: soon
 branch: compute-shader-1
 created: 2026-11-21T00:51:19
-worked: 2026-11-21T13:32:08
+worked: 2026-11-21T13:33:33
 links:
 - kind: commit
   target: 4195c6a
@@ -36,5 +36,9 @@ links:
   target: 48fb8f9
   at: 2026-11-21T13:32:08
   note: 'fix(gpu): run the headless harness without pipelined rendering'
+- kind: commit
+  target: 66b9709
+  at: 2026-11-21T13:33:33
+  note: 'feat(bench): A/B comparison for the GPU bench'
 ---
 Cel: M1a (szkielet GPU, render instanced) i M1b (siatka + siły na GPU, testy, bench). Next step: moduł src/gpu z buforami ping-pong.
