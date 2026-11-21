@@ -22,7 +22,7 @@ fn spec(rng: &mut StdRng, types: usize) -> ParticleSpec {
 
 /// Jeden krok fizyki wprost w f64, po wszystkich parach, z odległością na torusie.
 /// Odpowiada `sim::forces` + `compute_friction` + `integrate` + `wrap_around`, bez próbkowania.
-fn reference_step(spec: &ParticleSpec, particles: &[GpuParticle], options: SimOptions) -> Vec<GpuParticle> {
+fn reference_step(spec: &ParticleSpec, particles: &[GpuParticle], options: SimOptions, world: Vec2) -> Vec<GpuParticle> {
   let radius = |crowding: f64| {
     (REPULSION_RADIUS as f64 * (crowding / ADAPTIVE_NEIGHBOURS as f64).sqrt()).clamp(REPULSION_RADIUS as f64, ADAPTIVE_RANGE_MAX as f64)
   };
@@ -36,8 +36,8 @@ fn reference_step(spec: &ParticleSpec, particles: &[GpuParticle], options: SimOp
       let (mut fx, mut fy, mut count) = (0.0f64, 0.0f64, 0.0f64);
       let (mut cx, mut cy, mut cn) = (0.0f64, 0.0f64, 0.0f64);
       for (j, other) in particles.iter().enumerate() {
-        let dx = wrap(other.pos[0] as f64 - px, WORLD.x as f64);
-        let dy = wrap(other.pos[1] as f64 - py, WORLD.y as f64);
+        let dx = wrap(other.pos[0] as f64 - px, world.x as f64);
+        let dy = wrap(other.pos[1] as f64 - py, world.y as f64);
         let d = (dx * dx + dy * dy).sqrt();
         if j == i || d == 0.0 || d > INTERACTION_RADIUS as f64 {
           continue;
@@ -87,7 +87,7 @@ fn reference_step(spec: &ParticleSpec, particles: &[GpuParticle], options: SimOp
       let damping = 1.0 + FRICTION_COEFF as f64 * (freex * freex + freey * freey).sqrt();
       let (mut nx, mut ny) = (x + freex / damping, y + freey / damping);
       let (mut lx, mut ly) = (x, y);
-      for (n, l, size) in [(&mut nx, &mut lx, WORLD.x as f64), (&mut ny, &mut ly, WORLD.y as f64)] {
+      for (n, l, size) in [(&mut nx, &mut lx, world.x as f64), (&mut ny, &mut ly, world.y as f64)] {
         if *n > size / 2.0 {
           *n -= size;
           *l -= size;
@@ -119,9 +119,19 @@ fn layout_matches_wgsl() {
 
 #[test]
 fn geometry_covers_interaction_radius() {
-  for world in [Vec2::new(500.0, 330.0), Vec2::new(2560.0, 1440.0), Vec2::new(60.0, 60.0)] {
+  let worlds = [
+    Vec2::new(500.0, 330.0),
+    Vec2::new(2560.0, 1440.0),
+    Vec2::new(60.0, 60.0),
+    // Więcej niż `MAX_CELLS` komórek o bazowym boku: komórki rosną.
+    Vec2::new(7680.0, 4320.0),
+    Vec2::new(20_000.0, 20_000.0),
+    Vec2::new(500_000.0, 100.0),
+  ];
+  for world in worlds {
     let g = Geometry::new(world);
     assert!(g.dims.x >= MIN_CELLS && g.dims.y >= MIN_CELLS);
+    assert!(g.num_cells() <= MAX_CELLS, "{world}: {}", g.dims);
     if world.x >= 100.0 {
       assert!(g.cell_size.x * GRID_REACH as f32 >= INTERACTION_RADIUS - 1e-3, "{world}");
       assert!(g.cell_size.y * GRID_REACH as f32 >= INTERACTION_RADIUS - 1e-3, "{world}");
@@ -144,20 +154,42 @@ fn one_step_matches_reference() {
     let spec = spec(&mut rng, 4);
     // Mało kandydatów w sąsiedztwie (poniżej progu próbkowania), ale dość gęsto na pary.
     let particles = random_particles(&mut rng, 700, 4, overlap == Overlap::AdaptiveRange);
-    let expected = reference_step(&spec, &particles, options);
+    let expected = reference_step(&spec, &particles, options, WORLD);
     let Some(mut harness) = Harness::new(options, spec, particles, WORLD) else { return };
-    let actual = harness.run(1);
-    assert_eq!(actual.len(), expected.len());
-    for (i, (a, e)) in actual.iter().zip(&expected).enumerate() {
-      assert_eq!(a.id, i as u32, "{options:?}");
-      assert_eq!(a.species, e.species);
-      for k in 0..2 {
-        assert!((a.pos[k] - e.pos[k]).abs() < 1e-3, "{options:?} cząstka {i}: pos {:?} vs {:?}", a.pos, e.pos);
-        assert!((a.last[k] - e.last[k]).abs() < 1e-3, "{options:?} cząstka {i}: last {:?} vs {:?}", a.last, e.last);
-      }
-      assert!((a.crowding - e.crowding).abs() < 1e-3, "{options:?} cząstka {i}: crowding {} vs {}", a.crowding, e.crowding);
-    }
+    assert_close(&harness.run(1), &expected, &format!("{options:?}"));
   }
+}
+
+fn assert_close(actual: &[GpuParticle], expected: &[GpuParticle], context: &str) {
+  assert_eq!(actual.len(), expected.len());
+  for (i, (a, e)) in actual.iter().zip(expected).enumerate() {
+    assert_eq!(a.id, i as u32, "{context}");
+    assert_eq!(a.species, e.species);
+    for k in 0..2 {
+      assert!((a.pos[k] - e.pos[k]).abs() < 1e-3, "{context} cząstka {i}: pos {:?} vs {:?}", a.pos, e.pos);
+      assert!((a.last[k] - e.last[k]).abs() < 1e-3, "{context} cząstka {i}: last {:?} vs {:?}", a.last, e.last);
+    }
+    assert!((a.crowding - e.crowding).abs() < 1e-3, "{context} cząstka {i}: crowding {} vs {}", a.crowding, e.crowding);
+  }
+}
+
+/// Świat z więcej niż `MAX_CELLS` komórkami o bazowym boku: większe komórki dają ten sam wynik.
+#[test]
+fn large_world_matches_reference() {
+  let world = Vec2::new(7680.0, 4320.0);
+  assert!(Geometry::new(world).cell_size.x > INTERACTION_RADIUS / GRID_REACH as f32);
+  let options = SimOptions::default();
+  let mut rng = StdRng::seed_from_u64(3);
+  let spec = spec(&mut rng, 3);
+  // Gęsto w pasie, żeby było dość par w zasięgu, i rzadko poza nim.
+  let mut particles = initial_particles(3000, 3, world, &mut rng);
+  for p in particles.iter_mut().take(2000) {
+    p.pos[1] = p.pos[1] * 0.02;
+    p.last[1] = p.pos[1];
+  }
+  let expected = reference_step(&spec, &particles, options, world);
+  let Some(mut harness) = Harness::new(options, spec, particles, world) else { return };
+  assert_close(&harness.run(1), &expected, "duży świat");
 }
 
 #[test]

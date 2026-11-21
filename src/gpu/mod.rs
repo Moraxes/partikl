@@ -46,7 +46,9 @@ pub struct GpuParticle {
 }
 
 /// Geometria siatki: komórki o boku co najmniej `INTERACTION_RADIUS / GRID_REACH`, więc
-/// sąsiedztwo `(2·GRID_REACH + 1)²` komórek pokrywa zasięg oddziaływania.
+/// sąsiedztwo `(2·GRID_REACH + 1)²` komórek pokrywa zasięg oddziaływania. W dużym świecie
+/// komórki są większe, żeby było ich najwyżej `MAX_CELLS` (więcej kandydatów na cząstkę,
+/// wynik ten sam).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Geometry {
   pub world: Vec2,
@@ -61,12 +63,16 @@ pub const MAX_CELLS: u32 = 256 * 256;
 
 impl Geometry {
   pub fn new(world: Vec2) -> Self {
-    let side = INTERACTION_RADIUS / GRID_REACH as f32;
-    let dims = UVec2::new(
-      ((world.x / side).floor() as u32).max(MIN_CELLS),
-      ((world.y / side).floor() as u32).max(MIN_CELLS),
-    );
-    assert!(dims.x * dims.y <= MAX_CELLS, "świat {world} daje za dużo komórek siatki ({dims})");
+    let dims_for = |side: f32| {
+      UVec2::new(((world.x / side).floor() as u32).max(MIN_CELLS), ((world.y / side).floor() as u32).max(MIN_CELLS))
+    };
+    // Najmniejszy bok, przy którym komórek jest nie więcej niż `MAX_CELLS`; pętla tylko dla
+    // bardzo wydłużonych światów, w których `MIN_CELLS` podbija krótszą oś.
+    let mut side = (INTERACTION_RADIUS / GRID_REACH as f32).max((world.x * world.y / MAX_CELLS as f32).sqrt());
+    while dims_for(side).element_product() > MAX_CELLS {
+      side *= 1.01;
+    }
+    let dims = dims_for(side);
     Geometry { world, dims, cell_size: world / dims.as_vec2() }
   }
 
