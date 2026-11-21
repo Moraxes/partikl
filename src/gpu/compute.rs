@@ -106,6 +106,7 @@ struct Pipelines {
   scan_sums: CachedComputePipelineId,
   add_offsets: CachedComputePipelineId,
   scatter: CachedComputePipelineId,
+  sort_cells: CachedComputePipelineId,
   step_shader: Handle<Shader>,
   /// Warianty sił wg (tryb nakładania, uśrednianie), kolejkowane przy pierwszym użyciu.
   forces: HashMap<(u8, bool), CachedComputePipelineId>,
@@ -131,6 +132,7 @@ struct Steps {
   done: u64,
   count: u32,
   variant: (u8, bool),
+  deterministic: bool,
 }
 
 fn init_pipelines(mut commands: Commands, asset_server: Res<AssetServer>, cache: Res<PipelineCache>) {
@@ -167,6 +169,7 @@ fn init_pipelines(mut commands: Commands, asset_server: Res<AssetServer>, cache:
     clear: queue(&grid, "clear", vec![]),
     count: queue(&grid, "count", vec![]),
     scatter: queue(&grid, "scatter", vec![]),
+    sort_cells: queue(&grid, "sort_cells", vec![]),
     scan_blocks: queue(&scan, "scan_blocks", vec![]),
     scan_sums: queue(&scan, "scan_sums", vec![]),
     add_offsets: queue(&scan, "add_offsets", vec![]),
@@ -232,6 +235,7 @@ fn prepare(
 
   let variant = (params.overlap, params.average);
   steps.variant = variant;
+  steps.deterministic = params.deterministic;
   if !pipelines.forces.contains_key(&variant) {
     let id = cache.queue_compute_pipeline(ComputePipelineDescriptor {
       label: Some(Cow::Borrowed("forces")),
@@ -286,7 +290,7 @@ fn prepare(
 impl Pipelines {
   fn ready(&self, cache: &PipelineCache, variant: (u8, bool)) -> bool {
     let Some(forces) = self.forces.get(&variant) else { return false };
-    [self.clear, self.count, self.scan_blocks, self.scan_sums, self.add_offsets, self.scatter, *forces]
+    [self.clear, self.count, self.scan_blocks, self.scan_sums, self.add_offsets, self.scatter, self.sort_cells, *forces]
       .into_iter()
       .all(|id| cache.get_compute_pipeline(id).is_some())
   }
@@ -315,17 +319,20 @@ fn run_steps(
   for k in 0..steps.count as usize {
     let offset = [buffers.offsets_per_step[k]];
     pass.set_bind_group(0, bind_group, &offset);
-    for (pipeline, groups) in [
-      (pipelines.clear, cell_groups),
-      (pipelines.count, particle_groups),
-      (pipelines.scan_blocks, block_groups),
-      (pipelines.scan_sums, 1),
-      (pipelines.add_offsets, block_groups),
-      (pipelines.scatter, particle_groups),
-      (pipelines.forces[&steps.variant], force_groups),
+    for (pipeline, groups, enabled) in [
+      (pipelines.clear, cell_groups, true),
+      (pipelines.count, particle_groups, true),
+      (pipelines.scan_blocks, block_groups, true),
+      (pipelines.scan_sums, 1, true),
+      (pipelines.add_offsets, block_groups, true),
+      (pipelines.scatter, particle_groups, true),
+      (pipelines.sort_cells, cell_groups, steps.deterministic),
+      (pipelines.forces[&steps.variant], force_groups, true),
     ] {
-      pass.set_pipeline(get(pipeline));
-      pass.dispatch_workgroups(groups, 1, 1);
+      if enabled {
+        pass.set_pipeline(get(pipeline));
+        pass.dispatch_workgroups(groups, 1, 1);
+      }
     }
   }
   progress.0.fetch_add(steps.count as u64, std::sync::atomic::Ordering::SeqCst);

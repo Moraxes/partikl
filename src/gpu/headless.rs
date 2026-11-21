@@ -56,6 +56,11 @@ impl Harness {
     }
   }
 
+  /// Tryb deterministyczny (sortowanie komórek po id).
+  pub fn set_deterministic(&mut self, deterministic: bool) {
+    self.world().resource_mut::<GpuParams>().deterministic = deterministic;
+  }
+
   pub fn world(&mut self) -> &mut World {
     self.apps.main.world_mut()
   }

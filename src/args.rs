@@ -56,6 +56,10 @@ pub struct ProgramArgs {
   #[arg(long)]
   pub gpu: bool,
 
+  /// With --gpu: sort particles within grid cells so runs are bit-for-bit reproducible.
+  #[arg(long)]
+  pub gpu_deterministic: bool,
+
   /// Scale each particle's force down when it has more neighbours than usual.
   ///
   /// Toggled at runtime with N.

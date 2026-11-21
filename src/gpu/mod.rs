@@ -116,6 +116,8 @@ pub struct GpuSim {
 pub struct GpuParams {
   pub overlap: u8,
   pub average: bool,
+  /// Kolejność cząstek w komórce po id: trajektorie takie same co do bitu (wolniej).
+  pub deterministic: bool,
   pub step_count: u64,
 }
 
@@ -166,10 +168,12 @@ fn init_gpu(
   args: Res<ProgramArgs>,
   spec: Res<ParticleSpec>,
   windows: Query<&Window, With<PrimaryWindow>>,
+  mut params: ResMut<GpuParams>,
   buffers: ResMut<Assets<ShaderBuffer>>,
   meshes: ResMut<Assets<Mesh>>,
   materials: ResMut<Assets<ParticleMaterial>>,
 ) {
+  params.deterministic = args.gpu_deterministic;
   let mut rng = rand::rng();
   let window = windows.single().expect("no primary window");
   let world = Vec2::new(window.width(), window.height());

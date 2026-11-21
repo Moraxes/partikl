@@ -182,3 +182,19 @@ fn many_steps_keep_invariants() {
   }
   assert!(seen.iter().all(|&s| s), "zgubione cząstki");
 }
+
+#[test]
+fn deterministic_mode_repeats_bit_for_bit() {
+  let options = SimOptions { average_forces: false, overlap: Overlap::Spring };
+  let run = || {
+    let mut rng = StdRng::seed_from_u64(5);
+    let spec = spec(&mut rng, 3);
+    let particles = random_particles(&mut rng, 5_000, 3, false);
+    let mut harness = Harness::new(options, spec, particles, WORLD)?;
+    harness.set_deterministic(true);
+    harness.run(MAX_STEPS_PER_FRAME as u64);
+    Some(harness.run(MAX_STEPS_PER_FRAME as u64))
+  };
+  let (Some(first), Some(second)) = (run(), run()) else { return };
+  assert_eq!(first, second, "trajektorie różnią się mimo trybu deterministycznego");
+}
