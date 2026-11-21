@@ -5,7 +5,6 @@ summary: RuleParams i macierze ze spec .ron, zapis bufora bez rekompilacji
 status: todo
 priority: soon
 branch: compute-shader-1
-part_of: 35
 blocked_by:
 - 41
 created: 2026-11-21T12:39:03
