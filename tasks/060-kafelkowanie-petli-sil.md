@@ -2,15 +2,15 @@
 id: 60
 title: Kafelkowanie pętli sił
 summary: Szkielet pętli (odczyt sąsiada, test zasięgu, sterowanie) to ok. 75% przebiegu sił; eksperyment z kafelkiem w workgroup
-status: doing
+status: done
 priority: soon
 branch: compute-shader-1
 part_of: 54
 relates:
 - 58
 created: 2026-11-21T18:09:50
-worked: 2026-11-21T19:01:57
-edited: 2026-11-21T19:02:07
+worked: 2026-11-21T19:19:20
+edited: 2026-11-21T19:19:20
 links:
 - kind: commit
   target: cea9096
@@ -28,3 +28,5 @@ Profil liczników (061, HEAD cea9096): pętla sił jest ograniczona instrukcjami
 
 Krok 2 (po profilu liczników): sprawdzone kierunki z listy, wynik: przebieg sił 100k, µs uniform/clusters/dense, baza 385/543/576. (1) Test zasięgu na bitach (jedno porównanie całkowite): 375/525/560 (−2,4…−3,4%), wdrożone (7b7b90b). (2) GRID_REACH 3 po rozwinięciu pętli: 387/585/594, gorzej (więcej biegów, nie mniej pracy). (3) Przesunięcie torusa liczone raz na bieg (origin = me.pos − shift): bez zysku (kompilator już to wynosi). (4) Mnożenie przez odwrotność szerokości jądra zamiast dzielenia: bez zysku. (5) Przekształcenie magnitude·dir na (magnitude·inv)·delta: bez zysku (kompilator sam). (6) Blokowanie rejestrów, ablacja = górna granica (dwie cząstki w wątku, wspólna lista sąsiadów, bez obsługi par z różnych komórek, dispatch o połowę mniejszy): 382/554/565, czyli bez zysku: wspólne są tylko odczyt i sterowanie pętlą, a koszt to matematyka par (F32). Wniosek: pętla jest blisko dna dla tej struktury (gather, wszystkie pary w zasięgu liczone osobno); kompilator robi mikro-optymalizacje sam; kafelkowanie i blokowanie rejestrów odpadają.
 Stan: przebieg sił 600/881/958 → 375/525/560 µs (−38…−42%) od początku 058. Pozostałe kierunki wymagają decyzji: (a) niższy max_candidates (512): koszt dla dużych n ∝ min(kandydaci, próg), więc 256 dałoby ok. 2× przy 500k–1M, kosztem większej wariancji sił (losowe próbkowanie sąsiadów z wagą 'every'); (b) matematyka par w f16 (jednostki F16 są nieużywane: F16 Limiter w profilu 0), z sąsiadami spakowanymi jako f16 względem komórki (8 B zamiast 16 B), wymaga SHADER_F16 w wgpu, luźniejszych tolerancji testów (~0,02 jedn. w odległości) i jest duże; zysk niepewny (nie wiadomo, czy F16 i F32 dualnie się wydają); (c) prawo Newtona (każda para raz) wymaga atomowych f32, których WGSL nie ma.
+
+Domknięcie: 060 zamknięte w tym stanie (ILP ×4, test na bitach, kolumna macierzy w rejestrach z 058; przebieg sił 600/881/958 → 375/525/560 µs, −38…−42%). Dalsze kierunki w osobnych zadaniach: matematyka par w f16 (062, spike: pełna ścieżka −10…−12%), próg próbkowania max_candidates (jest polem uniformu SimUniforms::max_candidates ustawianym co krok ze stałej MAX_CANDIDATES, więc sterowalny w locie bez przekompilowania shadera; do ustalenia: klawisz/opcja, a może regulacja adaptacyjna razem ze StepBudget z 059).
