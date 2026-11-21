@@ -5,6 +5,8 @@ summary: Zasięg odpychania 2 i gładki kształt (1−d²/r²)²; tylko z rozsuw
 status: todo
 priority: later
 branch: main
+blocked_by:
+- 44
 relates:
 - 24
 - 25
