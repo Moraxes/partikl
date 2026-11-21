@@ -2,7 +2,7 @@
 id: 49
 title: Wyścig ładowania shaderów
 summary: Sporadyczny błąd module not found default_rules przy starcie
-status: todo
+status: done
 priority: later
 branch: main
 relates:
