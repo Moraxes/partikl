@@ -2,10 +2,11 @@
 id: 2
 title: Podział init_particles
 summary: Spawn, siatka i kamera osobno; rozmiar świata z konfiguracji, nie z okna
-status: todo
+status: done
 priority: soon
 branch: main
 created: 2026-11-20T18:44:47
+worked: 2026-11-21T22:43:06
 ---
 `init_particles` w `src/render.rs` robi naraz spawn cząstek z gizmami, budowę `SpatialGrid` i spawn kamery, a rozmiar świata bierze z okna (symulacja zależy od rozdzielczości). Następny krok: rozdzielić na osobne systemy, rozmiar świata przenieść do konfiguracji (`config.rs` albo zasób).
 
