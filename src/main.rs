@@ -1,6 +1,6 @@
 use bevy::app::TaskPoolPlugin;
 use bevy::prelude::*;
-use bevy::window::{WindowMode, WindowResolution};
+use bevy::window::WindowMode;
 use clap::Parser;
 
 use partikl::{args, gpu, loading, render, sim, ui};
@@ -18,7 +18,6 @@ fn main() {
         .set(TaskPoolPlugin { task_pool_options: sim::task_pool_options() })
         .set(WindowPlugin {
           primary_window: Some(Window {
-            resolution: WindowResolution::new(2560, 1440),
             position: WindowPosition::Automatic,
             resize_constraints: Default::default(),
             title: "partikl".to_string(),

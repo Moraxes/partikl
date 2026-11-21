@@ -25,6 +25,7 @@ use crate::args::ProgramArgs;
 use crate::config::*;
 use crate::render::{MainCamera, get_random_colors};
 use crate::sim::{SimOptions, SimState};
+use crate::screen::ScreenSize;
 use crate::spec::ParticleSpec;
 use material::ParticleMaterial;
 
@@ -185,7 +186,7 @@ fn init_gpu(
   mut commands: Commands,
   args: Res<ProgramArgs>,
   spec: Res<ParticleSpec>,
-  windows: Query<&Window, With<PrimaryWindow>>,
+  screen: ScreenSize,
   mut params: ResMut<GpuParams>,
   buffers: ResMut<Assets<ShaderBuffer>>,
   meshes: ResMut<Assets<Mesh>>,
@@ -193,8 +194,8 @@ fn init_gpu(
 ) {
   params.deterministic = args.gpu_deterministic;
   let mut rng = rand::rng();
-  let window = windows.single().expect("no primary window");
-  let world = Vec2::new(window.width(), window.height());
+  let world = screen.get();
+  info!("świat symulacji {world} (ekran)");
   let particles = initial_particles(args.num_particles, spec.interactions.len(), world, &mut rng);
   let colors = get_random_colors(spec.interactions.len(), &mut rng);
   spawn_sim(&mut commands, buffers, meshes, materials, particles, &spec, world, args.particle_size, colors);

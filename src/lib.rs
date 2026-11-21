@@ -3,6 +3,7 @@ pub mod config;
 pub mod gpu;
 pub mod loading;
 pub mod render;
+pub mod screen;
 pub mod sim;
 pub mod spec;
 pub mod ui;

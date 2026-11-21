@@ -1,11 +1,11 @@
 use crate::args::ProgramArgs;
 use bevy::prelude::*;
 use bevy::camera::{ClearColorConfig, Hdr, ScalingMode};
-use bevy::window::PrimaryWindow;
 use rand::prelude::*;
 
 use crate::config::{DELTA_TIME, INTERACTION_RADIUS};
 use crate::sim::{Acceleration, InteractionId, LastPosition, ParticleBundle, SpatialGrid};
+use crate::screen::ScreenSize;
 use crate::spec::ParticleSpec;
 use crate::ui::selection::{Highlight, Selection};
 
@@ -74,12 +74,10 @@ pub fn init_particles(
   mut materials: ResMut<Assets<StandardMaterial>>,
   particle_spec: Res<ParticleSpec>,
   particle_materials: Res<ParticleMaterials>,
-  windows: Query<&Window, With<PrimaryWindow>>,
+  screen: ScreenSize,
 ) {
   let mut rng = rand::rng();
-  let window = windows.single().expect("no primary window");
-  let width = window.width();
-  let height = window.height();
+  let Vec2 { x: width, y: height } = screen.get();
   let mut grid = SpatialGrid::new(width, height, INTERACTION_RADIUS);
 
   let circle_mesh = meshes.add(Mesh::try_from(Sphere::new(args.particle_size)).unwrap());
