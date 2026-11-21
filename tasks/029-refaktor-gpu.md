@@ -5,6 +5,8 @@ summary: 'Czytelny silnik GPU i reguły jako dane (A, B, C): granica silnik/mode
 status: todo
 priority: soon
 branch: compute-shader-1
+relates:
+- 28
 created: 2026-11-21T12:38:14
 ---
 Cel: kod GPU zrozumiały dla człowieka i szybka iteracja nad regułami (poziomy A, B, C z plan_rozwoju_partikl_na_gpu.md). Dziś parametry fizyki siedzą w SimUniforms obok geometrii, crowding (pole reguł) w silnikowym Particle, a coeff i weight podaje regułom silnik. Następny krok: podzadania w kolejności blokad (tq tree).
