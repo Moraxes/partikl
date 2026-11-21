@@ -16,5 +16,9 @@ links:
   target: 70c66bb
   at: 2026-11-21T12:37:45
   note: 'build(gpu): embed the shaders in the binary, hot reload behind a dev feature'
+- kind: commit
+  target: bcf8d7b
+  at: 2026-11-21T12:37:45
+  note: 'fix(gpu): require --gpu for --gpu-deterministic, fix stale id comment'
 ---
 Cel: M1a (szkielet GPU, render instanced) i M1b (siatka + siły na GPU, testy, bench). Next step: moduł src/gpu z buforami ping-pong.
