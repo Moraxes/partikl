@@ -2,12 +2,12 @@
 id: 58
 title: Profil GPU w Xcode
 summary: 'Liczniki GPU (Instruments/Metal): czy pętla sił jest ograniczona obliczeniami czy opóźnieniami'
-status: doing
+status: done
 priority: later
 branch: compute-shader-1
 part_of: 54
 created: 2026-11-21T16:30:35
-worked: 2026-11-21T18:09:33
+worked: 2026-11-21T18:09:50
 edited: 2026-11-21T18:09:50
 links:
 - kind: commit
