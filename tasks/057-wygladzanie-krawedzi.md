@@ -10,6 +10,11 @@ blocked_by:
 - 55
 - 56
 created: 2026-11-21T16:30:35
-worked: 2026-11-21T17:10:29
+worked: 2026-11-21T17:16:18
+links:
+- kind: commit
+  target: 09e68e3
+  at: 2026-11-21T17:16:18
+  note: 'perf(gpu): MSAA off by default, optional analytic edge antialiasing'
 ---
 Cel: MSAA 4× kosztuje ok. 20% klatki przy 500k z działającą symulacją. Sprawdzić po zadaniu kolejności rysowania, czy różnica nadal jest; jeśli tak, wyłączyć MSAA i wygładzić krawędzie elips w fragment shaderze (smoothstep po 1 − dot(corner, corner), alpha blending bez zapisu głębi). Ocena wyglądu na ekranie (zrzuty przed/po). Następny krok: pomiar po zadaniu kolejności i pomiaru renderu.
