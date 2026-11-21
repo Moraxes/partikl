@@ -27,7 +27,7 @@ impl Plugin for RenderPlugin {
   }
 }
 
-fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
+pub(crate) fn get_random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
   let phase = 360.0 * rng.random::<f32>();
   let spread = 60.0 + 300.0 * rng.random::<f32>();
   (0..n)

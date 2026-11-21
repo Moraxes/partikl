@@ -3,11 +3,13 @@ use bevy::prelude::*;
 use bevy::window::{WindowMode, WindowResolution};
 use clap::Parser;
 
-use partikl::{args, loading, render, sim, ui};
+use partikl::{args, gpu, loading, render, sim, ui};
 
 fn main() {
   let program_args = args::ProgramArgs::parse();
-  App::new()
+  let use_gpu = program_args.gpu;
+  let mut app = App::new();
+  app
     .insert_resource(loading::get_particle_spec(&program_args))
     .insert_resource(program_args.sim_options())
     .insert_resource(program_args)
@@ -29,6 +31,11 @@ fn main() {
           ..Default::default()
         }),
     )
-    .add_plugins((sim::SimPlugin, render::RenderPlugin, ui::UiPlugin))
-    .run();
+    ;
+  if use_gpu {
+    app.add_plugins((gpu::GpuPlugin, ui::UiPlugin));
+  } else {
+    app.add_plugins((sim::SimPlugin, render::RenderPlugin, ui::UiPlugin));
+  }
+  app.run();
 }

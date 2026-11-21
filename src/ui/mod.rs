@@ -21,7 +21,7 @@ impl Plugin for UiPlugin {
       .add_systems(
         Update,
         (
-          selection::select_on_click,
+          selection::select_on_click.run_if(resource_exists::<crate::sim::SpatialGrid>),
           update_text,
           exit_after_time,
           handle_keyboard_input,

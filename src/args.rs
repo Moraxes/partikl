@@ -52,6 +52,10 @@ pub struct ProgramArgs {
   #[arg(short = 's', long, default_value_t = 2.0)]
   pub particle_size: f32,
 
+  /// Run the simulation on the GPU (compute shaders) instead of the CPU.
+  #[arg(long)]
+  pub gpu: bool,
+
   /// Scale each particle's force down when it has more neighbours than usual.
   ///
   /// Toggled at runtime with N.

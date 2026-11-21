@@ -6,7 +6,8 @@ edition = "2024"
 [dependencies]
 ron = "0.12.3"
 clap = { version = "4.6.8", features = [ "derive" ] }
-bevy = "0.20"
+bevy = { version = "0.20", features = [ "file_watcher" ] }
+bytemuck = { version = "1", features = [ "derive" ] }
 wide = "1.7.1"
 
 [dependencies.chrono]
