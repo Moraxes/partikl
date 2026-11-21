@@ -6,6 +6,8 @@ status: todo
 priority: soon
 branch: compute-shader-1
 part_of: 50
+blocked_by:
+- 51
 relates:
 - 28
 created: 2026-11-21T13:33:33
