@@ -174,7 +174,6 @@ pub fn handle_mouse_input(
   mut mouse_wheel_events: MessageReader<MouseWheel>,
   mut mouse_motion_events: MessageReader<MouseMotion>,
   mouse_button_input: Res<ButtonInput<MouseButton>>,
-  keyboard_input: Res<ButtonInput<KeyCode>>,
   mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
   mut camera: Query<(&mut MainCamera, &mut Projection, &mut Transform)>,
 ) {
@@ -198,19 +197,15 @@ pub fn handle_mouse_input(
     }
   }
 
-  if mouse_button_input.just_released(MouseButton::Left) {
-    let mut cursor = cursor_options.single_mut().unwrap();
-    cursor.visible = true;
-    cursor.grab_mode = CursorGrabMode::Locked;
-  }
-
-  if !keyboard_input.pressed(KeyCode::ControlLeft) {
-    return;
-  }
-
+  // Przeciąganie lewym przyciskiem: kursor zablokowany i ukryty, dopóki przycisk jest wciśnięty.
   if mouse_button_input.just_pressed(MouseButton::Left) {
     let mut cursor = cursor_options.single_mut().unwrap();
     cursor.visible = false;
+    cursor.grab_mode = CursorGrabMode::Locked;
+  }
+  if mouse_button_input.just_released(MouseButton::Left) {
+    let mut cursor = cursor_options.single_mut().unwrap();
+    cursor.visible = true;
     cursor.grab_mode = CursorGrabMode::None;
   }
 

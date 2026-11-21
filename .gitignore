@@ -6,3 +6,4 @@ rust-toolchain.toml
 /.artifacts
 /.cache
 node_modules/
+/spec-*.ron

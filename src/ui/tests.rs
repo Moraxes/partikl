@@ -221,22 +221,45 @@ fn camera_translation(app: &App, camera: Entity) -> Vec3 {
 }
 
 #[test]
-fn ctrl_drag_moves_camera() {
+fn left_drag_moves_camera_with_the_content() {
   let mut app = input_app();
   app.add_systems(Update, handle_mouse_input);
   let camera = spawn_camera(&mut app, Vec3::new(0.0, 0.0, 1000.0), 1.0);
   let before = camera_translation(&app, camera);
-  app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::ControlLeft);
   drag(&mut app, Vec2::new(10.0, 5.0));
-  assert_ne!(camera_translation(&app, camera), before);
+  let moved = camera_translation(&app, camera) - before;
+  // Zawartość podąża za kursorem: mysz w prawo i w dół (y ekranu rośnie w dół) cofa kamerę
+  // w lewo i podnosi w górę świata.
+  assert!(moved.x < 0.0 && moved.y > 0.0, "{moved}");
 }
 
 #[test]
-fn drag_without_ctrl_does_not_move_camera() {
+fn motion_without_button_does_not_move_camera() {
   let mut app = input_app();
   app.add_systems(Update, handle_mouse_input);
   let camera = spawn_camera(&mut app, Vec3::new(0.0, 0.0, 1000.0), 1.0);
   let before = camera_translation(&app, camera);
-  drag(&mut app, Vec2::new(10.0, 5.0));
+  app.world_mut().write_message(MouseMotion { delta: Vec2::new(10.0, 5.0) });
+  app.update();
   assert_eq!(camera_translation(&app, camera), before);
+}
+
+fn cursor_state(app: &mut App) -> (bool, CursorGrabMode) {
+  let cursor = app.world_mut().query_filtered::<&CursorOptions, With<PrimaryWindow>>().single(app.world()).unwrap();
+  (cursor.visible, cursor.grab_mode)
+}
+
+#[test]
+fn cursor_is_hidden_and_locked_only_while_dragging() {
+  let mut app = input_app();
+  app.add_systems(Update, handle_mouse_input);
+  spawn_camera(&mut app, Vec3::new(0.0, 0.0, 1000.0), 1.0);
+  assert_eq!(cursor_state(&mut app), (true, CursorGrabMode::None));
+
+  drag(&mut app, Vec2::new(10.0, 5.0));
+  assert_eq!(cursor_state(&mut app), (false, CursorGrabMode::Locked));
+
+  app.world_mut().resource_mut::<ButtonInput<MouseButton>>().release(MouseButton::Left);
+  app.update();
+  assert_eq!(cursor_state(&mut app), (true, CursorGrabMode::None));
 }
