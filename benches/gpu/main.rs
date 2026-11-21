@@ -29,8 +29,9 @@ struct GpuArgs {
   /// Kroki rozbiegu przed pomiarem.
   #[arg(long, default_value_t = 512)]
   steps: u64,
-  /// Kroków w jednym pomiarze (czas dzielony przez tę liczbę).
-  #[arg(long, default_value_t = 16)]
+  /// Kroków w jednym pomiarze (czas dzielony przez tę liczbę). Powyżej `MAX_STEPS_PER_FRAME`
+  /// kroki idą w kilku klatkach.
+  #[arg(long, default_value_t = 16, value_parser = clap::value_parser!(u64).range(1..))]
   batch: u64,
   /// Pomiar wszystkich wariantów `SimOptions` zamiast samego domyślnego.
   #[arg(long)]
@@ -56,25 +57,20 @@ fn main() {
   };
   let seed = if args.common.quick { common::QUICK_SEEDS[0] } else { args.common.seed_base };
   println!("{:>9} {:<24} {:>12}", "n", "variant", "median µs/step");
-  for &n in &args.sizes {
+  'sizes: for &n in &args.sizes {
     for &options in &variants {
       let spec = particle_spec(args.common.types, seed);
       let particles = initial_particles(n, args.common.types, WORLD, &mut rng(seed));
       let Some(mut harness) = Harness::new(options, spec, particles, WORLD) else {
-        eprintln!("brak adaptera GPU");
-        return;
+        // Zapisane już wiersze trafiają do pliku (`finish` poniżej).
+        break 'sizes;
       };
-      let mut warm = args.steps;
-      while warm > 0 {
-        let k = warm.min(partikl::gpu::MAX_STEPS_PER_FRAME as u64);
-        harness.step(k);
-        warm -= k;
-      }
+      harness.step(args.steps);
       let mut times = Vec::new();
       for _ in 0..args.common.warmup + args.common.measured {
         let start = Instant::now();
-        harness.step(args.batch.min(partikl::gpu::MAX_STEPS_PER_FRAME as u64));
-        times.push(nanos(start.elapsed()) / args.batch.min(partikl::gpu::MAX_STEPS_PER_FRAME as u64));
+        harness.step(args.batch);
+        times.push(nanos(start.elapsed()) / args.batch);
       }
       let measured = &times[args.common.warmup..];
       let variant = format!("{}{}", options.overlap, if options.average_forces { "+average" } else { "" });

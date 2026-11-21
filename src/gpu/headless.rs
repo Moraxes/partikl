@@ -49,10 +49,12 @@ impl Harness {
     }));
     match result {
       Ok(harness) => Some(harness),
-      Err(_) => {
+      // Tylko brak adaptera oznacza „pomiń”; każdy inny panic to błąd do zgłoszenia.
+      Err(payload) if is_missing_gpu(&*payload) => {
         eprintln!("pomijam: brak adaptera GPU");
         None
       }
+      Err(payload) => std::panic::resume_unwind(payload),
     }
   }
 
@@ -70,27 +72,31 @@ impl Harness {
     self.apps.main.world().resource::<RenderDevice>().wgpu_device().poll(PollType::Wait { submission_index: None, timeout: None }).unwrap();
   }
 
-  /// Wykonuje `steps` kroków (do `MAX_STEPS_PER_FRAME` naraz) i czeka na ich zakończenie na GPU.
+  /// Wykonuje `steps` kroków i czeka na ich zakończenie na GPU. Klatka wykonuje najwyżej
+  /// `MAX_STEPS_PER_FRAME` kroków, więc dłuższe przebiegi idą porcjami.
   pub fn step(&mut self, steps: u64) {
+    let mut left = steps;
+    while left > 0 {
+      let chunk = left.min(MAX_STEPS_PER_FRAME as u64);
+      self.step_chunk(chunk);
+      left -= chunk;
+    }
+  }
+
+  fn step_chunk(&mut self, steps: u64) {
     let before = self.world().resource::<GpuProgress>().0.load(Ordering::SeqCst);
     self.world().resource_mut::<GpuParams>().step_count += steps;
     let deadline = Instant::now() + Duration::from_secs(120);
     while self.world().resource::<GpuProgress>().0.load(Ordering::SeqCst) < before + steps {
-      assert!(Instant::now() < deadline, "GPU nie wykonał kroków w 120 s (błąd shadera?)");
+      assert!(Instant::now() < deadline, "GPU nie wykonał kroków w 120 s (pipeline się nie skompilował?)");
       self.update();
     }
   }
 
   /// Wykonuje `steps` kroków (czeka na kompilację shaderów) i zwraca stan cząstek z GPU.
   pub fn run(&mut self, steps: u64) -> Vec<GpuParticle> {
-    let before = self.world().resource::<GpuProgress>().0.load(Ordering::SeqCst);
-    self.world().resource_mut::<GpuParams>().step_count += steps;
+    self.step(steps);
     let deadline = Instant::now() + Duration::from_secs(120);
-    while self.world().resource::<GpuProgress>().0.load(Ordering::SeqCst) < before + steps {
-      assert!(Instant::now() < deadline, "GPU nie wykonał kroków w 120 s (błąd shadera?)");
-      self.update();
-      std::thread::sleep(Duration::from_millis(5));
-    }
     let slot: Arc<Mutex<Option<Vec<u8>>>> = Arc::default();
     self.world().insert_resource(Request(Some(slot.clone())));
     while slot.lock().unwrap().is_none() {
@@ -112,6 +118,12 @@ fn request_readback(mut commands: Commands, mut request: ResMut<Request>, sim: R
       .spawn(ReadbackOnce::buffer(sim.state.clone()))
       .observe(move |event: On<ReadbackComplete>| *sink.lock().unwrap() = Some(event.data.clone()));
   }
+}
+
+/// Panic z `bevy_render`, gdy nie ma adaptera (`GPU_NOT_FOUND_ERROR_MESSAGE`).
+fn is_missing_gpu(payload: &(dyn std::any::Any + Send)) -> bool {
+  let message = payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str));
+  message.is_some_and(|m| m.contains("Unable to find a GPU"))
 }
 
 #[derive(Resource)]

@@ -168,11 +168,7 @@ fn many_steps_keep_invariants() {
   // Gęsty stan: ponad 512 kandydatów w sąsiedztwie, więc działa próbkowanie.
   let particles = random_particles(&mut rng, 20_000, 3, false);
   let Some(mut harness) = Harness::new(options, spec, particles, WORLD) else { return };
-  // Limit kroków na klatkę to MAX_STEPS_PER_FRAME, więc porcjami.
-  for _ in 0..2 {
-    harness.run(MAX_STEPS_PER_FRAME as u64);
-  }
-  let state = harness.run(8);
+  let state = harness.run(40);
   let mut seen = vec![false; state.len()];
   for p in &state {
     assert!(p.pos.iter().chain(&p.last).chain(&[p.crowding]).all(|v| v.is_finite()), "NaN/Inf w {p:?}");
@@ -192,8 +188,7 @@ fn deterministic_mode_repeats_bit_for_bit() {
     let particles = random_particles(&mut rng, 5_000, 3, false);
     let mut harness = Harness::new(options, spec, particles, WORLD)?;
     harness.set_deterministic(true);
-    harness.run(MAX_STEPS_PER_FRAME as u64);
-    Some(harness.run(MAX_STEPS_PER_FRAME as u64))
+    Some(harness.run(32))
   };
   let (Some(first), Some(second)) = (run(), run()) else { return };
   assert_eq!(first, second, "trajektorie różnią się mimo trybu deterministycznego");
