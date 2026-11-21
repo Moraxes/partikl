@@ -17,7 +17,7 @@ use clap::Parser;
 use common::{BenchArgs, Output, WORLD, median, nanos, particle_spec, rng};
 use partikl::gpu::headless::Harness;
 use partikl::gpu::initial_particles;
-use partikl::sim::{Overlap, SimOptions};
+use partikl::options::{Overlap, SimOptions};
 
 #[derive(Parser, Debug)]
 struct GpuArgs {

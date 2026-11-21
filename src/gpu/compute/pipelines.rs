@@ -10,7 +10,7 @@ use bevy::shader::ShaderDefVal;
 
 use super::{SCAN_BLOCK, SimUniforms, WORKGROUP};
 use crate::gpu::{GpuParams, GpuSim};
-use crate::sim::{ADAPTIVE_RANGE, RESOLVE};
+use crate::options::{ADAPTIVE_RANGE, RESOLVE};
 
 /// Plik shadera z entry pointem przebiegu.
 #[derive(Clone, Copy)]

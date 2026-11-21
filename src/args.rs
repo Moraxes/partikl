@@ -1,6 +1,6 @@
 use bevy::prelude::Resource;
 
-use crate::sim::{Overlap, SimOptions};
+use crate::options::{Overlap, SimOptions};
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -52,12 +52,8 @@ pub struct ProgramArgs {
   #[arg(short = 's', long, default_value_t = 2.0)]
   pub particle_size: f32,
 
-  /// Run the legacy CPU engine instead of the GPU (compute shaders).
+  /// Sort particles within grid cells so runs are bit-for-bit reproducible (slower).
   #[arg(long)]
-  pub cpu: bool,
-
-  /// GPU only: sort particles within grid cells so runs are bit-for-bit reproducible.
-  #[arg(long, conflicts_with = "cpu")]
   pub gpu_deterministic: bool,
 
   /// Don't scale each particle's force down when it has more neighbours than usual.

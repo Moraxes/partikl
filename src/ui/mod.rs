@@ -5,11 +5,8 @@ use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowMode};
 
-pub mod selection;
-
 use crate::args::ProgramArgs;
-use crate::render::MainCamera;
-use crate::sim::{SimOptions, SimState};
+use crate::options::{SimOptions, SimState};
 
 pub struct UiPlugin;
 
@@ -21,7 +18,6 @@ impl Plugin for UiPlugin {
       .add_systems(
         Update,
         (
-          selection::select_on_click.run_if(resource_exists::<crate::sim::SpatialGrid>),
           update_text,
           exit_after_time,
           handle_keyboard_input,
@@ -30,6 +26,13 @@ impl Plugin for UiPlugin {
         ),
       );
   }
+}
+
+/// Kamera symulacji; zoom kółkiem myszy: skala rzutu `zoom_base^zoom_exponent`.
+#[derive(Component, Default, Debug)]
+pub struct MainCamera {
+  pub zoom_exponent: i32,
+  pub zoom_base: f32,
 }
 
 /// Napisy w prawym dolnym rogu: FPS i stan opcji symulacji. Przełączane klawiszem H.

@@ -1,6 +1,6 @@
-//! Opcjonalne zachowania symulacji, przełączane w trakcie (klawisze w `ui`) i ustawiane flagami
-//! przy starcie. Każda kombinacja to osobny wariant `compute_forces` z `run_if`, więc jądro sił
-//! nie sprawdza opcji w pętli, a w schemacie i profilu widać, który wariant działa.
+//! Opcje i stan symulacji, przełączane w trakcie (klawisze w `ui`) i ustawiane flagami przy
+//! starcie. Każda kombinacja opcji to osobny wariant pipeline'u sił na GPU (shader defs), więc
+//! shader nie sprawdza opcji w pętli.
 
 use std::fmt;
 
@@ -39,7 +39,7 @@ impl fmt::Display for Overlap {
   }
 }
 
-/// Wartości `Overlap` jako parametry stałe wariantów `compute_forces`.
+/// Wartości `Overlap` jako klucze wariantów pipeline'u sił.
 pub const SPRING: u8 = Overlap::Spring as u8;
 pub const RESOLVE: u8 = Overlap::Resolve as u8;
 pub const ADAPTIVE_RANGE: u8 = Overlap::AdaptiveRange as u8;
@@ -51,11 +51,12 @@ pub struct SimOptions {
   pub overlap: Overlap,
 }
 
-impl SimOptions {
-  /// Czy wariant `compute_forces::<AVERAGE, OVERLAP>` ma działać przy tych opcjach.
-  pub fn selects(&self, average: bool, overlap: u8) -> bool {
-    self.average_forces == average && self.overlap as u8 == overlap
-  }
+/// Symulacja biegnie albo stoi (spacja w `ui`).
+#[derive(States, Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum SimState {
+  #[default]
+  Running,
+  Paused,
 }
 
 #[cfg(test)]

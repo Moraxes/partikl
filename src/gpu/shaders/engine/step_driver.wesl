@@ -55,7 +55,7 @@ fn run_at(cell: vec2<i32>, dy: i32, seg: u32) -> Run {
   return Run(cell_offsets[first], cell_offsets[last] + atomicLoad(&cell_counts[last]), shift, true);
 }
 
-// Zawinięcie pozycji o jeden rozmiar świata (jak na CPU: jedno zawinięcie na krok).
+// Zawinięcie pozycji o jeden rozmiar świata (najwyżej jedno zawinięcie na krok).
 fn wrap(p: Particle) -> Particle {
   var q = p;
   let half = uniforms.world * 0.5;

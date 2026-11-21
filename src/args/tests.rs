@@ -7,20 +7,7 @@ fn parse(args: &[&str]) -> Result<ProgramArgs, clap::Error> {
 }
 
 #[test]
-fn gpu_and_force_averaging_are_on_by_default() {
-  let args = parse(&[]).unwrap();
-  assert!(!args.cpu);
-  assert!(args.sim_options().average_forces);
-}
-
-#[test]
-fn flags_turn_gpu_and_averaging_off() {
-  assert!(parse(&["--cpu"]).unwrap().cpu);
+fn force_averaging_is_on_by_default() {
+  assert!(parse(&[]).unwrap().sim_options().average_forces);
   assert!(!parse(&["--no-average-forces"]).unwrap().sim_options().average_forces);
-}
-
-#[test]
-fn deterministic_mode_needs_gpu() {
-  assert!(parse(&["--gpu-deterministic"]).unwrap().gpu_deterministic);
-  assert!(parse(&["--cpu", "--gpu-deterministic"]).is_err());
 }

@@ -1,5 +1,6 @@
-//! Wspólna część benchmarków `sim` i `grid`: deterministyczne sceny, krokowanie symulacji,
-//! parametry z linii poleceń i zapis wyników jako Parquet (format w `results`).
+//! Wspólna część benchmarków: deterministyczne sceny, parametry z linii poleceń i zapis
+//! wyników jako Parquet (format w `results`). Benche CPU (`sim`, `grid`, `probe`) usunięto
+//! razem z silnikiem CPU; ich wyniki w `.artifacts/bench` nadal czyta `tools/bench-viz`.
 //!
 //! Każda próbka to stan symulacji wyznaczony przez `(n, macierz, step_offset)`: `n` cząstek,
 //! macierz sił z ziarna `spec_seed`, rozmieszczenie z ziarna `placement_seed`, po
@@ -17,10 +18,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use bevy::app::TaskPoolPlugin;
-use bevy::ecs::system::SystemId;
 use bevy::prelude::*;
-use bevy::state::app::StatesPlugin;
 use clap::Parser;
 use rand::prelude::*;
 use arrow_array::RecordBatch;
@@ -29,16 +27,9 @@ use serde_json::{Value, json};
 
 use results::{ResultsFile, Run};
 
-use partikl::config::{DELTA_TIME, INTERACTION_RADIUS};
-use partikl::sim::{
-  ForceData,
-  Acceleration, InteractionId, LastPosition, ParticleBundle, SimOptions, SimPlugin, SpatialGrid,
-  register_forces, task_pool_options,
-  compute_friction, integrate, rebuild_grid, update_shape, wrap_around,
-};
 use partikl::spec::{Interaction, ParticleSpec};
 
-/// Rozmiar świata, jak domyślne okno w `main.rs`.
+/// Rozmiar świata benchmarków (stały, żeby wyniki były porównywalne między maszynami).
 pub const WORLD: Vec2 = Vec2::new(2560.0, 1440.0);
 
 #[derive(Parser, Debug, Clone)]
@@ -167,173 +158,6 @@ pub fn particle_spec(types: usize, seed: u64) -> ParticleSpec {
     })
     .collect();
   ParticleSpec { interactions }
-}
-
-/// Symulacja bez okna i renderu. Cząstki jak w `render::init_particles`: jednostajnie w
-/// świecie, prędkość startowa ±125 na oś.
-pub struct Sim {
-  pub app: App,
-  systems: [SystemId; SYSTEMS],
-}
-
-/// Liczba systemów kroku (kolumny `<system>_ns` w wynikach).
-pub const SYSTEMS: usize = 6;
-
-pub const SYSTEM_NAMES: [&str; SYSTEMS] =
-  ["compute_forces", "compute_friction", "integrate", "wrap_around", "rebuild_grid", "update_shape"];
-
-impl Sim {
-  pub fn new(sample: &Sample) -> Self {
-    let mut app = App::new();
-    app
-      .add_plugins((
-        MinimalPlugins.set(TaskPoolPlugin { task_pool_options: task_pool_options() }),
-        StatesPlugin,
-        SimPlugin,
-      )).insert_resource(sample.spec());
-
-    let mut rng = rng(sample.placement_seed);
-    let mut grid = SpatialGrid::new(WORLD.x, WORLD.y, INTERACTION_RADIUS);
-    let mut placed = Vec::with_capacity(sample.n);
-    for _ in 0..sample.n {
-      let position = Vec2::new(
-        rng.random_range(-WORLD.x / 2.0..WORLD.x / 2.0),
-        rng.random_range(-WORLD.y / 2.0..WORLD.y / 2.0),
-      );
-      let velocity = Vec2::new(rng.random_range(-125.0..125.0), rng.random_range(-125.0..125.0));
-      let interaction = InteractionId(rng.random_range(0..sample.types));
-      let entity = app
-        .world_mut()
-        .spawn((
-          ParticleBundle {
-            last_pos: LastPosition(position - DELTA_TIME as f32 * velocity),
-            acceleration: Acceleration(Vec2::ZERO),
-            interaction,
-          },
-          Transform::from_translation(position.extend(0.0)),
-        ))
-        .id();
-      placed.push((entity, position, interaction));
-    }
-    grid.rebuild(placed);
-    app.insert_resource(grid);
-    app.finish();
-    app.cleanup();
-
-    // Systemy uruchamiane ręcznie w kolejności `SimSet`, bez harmonogramu i czasu Bevy.
-    let world = app.world_mut();
-    let systems = [
-      register_forces(world, SimOptions::default()),
-      world.register_system(compute_friction),
-      world.register_system(integrate),
-      world.register_system(wrap_around),
-      world.register_system(rebuild_grid),
-      world.register_system(update_shape),
-    ];
-    Sim { app, systems }
-  }
-
-  pub fn step(&mut self) {
-    for id in self.systems {
-      self.app.world_mut().run_system(id).unwrap();
-    }
-  }
-
-  /// Pełny stan do odtworzenia (`restore`): cząstki w kolejności ECS (pozycja, poprzednia
-  /// pozycja, typ) i stan `ForceData` przechodzący między krokami. Siatka nie: powstaje z
-  /// pozycji tak samo jak na końcu kroku.
-  pub fn snapshot(&mut self) -> Value {
-    let world = self.app.world_mut();
-    let particles: Vec<[f32; 5]> = world
-      .query::<(&Transform, &LastPosition, &InteractionId)>()
-      .iter(world)
-      .map(|(t, l, i)| [t.translation.x, t.translation.y, l.0.x, l.0.y, i.0 as f32])
-      .collect();
-    let (last_work, step) = world.resource::<ForceData>().carried();
-    json!({ "particles": particles, "last_work": last_work, "step": step })
-  }
-
-  /// Odtwarza stan z `snapshot` (ta sama liczba cząstek, encje w tej samej kolejności ECS).
-  /// Dalsze kroki są bit w bit takie jak w symulacji bez przerwy.
-  pub fn restore(&mut self, state: &Value) {
-    let particles = state["particles"].as_array().expect("stan bez cząstek");
-    let world = self.app.world_mut();
-    let mut query = world.query::<(Entity, &mut Transform, &mut LastPosition, &mut InteractionId)>();
-    assert_eq!(query.iter(world).count(), particles.len(), "inna liczba cząstek w stanie");
-    let f = |v: &Value, k: usize| v[k].as_f64().unwrap() as f32;
-    let mut placed = Vec::with_capacity(particles.len());
-    for ((entity, mut transform, mut last, mut interaction), p) in query.iter_mut(world).zip(particles) {
-      transform.translation = Vec3::new(f(p, 0), f(p, 1), 0.0);
-      last.0 = Vec2::new(f(p, 2), f(p, 3));
-      interaction.0 = f(p, 4) as usize;
-      placed.push((entity, transform.translation.truncate(), *interaction));
-    }
-    world.resource_mut::<SpatialGrid>().rebuild(placed);
-    let carried = (state["last_work"].as_u64().unwrap(), state["step"].as_u64().unwrap());
-    world.resource_mut::<ForceData>().restore_carried(carried);
-  }
-
-  /// Krok z czasem całego kroku i każdego systemu osobno.
-  pub fn step_timed(&mut self) -> (Duration, [Duration; SYSTEMS]) {
-    let mut per_system = [Duration::ZERO; SYSTEMS];
-    let start = Instant::now();
-    for (i, id) in self.systems.into_iter().enumerate() {
-      let t = Instant::now();
-      self.app.world_mut().run_system(id).unwrap();
-      per_system[i] = t.elapsed();
-    }
-    (start.elapsed(), per_system)
-  }
-
-  pub fn positions(&mut self) -> Vec<Vec2> {
-    self
-      .app
-      .world_mut()
-      .query_filtered::<&Transform, With<Acceleration>>()
-      .iter(self.app.world())
-      .map(|t| t.translation.truncate())
-      .collect()
-  }
-
-  /// Średnia liczba kandydatów na sąsiada zwracanych przez siatkę (z samą cząstką).
-  ///
-  /// Z liczności komórek (`candidates_in_grid`): cząstki w ECS to te, z których zbudowano
-  /// siatkę, na tych samych pozycjach (siatka powstaje na końcu kroku). `check` liczy też po
-  /// pozycjach (`candidates_mean`, wolno: po każdym kandydacie) i sprawdza, że wynik ten sam.
-  pub fn candidates_mean(&mut self, check: bool) -> f64 {
-    let fast = candidates_in_grid(self.app.world().resource::<SpatialGrid>());
-    if check {
-      let positions = self.positions();
-      let slow = candidates_mean(self.app.world().resource::<SpatialGrid>(), &positions);
-      assert_eq!(fast, slow, "kandydaci z komórek różni od liczonych po pozycjach");
-    }
-    fast
-  }
-}
-
-/// Średnia liczba kandydatów na cząstkę (z nią samą) dla cząstek na `positions`, po kolei przez
-/// `get_entities_by_position`.
-pub fn candidates_mean(grid: &SpatialGrid, positions: &[Vec2]) -> f64 {
-  let total: usize = positions.iter().map(|p| grid.get_entities_by_position(p.x, p.y).count()).sum();
-  total as f64 / positions.len().max(1) as f64
-}
-
-/// Jak `candidates_mean` dla cząstek samej siatki, bez przechodzenia po kandydatach: każda
-/// cząstka komórki ma tylu kandydatów, ile cząstek jest w sąsiedztwie komórki
-/// (`neighbour_runs`, te same komórki co w `get_entities_by_position`).
-pub fn candidates_in_grid(grid: &SpatialGrid) -> f64 {
-  let starts = grid.cell_starts();
-  let total: u64 = (0..grid.cell_count())
-    .map(|c| {
-      let count = grid.cell_range(c).len() as u64;
-      if count == 0 {
-        return 0;
-      }
-      let neighbourhood: u64 = grid.neighbour_runs(c).iter().map(|r| (starts[r.last as usize] - starts[r.first as usize]) as u64).sum();
-      count * neighbourhood
-    })
-    .sum();
-  total as f64 / grid.len().max(1) as f64
 }
 
 pub fn nanos(d: Duration) -> u64 {

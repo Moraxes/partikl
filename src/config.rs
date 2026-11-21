@@ -28,14 +28,14 @@ pub const REPULSION_STRENGTH: f32 = 100.0;
 pub const AVERAGE_NEIGHBOURS: f32 = 64.0;
 
 /// Tryb `Overlap::AdaptiveRange`: zasięg odpychania `REPULSION_RADIUS · √(N̄ / ADAPTIVE_NEIGHBOURS)`
-/// (N̄: wygładzona liczba sąsiadów, `Crowding`), od `REPULSION_RADIUS` do `ADAPTIVE_RANGE_MAX`.
+/// (N̄: wygładzona liczba sąsiadów, pole `crowding` cząstki), od `REPULSION_RADIUS` do `ADAPTIVE_RANGE_MAX`.
 /// Przy upakowaniu heksagonalnym z odstępem `REPULSION_RADIUS` w zasięgu oddziaływania jest
 /// ok. 64 sąsiadów, więc powyżej tego skupisko się rozpycha.
 pub const ADAPTIVE_NEIGHBOURS: f32 = 64.0;
 /// Największy zasięg odpychania w trybie zmiennym: nie dalej niż początek przyciągania
 /// (`KERNEL_MIDDLE - KERNEL_WIDTH`), żeby odpychanie go nie zasłaniało.
 pub const ADAPTIVE_RANGE_MAX: f32 = KERNEL_MIDDLE - KERNEL_WIDTH;
-/// Waga nowej liczby sąsiadów w `Crowding` na krok (stała czasowa ok. `1 / α` kroków):
+/// Waga nowej liczby sąsiadów w `crowding` na krok (stała czasowa ok. `1 / α` kroków):
 /// zasięg zmienia się wolniej niż ruch cząstek, więc opóźnienie o krok nie wzbudza drgań.
 pub const CROWDING_SMOOTHING: f32 = 0.02;
 

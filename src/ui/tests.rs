@@ -1,5 +1,5 @@
 use super::*;
-use crate::sim::Overlap;
+use crate::options::Overlap;
 use crate::ui::test_util::*;
 use bevy::camera::{OrthographicProjection, Projection};
 use bevy::input::mouse::MouseScrollUnit;

@@ -7,7 +7,7 @@ use bevy::render::render_resource::ShaderType;
 use super::compute::SimUniforms;
 use super::headless::Harness;
 use super::*;
-use crate::sim::{Overlap, SimOptions};
+use crate::options::{Overlap, SimOptions};
 use crate::spec::Interaction;
 
 const WORLD: Vec2 = Vec2::new(500.0, 330.0);
@@ -21,7 +21,7 @@ fn spec(rng: &mut StdRng, types: usize) -> ParticleSpec {
 }
 
 /// Jeden krok fizyki wprost w f64, po wszystkich parach, z odległością na torusie.
-/// Odpowiada `sim::forces` + `compute_friction` + `integrate` + `wrap_around`, bez próbkowania.
+/// Ta sama fizyka co `rules/default_rules.wesl`, bez próbkowania sąsiadów.
 fn reference_step(spec: &ParticleSpec, particles: &[GpuParticle], options: SimOptions, world: Vec2) -> Vec<GpuParticle> {
   let radius = |crowding: f64| {
     (REPULSION_RADIUS as f64 * (crowding / ADAPTIVE_NEIGHBOURS as f64).sqrt()).clamp(REPULSION_RADIUS as f64, ADAPTIVE_RANGE_MAX as f64)
@@ -184,7 +184,7 @@ fn large_world_matches_reference() {
   // Gęsto w pasie, żeby było dość par w zasięgu, i rzadko poza nim.
   let mut particles = initial_particles(3000, 3, world, &mut rng);
   for p in particles.iter_mut().take(2000) {
-    p.pos[1] = p.pos[1] * 0.02;
+    p.pos[1] *= 0.02;
     p.last[1] = p.pos[1];
   }
   let expected = reference_step(&spec, &particles, options, world);

@@ -8,12 +8,8 @@
 #   tools/bench-ab/ab.sh [rundy=3] [dodatkowe argumenty benchu…]
 #
 # `AB_BASE=<rewizja>`: „przed” z tej rewizji zamiast HEAD (np. porównanie kilku commitów naraz).
-# `AB_BENCH=gpu`: bench GPU zamiast `sim` (domyślny); wynik per liczba cząstek i wariant opcji.
-#
-# `--state` (tylko `sim`, przekazywane do benchu): obie strony mierzą od stanów zapisanych w
-# `.cache/ab/states`, wygenerowanych na starcie kodem „przed”. Przebieg trwa ok. 0,8 s zamiast
-# ok. 4,5 s, a stany są te same po obu stronach także przy zmianie trajektorii; zmiany samej
-# dynamiki (np. inny wygląd skupisk po zmianie fizyki) w ten sposób nie widać.
+# `AB_BENCH=<nazwa>`: inny bench niż `gpu` (domyślny i jedyny po usunięciu benchów CPU).
+# Wynik per liczba cząstek i wariant opcji.
 #
 # „Przed” budowane w osobnym worktree `.cache/ab/worktree` z własnym katalogiem `target`
 # (wspólny `target` z innym worktree myli cargo: biblioteka z innej ścieżki uchodzi za
@@ -28,7 +24,7 @@ base="$root/.cache/ab/worktree"
 target="$root/.cache/ab/target"
 out="$root/.artifacts/bench"
 rev=$(git rev-parse "${AB_BASE:-HEAD}")
-bench=${AB_BENCH:-sim}
+bench=${AB_BENCH:-gpu}
 
 if [ ! -d "$base" ]; then
   git worktree add -q --detach "$base" "$rev"
@@ -48,15 +44,6 @@ after=$(bench_bin "$root" "$root/target")
 latest() { ls "$out"/"$bench"-*.parquet | sort | tail -1 | xargs basename; }
 
 bench_args=("$@")
-if [[ " $* " == *" --state "* ]]; then
-  [ "$bench" = sim ] || { echo "--state działa tylko z benchem sim" >&2; exit 1; }
-  states="$root/.cache/ab/states"
-  bench_args+=(--state-dir "$states")
-  (cd "$base" && "$before" --quick --state --regenerate --state-dir "$states" --measured 1 \
-    --out-dir "$root/.cache/ab/generate" >/dev/null 2>&1) \
-    || { echo "„przed” ($(git rev-parse --short "$rev")) nie generuje stanów: --state wymaga rewizji z zapisem stanu (011)" >&2; exit 1; }
-  echo "stany z $(git rev-parse --short "$rev") w $states" >&2
-fi
 
 json="["
 for ((r = 1; r <= rounds; r++)); do

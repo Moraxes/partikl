@@ -1,5 +1,5 @@
 // Rysowanie cząstek wprost z bufora stanu: 6 wierzchołków na cząstkę (quad z elipsą),
-// kształt z prędkości jak na CPU (`update_shape`), obrót bez trygonometrii. Wierzchołek
+// elipsa wydłużona z prędkością, obrót bez trygonometrii. Wierzchołek
 // niesie (narożnik quada, numer cząstki), patrz `particle_quads` w `src/gpu/mod.rs`.
 
 import bevy_pbr::render::mesh_view_bindings::view;

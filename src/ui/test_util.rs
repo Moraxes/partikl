@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use bevy::window::{CursorOptions, PrimaryWindow};
 
-use crate::sim::{SimOptions, SimState};
+use crate::options::{SimOptions, SimState};
 
 /// Aplikacja bez okna i bez `InputPlugin`: `ButtonInput` nie jest czyszczony między
 /// klatkami, więc `just_pressed` zostaje do ręcznego `clear_input`.

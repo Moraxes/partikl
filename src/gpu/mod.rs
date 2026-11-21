@@ -1,6 +1,6 @@
 //! Symulacja na GPU: stan cząstek w buforach, siatka (counting sort) i siły w compute
-//! shaderach (`src/gpu/shaders`), rysowanie wprost z bufora stanu. Silnik CPU (`sim`) zostaje
-//! jako punkt odniesienia i wyrocznia w testach. Domyślny tryb; `--cpu` wybiera silnik CPU.
+//! shaderach (`src/gpu/shaders`), rysowanie wprost z bufora stanu. W testach wyrocznią jest
+//! skalarna implementacja f64 (`tests.rs`).
 
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::{ClearColorConfig, Hdr, ScalingMode};
@@ -23,10 +23,10 @@ mod material;
 
 use crate::args::ProgramArgs;
 use crate::config::*;
-use crate::render::{MainCamera, get_random_colors};
-use crate::sim::{SimOptions, SimState};
+use crate::options::{SimOptions, SimState};
 use crate::screen::ScreenSize;
 use crate::spec::ParticleSpec;
+use crate::ui::MainCamera;
 use material::ParticleMaterial;
 
 /// Największa liczba kroków fizyki na klatkę obrazu; nadwyżkę (zacięcie) pomijamy.
@@ -82,7 +82,7 @@ impl Geometry {
   }
 }
 
-/// Stan startowy jak na CPU (`render::init_particles`): pozycje jednostajne w świecie,
+/// Stan startowy: pozycje jednostajne w świecie,
 /// prędkości z ±125, losowe typy.
 pub fn initial_particles(n: usize, types: usize, world: Vec2, rng: &mut impl Rng) -> Vec<GpuParticle> {
   let dt = DELTA_TIME as f32;
@@ -98,6 +98,21 @@ pub fn initial_particles(n: usize, types: usize, world: Vec2, rng: &mut impl Rng
         id: id as u32,
         pad: 0,
       }
+    })
+    .collect()
+}
+
+/// Kolory typów cząstek: odcienie rozłożone od losowej fazy o losową rozpiętość.
+fn random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
+  let phase = 360.0 * rng.random::<f32>();
+  let spread = 60.0 + 300.0 * rng.random::<f32>();
+  (0..n)
+    .map(|it| {
+      let mut hue = phase + spread * it as f32 / n as f32;
+      if hue > 360.0 {
+        hue -= 360.0;
+      }
+      Color::lch(0.5 + 0.5 * rng.random::<f32>(), 0.325 + 0.5 * rng.random::<f32>(), hue)
     })
     .collect()
 }
@@ -197,7 +212,7 @@ fn init_gpu(
   let world = screen.get();
   info!("świat symulacji {world} (ekran)");
   let particles = initial_particles(args.num_particles, spec.interactions.len(), world, &mut rng);
-  let colors = get_random_colors(spec.interactions.len(), &mut rng);
+  let colors = random_colors(spec.interactions.len(), &mut rng);
   spawn_sim(&mut commands, buffers, meshes, materials, particles, &spec, world, args.particle_size, colors);
 
   commands.spawn((

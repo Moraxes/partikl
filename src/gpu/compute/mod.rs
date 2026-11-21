@@ -29,7 +29,7 @@ use crate::config::*;
 const WORKGROUP: u32 = 64;
 /// Komórek na blok sumy prefiksowej; jak `BLOCK` w `prefix_sum.wesl`.
 const SCAN_BLOCK: u32 = 256;
-/// Próbkowanie sąsiadów powyżej tylu kandydatów (jak `NEIGHBOUR_CAP` na CPU).
+/// Próbkowanie sąsiadów powyżej tylu kandydatów (ochrona przed bardzo gęstymi skupiskami).
 const MAX_CANDIDATES: u32 = 512;
 
 /// Stałe i geometria kroku; układ jak `SimUniforms` w `engine/types.wesl`.

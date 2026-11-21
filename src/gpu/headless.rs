@@ -16,7 +16,7 @@ use bevy::winit::WinitPlugin;
 
 use super::material::ParticleMaterial;
 use super::*;
-use crate::sim::SimOptions;
+use crate::options::SimOptions;
 
 /// Jedna aplikacja GPU naraz w procesie (wspólne pule wątków i dziennik).
 static LOCK: Mutex<()> = Mutex::new(());
