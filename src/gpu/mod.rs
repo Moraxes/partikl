@@ -192,6 +192,7 @@ impl Plugin for GpuPlugin {
     load_shader_library!(app, "shaders/engine/prefix_sum.wesl");
     load_shader_library!(app, "shaders/engine/step_driver.wesl");
     load_shader_library!(app, "shaders/engine/render.wesl");
+    load_shader_library!(app, "shaders/rules/matrix.wesl");
     load_shader_library!(app, "shaders/rules/default_rules.wesl");
     load_shader_library!(app, "shaders/rules/diagnostic_rules.wesl");
     app

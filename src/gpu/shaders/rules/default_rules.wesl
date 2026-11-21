@@ -1,9 +1,21 @@
 // Reguły modelu (fizyka) wymienne bez ruszania silnika siatki.
 // Opcje przez flagi: OVERLAP_RESOLVE (rozsuwanie), OVERLAP_ADAPTIVE (zmienny zasięg),
 // AVERAGE_FORCES; bez żadnej z dwóch pierwszych działa sprężyna.
-// Kontrakt: RuleAccum, accum_init, pair_interact, integrate_particle.
+// Kontrakt (silnik tylko to woła): RuleAccum, accum_init, RuleSelf, prepare_self, pair_interact,
+// integrate_particle. Reguły same importują swoje wiązania (parametry, macierz sił).
 
-import super::super::engine::types::{Particle, Neighbour, RuleParams};
+import super::super::engine::types::{Particle, Neighbour};
+import super::super::engine::bindings::rule_params;
+import super::matrix::{Coeffs, load_coeffs, coeff_for};
+
+// Dane własnej cząstki liczone raz na cząstkę, przed pętlą po sąsiadach.
+struct RuleSelf {
+  coeffs: Coeffs,
+}
+
+fn prepare_self(p: Particle) -> RuleSelf {
+  return RuleSelf(load_coeffs(p.species));
+}
 
 struct RuleAccum {
   force: vec2<f32>,
@@ -19,20 +31,23 @@ fn accum_init() -> RuleAccum {
 }
 
 // Zasięg odpychania w trybie zmiennym dla wygładzonej liczby sąsiadów.
-fn adaptive_radius(crowding: f32, u: RuleParams) -> f32 {
+fn adaptive_radius(crowding: f32) -> f32 {
+  let u = rule_params;
   return clamp(u.repulsion_radius * sqrt(crowding / u.adaptive_neighbours), u.repulsion_radius, u.adaptive_range_max);
 }
 
 // Wkład jednego sąsiada (już w zasięgu oddziaływania, `dist_sq > 0`). `delta` wskazuje od
 // `self_p` do `other` (po torusie; `other.pos` jest bez przesunięcia torusa), `coeff` to
 // siła typu sąsiada na typ `self_p`, `weight` waga próbkowania (1 bez próbkowania).
-fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: f32, coeff: f32, weight: f32, u: RuleParams, accum: ptr<function, RuleAccum>) {
+fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: f32, rule_self: RuleSelf, weight: f32, accum: ptr<function, RuleAccum>) {
+  let u = rule_params;
+  let coeff = coeff_for(rule_self.coeffs, other.species);
   let inv = inverseSqrt(dist_sq);
   let dist = dist_sq * inv;
   let dir = delta * inv;
   var reach = u.repulsion_radius;
 @if(OVERLAP_ADAPTIVE) {
-  reach = max(adaptive_radius(self_p.crowding, u), adaptive_radius(other.crowding, u));
+  reach = max(adaptive_radius(self_p.crowding), adaptive_radius(other.crowding));
 }
   let attraction = coeff * max(0.0, 1.0 - abs((dist - u.kernel_middle) / u.kernel_width));
   var magnitude = 0.0;
@@ -58,7 +73,8 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
 }
 
 // Poprawka pozycji (rozsuwanie), tarcie kwadratowe i krok Verleta. Zawijanie robi silnik.
-fn integrate_particle(self_p: Particle, accum: RuleAccum, u: RuleParams) -> Particle {
+fn integrate_particle(self_p: Particle, accum: RuleAccum) -> Particle {
+  let u = rule_params;
   var p = self_p;
   var force = accum.force;
 @if(AVERAGE_FORCES) {

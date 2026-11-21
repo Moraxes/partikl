@@ -2,65 +2,13 @@
 // liczonym na przebieg komórek, próbkowanie powyżej `max_candidates` kandydatów.
 
 import super::types::{Particle, Neighbour, cell_xy};
-import super::bindings::{uniforms, rule_params, state, sorted_state, cell_counts, cell_offsets, force_matrix, load_neighbour};
+import super::bindings::{uniforms, state, sorted_state, cell_counts, cell_offsets, load_neighbour};
 // Zestaw reguł wybiera flaga shadera (`RuleSet` w Rust): domyślne reguły fizyki albo diagnostyczne
 // (testy silnika siatki).
-@if(RULES_DIAGNOSTIC) import super::super::rules::diagnostic_rules::{RuleAccum, accum_init, pair_interact, integrate_particle};
-@if(!RULES_DIAGNOSTIC) import super::super::rules::default_rules::{RuleAccum, accum_init, pair_interact, integrate_particle};
+@if(RULES_DIAGNOSTIC) import super::super::rules::diagnostic_rules::{RuleAccum, RuleSelf, accum_init, prepare_self, pair_interact, integrate_particle};
+@if(!RULES_DIAGNOSTIC) import super::super::rules::default_rules::{RuleAccum, RuleSelf, accum_init, prepare_self, pair_interact, integrate_particle};
 
 const REACH: i32 = 2;
-
-// Współczynniki sił dla typu własnego `species`: `coeff_for(c, other.species)` to siła, z jaką
-// sąsiad tego typu działa na cząstkę. Odczyt macierzy w pętli po sąsiadach (zależny od typu
-// sąsiada) kosztował ok. 20% przebiegu sił, więc dla małej liczby typów kolumna macierzy leży w
-// rejestrach (warianty shadera wg flag `TYPES_AT_MOST_4` / `TYPES_AT_MOST_8`).
-@if(TYPES_AT_MOST_4) {
-  alias Coeffs = vec4<f32>;
-
-  fn load_coeffs(species: u32) -> Coeffs {
-    var c = vec4<f32>(0.0);
-    for (var t = 0u; t < uniforms.num_types; t++) {
-      c[t] = force_matrix[t * uniforms.num_types + species];
-    }
-    return c;
-  }
-
-  fn coeff_for(c: Coeffs, other: u32) -> f32 {
-    return c[other];
-  }
-}
-@elif(TYPES_AT_MOST_8) {
-  struct Coeffs {
-    lo: vec4<f32>,
-    hi: vec4<f32>,
-  }
-
-  fn load_coeffs(species: u32) -> Coeffs {
-    var c = Coeffs(vec4<f32>(0.0), vec4<f32>(0.0));
-    for (var t = 0u; t < uniforms.num_types; t++) {
-      let v = force_matrix[t * uniforms.num_types + species];
-      if t < 4u { c.lo[t] = v; } else { c.hi[t - 4u] = v; }
-    }
-    return c;
-  }
-
-  fn coeff_for(c: Coeffs, other: u32) -> f32 {
-    return select(c.lo[other & 3u], c.hi[other & 3u], other >= 4u);
-  }
-}
-@else {
-  struct Coeffs {
-    species: u32,
-  }
-
-  fn load_coeffs(species: u32) -> Coeffs {
-    return Coeffs(species);
-  }
-
-  fn coeff_for(c: Coeffs, other: u32) -> f32 {
-    return force_matrix[other * uniforms.num_types + c.species];
-  }
-}
 
 struct Run {
   start: u32,
@@ -122,16 +70,17 @@ fn wrap(p: Particle) -> Particle {
   return q;
 }
 
-// Jeden kandydat: w zasięgu oddziaływania wywołuje regułę `pair_interact`. `shift` to przesunięcie
+// Jeden kandydat: w zasięgu oddziaływania wywołuje regułę `pair_interact` (z danymi własnej cząstki
+// z `prepare_self`, liczonymi raz na cząstkę). `shift` to przesunięcie
 // torusa biegu komórek kandydata.
-fn visit(me: Particle, other: Neighbour, shift: vec2<f32>, radius_sq: f32, weight: f32, coeffs: Coeffs, accum: ptr<function, RuleAccum>) {
+fn visit(me: Particle, other: Neighbour, shift: vec2<f32>, radius_sq: f32, weight: f32, rule_self: RuleSelf, accum: ptr<function, RuleAccum>) {
   let delta = other.pos + shift - me.pos;
   let dist_sq = dot(delta, delta);
   // 0 < dist_sq <= radius_sq jednym porównaniem całkowitym: dla nieujemnych liczb zmiennoprzecinkowych
   // kolejność bitów jest kolejnością wartości, a 0 po odjęciu 1 przechodzi w największą liczbę
   // (NaN daje fałsz, jak zwykłe porównanie).
   if bitcast<u32>(dist_sq) - 1u < bitcast<u32>(radius_sq) {
-    pair_interact(me, other, delta, dist_sq, coeff_for(coeffs, other.species), weight, rule_params, accum);
+    pair_interact(me, other, delta, dist_sq, rule_self, weight, accum);
   }
 }
 
@@ -158,7 +107,7 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
   let radius_sq = uniforms.interaction_radius * uniforms.interaction_radius;
   let weight = f32(every);
 
-  let coeffs = load_coeffs(me.species);
+  let rule_self = prepare_self(me);
   var accum = accum_init();
   var k = 0u;
   for (var dy = -REACH; dy <= REACH; dy++) {
@@ -177,19 +126,19 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
         let o1 = load_neighbour(s + every);
         let o2 = load_neighbour(s + 2u * every);
         let o3 = load_neighbour(s + 3u * every);
-        visit(me, o0, r.shift, radius_sq, weight, coeffs, &accum);
-        visit(me, o1, r.shift, radius_sq, weight, coeffs, &accum);
-        visit(me, o2, r.shift, radius_sq, weight, coeffs, &accum);
-        visit(me, o3, r.shift, radius_sq, weight, coeffs, &accum);
+        visit(me, o0, r.shift, radius_sq, weight, rule_self, &accum);
+        visit(me, o1, r.shift, radius_sq, weight, rule_self, &accum);
+        visit(me, o2, r.shift, radius_sq, weight, rule_self, &accum);
+        visit(me, o3, r.shift, radius_sq, weight, rule_self, &accum);
         s += 4u * every;
       }
       while s < r.end {
-        visit(me, load_neighbour(s), r.shift, radius_sq, weight, coeffs, &accum);
+        visit(me, load_neighbour(s), r.shift, radius_sq, weight, rule_self, &accum);
         s += every;
       }
       k += r.end - r.start;
     }
   }
   // Wynik na miejsce `j`: stan zostaje w kolejności siatki.
-  state[j] = wrap(integrate_particle(me, accum, rule_params));
+  state[j] = wrap(integrate_particle(me, accum));
 }

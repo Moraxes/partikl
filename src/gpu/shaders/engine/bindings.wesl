@@ -18,7 +18,7 @@ import super::types::{Particle, Neighbour, EngineUniforms, RuleParams};
 @group(0) @binding(5) var<storage, read_write> cell_offsets: array<u32>;
 @group(0) @binding(6) var<storage, read_write> cell_cursors: array<atomic<u32>>;
 // Sumy bloków sumy prefiksowej leżą w `cell_offsets` od indeksu `num_cells`.
-// Macierz sił `matrix[a * T + b]`: siła, z jaką typ `a` działa na typ `b`.
+// Macierz sił `force_matrix[a * T + b]`: siła, z jaką typ `a` działa na typ `b`; czytają ją reguły (`rules/matrix.wesl`).
 @group(0) @binding(7) var<storage, read_write> force_matrix: array<f32>;
 // Parametry reguł (promienie, jądro, tarcie…); wspólne dla wszystkich kroków klatki.
 @group(0) @binding(8) var<uniform> rule_params: RuleParams;
