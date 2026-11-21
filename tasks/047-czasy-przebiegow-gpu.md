@@ -5,6 +5,7 @@ summary: 'Timestamp queries w benchu GPU: osobne czasy count, prefix_sum, scatte
 status: todo
 priority: soon
 branch: compute-shader-1
+part_of: 50
 relates:
 - 28
 created: 2026-11-21T13:33:33
