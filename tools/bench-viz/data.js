@@ -6,6 +6,8 @@
 (function (root) {
   // Systemy kroku; `rebuild_grid` od formatu 1.1 (w starszych plikach brak kolumny).
   const SIM_SYSTEMS = ['compute_forces', 'compute_friction', 'integrate', 'wrap_around', 'rebuild_grid', 'update_shape'];
+  // Przebiegi kroku GPU (`gpu_<przebieg>_ns` od formatu 1.3), jak `GRID_PASSES` + `FORCES`.
+  const GPU_PASSES = ['clear', 'count', 'scan_blocks', 'scan_sums', 'add_offsets', 'scatter', 'sort_cells', 'forces'];
 
   function median(values) {
     const v = values.filter(Number.isFinite).sort((a, b) => a - b);
@@ -50,7 +52,7 @@
     };
     const series = {
       sim: ['candidates', 'step_ns', ...SIM_SYSTEMS.map((s) => `${s}_ns`)],
-      gpu: ['step_ns'],
+      gpu: ['step_ns', 'gpu_step_ns', ...GPU_PASSES.map((p) => `gpu_${p}_ns`)],
     }[kv.bench] ?? ['ns'];
     const records = new Map();
     for (const row of rows) {
@@ -79,7 +81,8 @@
         records.set(key, r);
       }
       for (const s of series) {
-        if (row[s] === undefined) continue;
+        // Brak kolumny (starszy format) albo puste pole (np. odrzucona próbka czasu GPU).
+        if (row[s] === undefined || row[s] === null) continue;
         r[s === 'candidates' ? 'candidates_per_step' : s][row.rep] = Number(row[s]);
       }
     }

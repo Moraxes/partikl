@@ -102,6 +102,27 @@ impl Harness {
     }
   }
 
+  /// Włącza pomiar czasu GPU przebiegów: od teraz klatka z krokami (do
+  /// `MAX_STEPS_PER_FRAME`) ma znaczniki czasu, a wynik odbiera `take_gpu_times`.
+  pub fn set_gpu_timing(&mut self, enabled: bool) {
+    self.world().resource_mut::<GpuTimings>().enabled = enabled;
+  }
+
+  /// Czas GPU przebiegów ostatniej klatki z krokami; czeka (najwyżej kilka klatek bez kroków)
+  /// na odczyt znaczników. `None`: pomiar wyłączony, urządzenie bez znaczników czasu albo
+  /// próbka odrzucona (zerowy znacznik, na M5 w pierwszej klatce z pomiarem).
+  /// Osobno od `step`, żeby czekanie na odczyt nie wchodziło do czasu kroku.
+  pub fn take_gpu_times(&mut self) -> Option<PassTimes> {
+    let latest = self.world().resource::<GpuTimings>().latest.clone();
+    for _ in 0..4 {
+      if let Some(times) = latest.lock().unwrap().take() {
+        return Some(times);
+      }
+      self.update();
+    }
+    None
+  }
+
   fn step_chunk(&mut self, steps: u64) {
     let before = self.world().resource::<GpuProgress>().0.load(Ordering::SeqCst);
     self.world().resource_mut::<GpuParams>().step_count += steps;

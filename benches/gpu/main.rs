@@ -4,9 +4,13 @@
 //! strony porównania przed/po) liczy ten sam stan. Scena `evolved` to dawny pomiar: stan
 //! losowy po `--steps` krokach rozbiegu, potem pomiary kolejno.
 //!
-//! Czas zawiera narzut klatki Bevy (przy małym `n` dominuje); czysty czas GPU: zadanie 047.
+//! `step_ns` to czas od wywołania do końca pracy GPU, z narzutem klatki Bevy (przy małym `n`
+//! dominuje). `gpu_step_ns` i `gpu_<przebieg>_ns` to czysty czas GPU ze znaczników czasu
+//! (`partikl::gpu::GpuTimings`); w pomiarze każdy dispatch ma osobny przebieg compute, co
+//! trochę zmienia `step_ns` (`--no-gpu-timing` mierzy bez znaczników).
 //! Wyniki w Parquet (kolumny: `n`, `scene`, `variant`, `spec_seed`, `step_offset`,
-//! `candidates_mean`, `rep`, `step_ns`), porównanie przez `tools/bench-ab/ab.sh`;
+//! `candidates_mean`, `rep`, `step_ns`, `gpu_step_ns`, `gpu_<przebieg>_ns`), porównanie przez
+//! `tools/bench-ab/ab.sh`;
 //! `cargo bench --bench gpu -- --help` pokazuje parametry.
 
 #[path = "../common/mod.rs"]
@@ -18,6 +22,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use arrow_array::{ArrayRef, Float32Array, RecordBatch, StringArray, UInt16Array, UInt32Array, UInt64Array};
+use partikl::gpu::{MAX_STEPS_PER_FRAME, PassTimes};
 use arrow_schema::{DataType, Field, Schema};
 use clap::Parser;
 
@@ -45,9 +50,12 @@ struct Args {
   #[arg(long, default_value_t = 512)]
   steps: u64,
   /// Kroków w jednym pomiarze (czas dzielony przez tę liczbę). Powyżej `MAX_STEPS_PER_FRAME`
-  /// kroki idą w kilku klatkach.
+  /// kroki idą w kilku klatkach, a czasu GPU nie ma (pomiar obejmuje jedną klatkę).
   #[arg(long, default_value_t = 16, value_parser = clap::value_parser!(u64).range(1..))]
   batch: u64,
+  /// Bez znaczników czasu GPU: krok jednym przebiegiem compute, jak w aplikacji.
+  #[arg(long)]
+  no_gpu_timing: bool,
   /// Wszystkie warianty `SimOptions` zamiast domyślnego wariantu aplikacji (uśrednianie sił).
   #[arg(long)]
   all_variants: bool,
@@ -80,6 +88,8 @@ fn main() {
   let measured = args.measured.unwrap_or(if args.quick { QUICK_MEASURED } else { 10 });
   let seed = if args.quick { QUICK_SEED } else { args.seed };
   let sizes = if args.quick { vec![QUICK_N] } else { args.sizes.clone() };
+  let passes: Vec<&str> = partikl::gpu::timing_entries().collect();
+  let timed = !args.no_gpu_timing && args.batch <= MAX_STEPS_PER_FRAME as u64;
   let schema = Arc::new(Schema::new(vec![
     Field::new("n", DataType::UInt32, false),
     Field::new("scene", DataType::Utf8, false),
@@ -89,14 +99,21 @@ fn main() {
     Field::new("candidates_mean", DataType::Float32, false),
     Field::new("rep", DataType::UInt16, false),
     Field::new("step_ns", DataType::UInt64, false),
-  ]));
+    Field::new("gpu_step_ns", DataType::UInt64, true),
+  ]
+  .into_iter()
+  .chain(passes.iter().map(|entry| Field::new(format!("gpu_{entry}_ns"), DataType::UInt64, true)))
+  .collect::<Vec<_>>()));
   let mut output = Output::new("gpu", &args.out_dir, args.warmup, measured, schema.clone());
   let variants: Vec<SimOptions> = if args.all_variants {
     Overlap::ALL.iter().flat_map(|&overlap| [false, true].map(|average_forces| SimOptions { average_forces, overlap })).collect()
   } else {
     vec![SimOptions { average_forces: true, overlap: Overlap::default() }]
   };
-  println!("{:>9} {:<9} {:<24} {:>10} {:>12}", "n", "scene", "variant", "kandydaci", "median µs/step");
+  println!(
+    "{:>9} {:<9} {:<16} {:>9} {:>9} {:>9} {:>9} {:>9}",
+    "n", "scene", "variant", "kandydaci", "krok µs", "GPU µs", "siatka", "siły"
+  );
   'cases: for &n in &sizes {
     for &scene in &args.scenes {
       for &options in &variants {
@@ -112,7 +129,9 @@ fn main() {
         } else {
           (0, candidates_mean(&state, WORLD))
         };
+        harness.set_gpu_timing(timed);
         let mut times = Vec::new();
+        let mut gpu: Vec<Option<PassTimes>> = Vec::new();
         for _ in 0..args.warmup + measured {
           if scene != Scene::Evolved {
             harness.set_state(state.clone());
@@ -120,8 +139,10 @@ fn main() {
           let start = Instant::now();
           harness.step(args.batch);
           times.push(nanos(start.elapsed()) / args.batch);
+          gpu.push(if timed { harness.take_gpu_times() } else { None });
         }
         let samples = &times[args.warmup..];
+        let gpu = &gpu[args.warmup..];
         let variant = format!("{}{}", options.overlap, if options.average_forces { "+average" } else { "" });
         let rows = samples.len();
         let batch = RecordBatch::try_new(
@@ -135,12 +156,24 @@ fn main() {
             Arc::new(Float32Array::from(vec![candidates as f32; rows])),
             Arc::new(UInt16Array::from((0..rows as u16).collect::<Vec<_>>())),
             Arc::new(UInt64Array::from(samples.to_vec())),
-          ],
+            Arc::new(UInt64Array::from(gpu.iter().map(|t| t.as_ref().map(|t| t.total_ns() as u64)).collect::<Vec<_>>())),
+          ]
+          .into_iter()
+          .chain(passes.iter().map(|entry| {
+            Arc::new(UInt64Array::from(gpu.iter().map(|t| t.as_ref().map(|t| t.get(entry) as u64)).collect::<Vec<_>>()))
+              as ArrayRef
+          }))
+          .collect(),
         )
         .unwrap();
         output.write(&batch);
-        let mut floats: Vec<f64> = samples.iter().map(|&t| t as f64).collect();
-        println!("{n:>9} {scene:<9} {variant:<24} {candidates:>10.0} {:>12.1}", median(&mut floats) / 1000.0);
+        let micros = |values: Vec<f64>| if values.is_empty() { f64::NAN } else { median(&mut values.clone()) / 1000.0 };
+        let gpu_times: Vec<&PassTimes> = gpu.iter().flatten().collect();
+        let gpu_total = micros(gpu_times.iter().map(|t| t.total_ns()).collect());
+        let forces = micros(gpu_times.iter().map(|t| t.get("forces")).collect());
+        let grid = micros(gpu_times.iter().map(|t| t.total_ns() - t.get("forces")).collect());
+        let step = micros(samples.iter().map(|&t| t as f64).collect());
+        println!("{n:>9} {scene:<9} {variant:<16} {candidates:>9.0} {step:>9.1} {gpu_total:>9.1} {grid:>9.1} {forces:>9.1}");
       }
     }
   }

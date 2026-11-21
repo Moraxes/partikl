@@ -13,6 +13,8 @@ ron = "0.12.3"
 clap = { version = "4.6.8", features = [ "derive" ] }
 bevy = "0.20"
 bytemuck = { version = "1", features = [ "derive" ] }
+# Typy wgpu, których Bevy nie re-eksportuje (znaczniki czasu GPU); ta sama wersja co w Bevy.
+wgpu = { version = "30.0.2", default-features = false }
 
 [dependencies.chrono]
 version = "0.4.45"

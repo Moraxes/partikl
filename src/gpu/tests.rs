@@ -237,3 +237,47 @@ fn set_state_replaces_particles_on_gpu() {
   harness.set_state(second.clone());
   assert_eq!(harness.run(0), second);
 }
+
+#[test]
+fn timed_step_reports_every_pass() {
+  let mut rng = StdRng::seed_from_u64(13);
+  let spec = spec(&mut rng, 3);
+  let particles = random_particles(&mut rng, 20_000, 3, false);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  harness.run(4);
+  harness.set_gpu_timing(true);
+  // Pierwsza klatka z pomiarem bywa odrzucona (zerowy znacznik).
+  harness.step(8);
+  harness.take_gpu_times();
+  harness.step(8);
+  let Some(times) = harness.take_gpu_times() else {
+    eprintln!("pomijam: brak znaczników czasu GPU");
+    return;
+  };
+  assert_eq!(times.steps, 1);
+  for (entry, ns) in &times.per_step_ns {
+    // `sort_cells` działa tylko w trybie deterministycznym.
+    if *entry == "sort_cells" {
+      assert_eq!(*ns, 0.0);
+    } else {
+      assert!(*ns > 0.0, "{entry}: {ns}");
+    }
+  }
+}
+
+#[test]
+fn timed_step_gives_the_same_state() {
+  let options = SimOptions::default();
+  let run = |timed: bool| {
+    let mut rng = StdRng::seed_from_u64(17);
+    let spec = spec(&mut rng, 3);
+    let particles = random_particles(&mut rng, 5_000, 3, false);
+    let mut harness = Harness::new(options, spec, particles, WORLD)?;
+    harness.set_deterministic(true);
+    harness.set_gpu_timing(timed);
+    harness.step(MAX_STEPS_PER_FRAME as u64);
+    Some(harness.run(0))
+  };
+  let (Some(plain), Some(timed)) = (run(false), run(true)) else { return };
+  assert_eq!(plain, timed, "pomiar czasu zmienia wynik kroku");
+}

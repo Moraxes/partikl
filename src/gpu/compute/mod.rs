@@ -10,15 +10,19 @@
 //! 2. [`pipelines::queue_forces`]: kolejkuje kompilację wariantu sił dla bieżących opcji,
 //! 3. [`step::plan`]: ile kroków w tej klatce, uniformy na każdy krok, bind group,
 //! 4. [`step::run`] (w `RenderGraph`, przed kamerą): dispatch przebiegów każdego kroku.
+//!
+//! Czas GPU przebiegów (tylko w benchmarku): [`timing`].
 
 mod buffers;
 mod pipelines;
 mod step;
+pub mod timing;
 
 use bevy::core_pipeline::schedule::camera_driver;
 use bevy::prelude::*;
 use bevy::render::render_resource::ShaderType;
-use bevy::render::renderer::RenderGraph;
+use bevy::render::extract_resource::ExtractResourcePlugin;
+use bevy::render::renderer::{RenderGraph, RenderGraphSystems};
 use bevy::render::{Render, RenderApp, RenderStartup, RenderSystems};
 
 use super::GpuSim;
@@ -91,10 +95,11 @@ pub struct GpuComputePlugin;
 
 impl Plugin for GpuComputePlugin {
   fn build(&self, app: &mut App) {
+    app.init_resource::<timing::GpuTimings>().add_plugins(ExtractResourcePlugin::<timing::GpuTimings>::default());
     let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
     render_app
       .init_resource::<step::Plan>()
-      .add_systems(RenderStartup, pipelines::init)
+      .add_systems(RenderStartup, (pipelines::init, timing::init))
       .add_systems(
         Render,
         (
@@ -104,8 +109,12 @@ impl Plugin for GpuComputePlugin {
             .in_set(RenderSystems::PrepareResources),
           pipelines::queue_forces.in_set(RenderSystems::PrepareResources),
           step::plan.in_set(RenderSystems::PrepareBindGroups),
+          timing::collect.in_set(RenderSystems::PrepareResources),
         ),
       )
-      .add_systems(RenderGraph, step::run.before(camera_driver));
+      .add_systems(
+        RenderGraph,
+        (step::run.before(camera_driver), timing::map.in_set(RenderGraphSystems::Finish)),
+      );
   }
 }

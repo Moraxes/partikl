@@ -11,6 +11,7 @@ use bevy::render::storage::GpuShaderBuffer;
 use super::SimUniforms;
 use super::buffers::Buffers;
 use super::pipelines::{FORCES, GRID_PASSES, Pipelines, Variant, variant};
+use super::timing::{GpuTimings, Timer};
 use crate::gpu::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME};
 
 /// Kroki tej klatki. Świat główny tylko zwiększa `GpuParams::step_count`; tu wykonujemy
@@ -85,7 +86,10 @@ pub fn plan(
   ));
 }
 
-/// Dla każdego kroku planu: przebiegi siatki, potem siły.
+/// Dla każdego kroku planu: przebiegi siatki, potem siły. Zwykle jeden przebieg compute na
+/// klatkę; przy pomiarze czasu (`GpuTimings`) pierwszy krok klatki ma osobny przebieg ze
+/// znacznikami na każdy dispatch.
+#[allow(clippy::too_many_arguments)]
 pub fn run(
   mut context: RenderContext,
   sim: Option<Res<GpuSim>>,
@@ -93,6 +97,8 @@ pub fn run(
   progress: Res<GpuProgress>,
   pipelines: Res<Pipelines>,
   cache: Res<PipelineCache>,
+  timings: Option<Res<GpuTimings>>,
+  timer: Option<ResMut<Timer>>,
 ) {
   let Some(sim) = sim else { return };
   let Some(bind_group) = &plan.bind_group else { return };
@@ -102,18 +108,55 @@ pub fn run(
   }
   let get = |id| cache.get_compute_pipeline(id).unwrap();
   let forces = pipelines.forces[&plan.variant];
-  let mut pass = context.command_encoder().begin_compute_pass(&ComputePassDescriptor { label: Some("partikl_step"), ..default() });
-  for &offset in &plan.offsets {
-    pass.set_bind_group(0, bind_group, &[offset]);
-    for (def, &id) in GRID_PASSES.iter().zip(&pipelines.grid) {
-      if def.deterministic_only && !plan.deterministic {
-        continue;
-      }
-      pass.set_pipeline(get(id));
-      pass.dispatch_workgroups(def.dispatch.groups(&sim), 1, 1);
+  // Dispatche kroku w kolejności: (entry point, pipeline, liczba grup).
+  let mut dispatches = Vec::new();
+  for (def, &id) in GRID_PASSES.iter().zip(&pipelines.grid) {
+    if !def.deterministic_only || plan.deterministic {
+      dispatches.push((def.entry, get(id), def.dispatch.groups(&sim)));
     }
-    pass.set_pipeline(get(forces));
-    pass.dispatch_workgroups(FORCES.dispatch.groups(&sim), 1, 1);
+  }
+  dispatches.push((FORCES.entry, get(forces), FORCES.dispatch.groups(&sim)));
+
+  let timed = timings.is_some_and(|t| t.enabled);
+  match timer.filter(|t| timed && t.idle()) {
+    None => {
+      let encoder = context.command_encoder();
+      let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor { label: Some("partikl_step"), ..default() });
+      for &offset in &plan.offsets {
+        pass.set_bind_group(0, bind_group, &[offset]);
+        for &(_, pipeline, groups) in &dispatches {
+          pass.set_pipeline(pipeline);
+          pass.dispatch_workgroups(groups, 1, 1);
+        }
+      }
+    }
+    // Znaczniki tylko w pierwszym kroku klatki: każdy przebieg ze znacznikami kosztuje
+    // ok. 20 µs (Metal, M5), więc reszta kroków idzie jednym przebiegiem jak w aplikacji.
+    Some(mut timer) => {
+      let encoder = context.command_encoder();
+      let (&first, rest) = plan.offsets.split_first().unwrap();
+      let mut entries = Vec::new();
+      for &(entry, pipeline, groups) in &dispatches {
+        let writes = timer.writes(entries.len() as u32);
+        let mut pass =
+          encoder.begin_compute_pass(&ComputePassDescriptor { label: Some(entry), timestamp_writes: Some(writes) });
+        pass.set_bind_group(0, bind_group, &[first]);
+        pass.set_pipeline(pipeline);
+        pass.dispatch_workgroups(groups, 1, 1);
+        entries.push(entry);
+      }
+      if !rest.is_empty() {
+        let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor { label: Some("partikl_step"), ..default() });
+        for &offset in rest {
+          pass.set_bind_group(0, bind_group, &[offset]);
+          for &(_, pipeline, groups) in &dispatches {
+            pass.set_pipeline(pipeline);
+            pass.dispatch_workgroups(groups, 1, 1);
+          }
+        }
+      }
+      timer.finish_frame(encoder, 1, entries);
+    }
   }
   progress.0.fetch_add(plan.count as u64, Ordering::SeqCst);
 }

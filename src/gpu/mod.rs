@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
 mod compute;
+pub use compute::timing::{GpuTimings, PassTimes, entries as timing_entries};
 pub mod headless;
 mod material;
 

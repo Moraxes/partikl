@@ -4666,6 +4666,7 @@ dependencies = [
  "ron",
  "serde",
  "serde_json",
+ "wgpu",
 ]
 
 [[package]]

@@ -13,6 +13,12 @@ const D = require('../bench-viz/data.js');
 
 const METRICS = [
   ['step_ns', 'krok'],
+  // Bench `gpu`: czas GPU ze znaczników (bez narzutu klatki), cały krok i główne przebiegi.
+  ['gpu_step_ns', 'GPU krok'],
+  ['gpu_forces_ns', 'GPU forces'],
+  ['gpu_scatter_ns', 'GPU scatter'],
+  ['gpu_count_ns', 'GPU count'],
+  ['gpu_scan_ns', 'GPU suma pref.'],
   ['compute_forces_ns', 'compute_forces'],
   ['compute_friction_ns', 'compute_friction'],
   ['integrate_ns', 'integrate'],
@@ -26,6 +32,10 @@ const METRICS = [
 
 /** Kolumna przebiegu albo pochodna (`forces_per_candidate`, ns na kandydata na krok). */
 function series(rec, col) {
+  if (col === 'gpu_scan_ns') {
+    const parts = ['gpu_scan_blocks_ns', 'gpu_scan_sums_ns', 'gpu_add_offsets_ns'].map((c) => rec[c]);
+    return parts.every((x) => x?.length) ? parts[0].map((x, i) => x + parts[1][i] + parts[2][i]) : undefined;
+  }
   if (col === 'forces_per_candidate') {
     const f = rec.compute_forces_ns;
     const c = rec.candidates_per_step;

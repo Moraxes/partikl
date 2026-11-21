@@ -12,7 +12,8 @@
 //! - jednostki w nazwach kolumn (`_ns`).
 //!
 //! Kolumny benchu `gpu`: `n` u32, `scene` tekst (od 1.2), `variant` tekst, `spec_seed` u64,
-//! `step_offset` u32, `candidates_mean` f32 (od 1.2), `rep` u16, `step_ns` u64 (schemat w
+//! `step_offset` u32, `candidates_mean` f32 (od 1.2), `rep` u16, `step_ns` u64, od 1.3
+//! `gpu_step_ns` i `gpu_<przebieg>_ns` u64 z pustymi polami, gdy czasu GPU nie ma (schemat w
 //! `benches/gpu/main.rs`). Starsze pliki benchów CPU
 //! (`sim`, `grid`; usunięte razem z silnikiem CPU) mają inne kolumny, opisane w historii gita
 //! tego pliku; nadal czyta je `tools/bench-viz`.
@@ -30,7 +31,7 @@ use parquet::file::properties::WriterProperties;
 
 
 pub const SCHEMA: &str = "partikl-bench";
-pub const SCHEMA_VERSION: &str = "1.2";
+pub const SCHEMA_VERSION: &str = "1.3";
 
 /// Metadane przebiegu zapisywane w stopce pliku.
 #[derive(Debug, Clone)]
