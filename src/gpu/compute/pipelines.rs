@@ -78,7 +78,7 @@ pub const GRID_PASSES: [Pass; 7] = [
   pass("scan_blocks", ShaderFile::Scan, Dispatch::ScanBlocks),
   pass("scan_sums", ShaderFile::Scan, Dispatch::Once),
   pass("add_offsets", ShaderFile::Scan, Dispatch::ScanBlocks),
-  // sorted_hot, sorted_ids w kolejności komórek (w komórce: kolejność atomicAdd)
+  // sorted_hot, sorted_state w kolejności komórek (w komórce: kolejność atomicAdd)
   pass("scatter", ShaderFile::Grid, Dispatch::Particles),
   // w komórce: kolejność po id
   Pass { deterministic_only: true, ..pass("sort_cells", ShaderFile::Grid, Dispatch::Cells) },

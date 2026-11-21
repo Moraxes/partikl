@@ -42,7 +42,7 @@ pub struct GpuParticle {
   pub last: [f32; 2],
   pub species: u32,
   pub crowding: f32,
-  /// Indeks w buforze stanu.
+  /// Stały identyfikator cząstki; bufor stanu jest w kolejności siatki, nie id.
   pub id: u32,
   pub pad: u32,
 }

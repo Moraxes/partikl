@@ -21,8 +21,8 @@ pub enum Binding {
   State = 1,
   /// `sorted_hot`: sąsiedzi w kolejności siatki, spakowani do `vec4`.
   SortedHot = 2,
-  /// `sorted_ids`: indeks w `state` cząstki z danego miejsca w kolejności siatki.
-  SortedIds = 3,
+  /// `sorted_state`: pełne cząstki w kolejności siatki (z nich siły zapisują `state`).
+  SortedState = 3,
   /// `cell_counts`: liczba cząstek w komórce.
   CellCounts = 4,
   /// `cell_offsets`: początek komórki w kolejności siatki (i sumy bloków za komórkami).
@@ -38,7 +38,7 @@ impl Binding {
     Binding::Uniforms,
     Binding::State,
     Binding::SortedHot,
-    Binding::SortedIds,
+    Binding::SortedState,
     Binding::CellCounts,
     Binding::CellOffsets,
     Binding::CellCursors,
@@ -52,7 +52,7 @@ impl Binding {
       Binding::Uniforms => "uniforms",
       Binding::State => "state",
       Binding::SortedHot => "sorted_hot",
-      Binding::SortedIds => "sorted_ids",
+      Binding::SortedState => "sorted_state",
       Binding::CellCounts => "cell_counts",
       Binding::CellOffsets => "cell_offsets",
       Binding::CellCursors => "cell_cursors",
@@ -92,7 +92,7 @@ pub fn create_group(
         Binding::Uniforms => uniforms.clone(),
         Binding::State => state.as_entire_binding(),
         Binding::SortedHot => buffers.sorted_hot.as_entire_binding(),
-        Binding::SortedIds => buffers.sorted_ids.as_entire_binding(),
+        Binding::SortedState => buffers.sorted_state.as_entire_binding(),
         Binding::CellCounts => buffers.cell_counts.as_entire_binding(),
         Binding::CellOffsets => buffers.cell_offsets.as_entire_binding(),
         Binding::CellCursors => buffers.cell_cursors.as_entire_binding(),

@@ -150,7 +150,10 @@ impl Harness {
       self.update();
     }
     let bytes = slot.lock().unwrap().take().unwrap();
-    bytemuck::cast_slice(&bytes).to_vec()
+    // Stan na GPU jest w kolejności siatki; testy i benchmarki widzą kolejność id.
+    let mut particles: Vec<GpuParticle> = bytemuck::cast_slice(&bytes).to_vec();
+    particles.sort_by_key(|p| p.id);
+    particles
   }
 }
 

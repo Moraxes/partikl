@@ -1,7 +1,7 @@
 // Budowa siatki: zerowanie, histogram (atomicAdd), scatter w kolejności komórek.
 
 import super::types::{Particle, cell_index};
-import super::bindings::{uniforms, state, sorted_ids, cell_counts, cell_offsets, cell_cursors, store_neighbour};
+import super::bindings::{uniforms, state, sorted_state, cell_counts, cell_offsets, cell_cursors, store_neighbour};
 
 @compute @workgroup_size(64)
 fn clear(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -28,13 +28,13 @@ fn scatter(@builtin(global_invocation_id) gid: vec3<u32>) {
   let p = state[i];
   let dst = atomicAdd(&cell_cursors[cell_index(p.pos, uniforms)], 1u);
   store_neighbour(dst, p);
-  sorted_ids[dst] = i;
+  sorted_state[dst] = p;
 }
 
 // Tryb deterministyczny: kolejność cząstek w komórce zależy od harmonogramu `atomicAdd` w
 // `scatter`, więc sortujemy każdą komórkę po id (jeden wątek na komórkę, sortowanie przez
-// wstawianie) i odtwarzamy gorące dane. Wtedy sumy f32 mają stałą kolejność, a trajektorie
-// są takie same co do bitu.
+// wstawianie, cząstki 32 B) i odtwarzamy gorące dane. Wtedy sumy f32 mają stałą kolejność, a
+// trajektorie są takie same co do bitu.
 @compute @workgroup_size(64)
 fn sort_cells(@builtin(global_invocation_id) gid: vec3<u32>) {
   let c = gid.x;
@@ -44,15 +44,15 @@ fn sort_cells(@builtin(global_invocation_id) gid: vec3<u32>) {
   let start = cell_offsets[c];
   let n = atomicLoad(&cell_counts[c]);
   for (var i = 1u; i < n; i++) {
-    let key = sorted_ids[start + i];
+    let key = sorted_state[start + i];
     var j = i;
-    while j > 0u && sorted_ids[start + j - 1u] > key {
-      sorted_ids[start + j] = sorted_ids[start + j - 1u];
+    while j > 0u && sorted_state[start + j - 1u].id > key.id {
+      sorted_state[start + j] = sorted_state[start + j - 1u];
       j--;
     }
-    sorted_ids[start + j] = key;
+    sorted_state[start + j] = key;
   }
   for (var s = start; s < start + n; s++) {
-    store_neighbour(s, state[sorted_ids[s]]);
+    store_neighbour(s, sorted_state[s]);
   }
 }

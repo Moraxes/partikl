@@ -7,7 +7,7 @@ struct Particle {
   species: u32,
   // Wygładzona liczba sąsiadów (tryb zmiennego zasięgu).
   crowding: f32,
-  // Stały indeks cząstki w buforze stanu.
+  // Stały identyfikator cząstki (stan jest w kolejności siatki, nie w kolejności id).
   id: u32,
   _pad: u32,
 }
