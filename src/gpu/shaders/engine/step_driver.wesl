@@ -1,8 +1,8 @@
 // Krok symulacji: jeden wątek na cząstkę (model gather), sąsiedztwo 5x5 komórek z torusem
 // liczonym na przebieg komórek, próbkowanie powyżej `max_candidates` kandydatów.
 
-import super::types::{Particle, Neighbour, SimUniforms, cell_xy};
-import super::bindings::{uniforms, state, sorted_state, cell_counts, cell_offsets, force_matrix, load_neighbour};
+import super::types::{Particle, Neighbour, cell_xy};
+import super::bindings::{uniforms, rule_params, state, sorted_state, cell_counts, cell_offsets, force_matrix, load_neighbour};
 // Zestaw reguł wybiera flaga shadera (`RuleSet` w Rust): domyślne reguły fizyki albo diagnostyczne
 // (testy silnika siatki).
 @if(RULES_DIAGNOSTIC) import super::super::rules::diagnostic_rules::{RuleAccum, accum_init, pair_interact, integrate_particle};
@@ -131,7 +131,7 @@ fn visit(me: Particle, other: Neighbour, shift: vec2<f32>, radius_sq: f32, weigh
   // kolejność bitów jest kolejnością wartości, a 0 po odjęciu 1 przechodzi w największą liczbę
   // (NaN daje fałsz, jak zwykłe porównanie).
   if bitcast<u32>(dist_sq) - 1u < bitcast<u32>(radius_sq) {
-    pair_interact(me, other, delta, dist_sq, coeff_for(coeffs, other.species), weight, uniforms, accum);
+    pair_interact(me, other, delta, dist_sq, coeff_for(coeffs, other.species), weight, rule_params, accum);
   }
 }
 
@@ -191,5 +191,5 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
   }
   // Wynik na miejsce `j`: stan zostaje w kolejności siatki.
-  state[j] = wrap(integrate_particle(me, accum, uniforms));
+  state[j] = wrap(integrate_particle(me, accum, rule_params));
 }

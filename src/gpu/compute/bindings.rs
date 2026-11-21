@@ -9,7 +9,7 @@ use bevy::render::render_resource::binding_types::{storage_buffer_sized, uniform
 use bevy::render::render_resource::*;
 use bevy::render::renderer::RenderDevice;
 
-use super::SimUniforms;
+use super::{EngineUniforms, RuleParams};
 use super::buffers::Buffers;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,10 +31,12 @@ pub enum Binding {
   CellCursors = 6,
   /// `force_matrix`: macierz sił `[typ a * T + typ b]`.
   ForceMatrix = 7,
+  /// `rule_params`: parametry reguł, wspólne dla kroków klatki (bez przesunięcia dynamicznego).
+  RuleParams = 8,
 }
 
 impl Binding {
-  pub const ALL: [Binding; 8] = [
+  pub const ALL: [Binding; 9] = [
     Binding::Uniforms,
     Binding::State,
     Binding::SortedHot,
@@ -43,6 +45,7 @@ impl Binding {
     Binding::CellOffsets,
     Binding::CellCursors,
     Binding::ForceMatrix,
+    Binding::RuleParams,
   ];
 
   /// Nazwa zmiennej w `bindings.wesl` (do testu zgodności z plikiem).
@@ -57,16 +60,22 @@ impl Binding {
       Binding::CellOffsets => "cell_offsets",
       Binding::CellCursors => "cell_cursors",
       Binding::ForceMatrix => "force_matrix",
+      Binding::RuleParams => "rule_params",
     }
   }
 
   /// `var<uniform>` w WESL; pozostałe to `var<storage, read_write>`.
+  #[cfg(test)]
   pub fn is_uniform(self) -> bool {
-    self == Binding::Uniforms
+    matches!(self, Binding::Uniforms | Binding::RuleParams)
   }
 
   fn layout_entry(self) -> BindGroupLayoutEntry {
-    let entry = if self.is_uniform() { uniform_buffer::<SimUniforms>(true) } else { storage_buffer_sized(false, None) };
+    let entry = match self {
+      Binding::Uniforms => uniform_buffer::<EngineUniforms>(true),
+      Binding::RuleParams => uniform_buffer::<RuleParams>(false),
+      _ => storage_buffer_sized(false, None),
+    };
     entry.build(self as u32, ShaderStages::COMPUTE)
   }
 }
@@ -97,6 +106,7 @@ pub fn create_group(
         Binding::CellOffsets => buffers.cell_offsets.as_entire_binding(),
         Binding::CellCursors => buffers.cell_cursors.as_entire_binding(),
         Binding::ForceMatrix => buffers.force_matrix.as_entire_binding(),
+        Binding::RuleParams => buffers.rule_params.as_entire_binding(),
       },
     })
     .collect();

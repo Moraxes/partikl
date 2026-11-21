@@ -3,7 +3,7 @@
 // AVERAGE_FORCES; bez żadnej z dwóch pierwszych działa sprężyna.
 // Kontrakt: RuleAccum, accum_init, pair_interact, integrate_particle.
 
-import super::super::engine::types::{Particle, Neighbour, SimUniforms};
+import super::super::engine::types::{Particle, Neighbour, RuleParams};
 
 struct RuleAccum {
   force: vec2<f32>,
@@ -19,14 +19,14 @@ fn accum_init() -> RuleAccum {
 }
 
 // Zasięg odpychania w trybie zmiennym dla wygładzonej liczby sąsiadów.
-fn adaptive_radius(crowding: f32, u: SimUniforms) -> f32 {
+fn adaptive_radius(crowding: f32, u: RuleParams) -> f32 {
   return clamp(u.repulsion_radius * sqrt(crowding / u.adaptive_neighbours), u.repulsion_radius, u.adaptive_range_max);
 }
 
 // Wkład jednego sąsiada (już w zasięgu oddziaływania, `dist_sq > 0`). `delta` wskazuje od
 // `self_p` do `other` (po torusie; `other.pos` jest bez przesunięcia torusa), `coeff` to
 // siła typu sąsiada na typ `self_p`, `weight` waga próbkowania (1 bez próbkowania).
-fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: f32, coeff: f32, weight: f32, u: SimUniforms, accum: ptr<function, RuleAccum>) {
+fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: f32, coeff: f32, weight: f32, u: RuleParams, accum: ptr<function, RuleAccum>) {
   let inv = inverseSqrt(dist_sq);
   let dist = dist_sq * inv;
   let dir = delta * inv;
@@ -58,7 +58,7 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
 }
 
 // Poprawka pozycji (rozsuwanie), tarcie kwadratowe i krok Verleta. Zawijanie robi silnik.
-fn integrate_particle(self_p: Particle, accum: RuleAccum, u: SimUniforms) -> Particle {
+fn integrate_particle(self_p: Particle, accum: RuleAccum, u: RuleParams) -> Particle {
   var p = self_p;
   var force = accum.force;
 @if(AVERAGE_FORCES) {

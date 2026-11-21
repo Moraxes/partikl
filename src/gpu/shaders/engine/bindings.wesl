@@ -1,9 +1,9 @@
 // Wspólny układ wiązań wszystkich przebiegów compute (grupa 0). Numery i nazwy muszą zgadzać
 // się z `Binding` w `src/gpu/compute/bindings.rs` (sprawdza to test).
 
-import super::types::{Particle, Neighbour, SimUniforms};
+import super::types::{Particle, Neighbour, EngineUniforms, RuleParams};
 
-@group(0) @binding(0) var<uniform> uniforms: SimUniforms;
+@group(0) @binding(0) var<uniform> uniforms: EngineUniforms;
 // Trwały stan cząstek (czytany też przez render). Po kroku leży w kolejności siatki (patrz
 // `sorted_state`), więc render widzi cząstki spójnie przestrzennie; `Particle::id` jest
 // stałym identyfikatorem, a nie indeksem.
@@ -20,6 +20,8 @@ import super::types::{Particle, Neighbour, SimUniforms};
 // Sumy bloków sumy prefiksowej leżą w `cell_offsets` od indeksu `num_cells`.
 // Macierz sił `matrix[a * T + b]`: siła, z jaką typ `a` działa na typ `b`.
 @group(0) @binding(7) var<storage, read_write> force_matrix: array<f32>;
+// Parametry reguł (promienie, jądro, tarcie…); wspólne dla wszystkich kroków klatki.
+@group(0) @binding(8) var<uniform> rule_params: RuleParams;
 
 // Układ `sorted_hot[slot]`: (pos.x, pos.y, bity species, crowding).
 fn store_neighbour(slot: u32, p: Particle) {

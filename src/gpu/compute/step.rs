@@ -8,7 +8,7 @@ use bevy::render::render_resource::*;
 use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue};
 use bevy::render::storage::GpuShaderBuffer;
 
-use super::SimUniforms;
+use super::EngineUniforms;
 use super::bindings;
 use super::buffers::Buffers;
 use super::pipelines::{FORCES, ForcesVariant, GRID_PASSES, Pipelines};
@@ -27,7 +27,7 @@ pub struct Plan {
   variant: ForcesVariant,
   deterministic: bool,
   /// Uniformy kolejnych kroków (różnią się `step_index`) i ich przesunięcia w buforze.
-  uniforms: DynamicUniformBuffer<SimUniforms>,
+  uniforms: DynamicUniformBuffer<EngineUniforms>,
   offsets: Vec<u32>,
   bind_group: Option<BindGroup>,
 }
@@ -69,7 +69,7 @@ pub fn plan(
   plan.uniforms.clear();
   plan.offsets.clear();
   for k in 0..pending {
-    plan.offsets.push(plan.uniforms.push(&SimUniforms::new(&sim, (first_step + k) as u32)));
+    plan.offsets.push(plan.uniforms.push(&EngineUniforms::new(&sim, (first_step + k) as u32)));
   }
   plan.uniforms.write_buffer(&device, &queue);
   let Some(uniforms) = plan.uniforms.binding() else { return };

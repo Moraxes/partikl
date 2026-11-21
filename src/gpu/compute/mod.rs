@@ -37,9 +37,10 @@ const SCAN_BLOCK: u32 = 256;
 /// Próbkowanie sąsiadów powyżej tylu kandydatów (ochrona przed bardzo gęstymi skupiskami).
 const MAX_CANDIDATES: u32 = 512;
 
-/// Stałe i geometria kroku; układ jak `SimUniforms` w `engine/types.wesl`.
+/// Stałe i geometria kroku (silnik siatki); układ jak `EngineUniforms` w `engine/types.wesl`.
+/// Różni się między krokami klatki tylko `step_index`.
 #[derive(ShaderType, Clone, Copy, Debug)]
-pub struct SimUniforms {
+pub struct EngineUniforms {
   pub world: Vec2,
   pub cell_size: Vec2,
   pub grid_dims: UVec2,
@@ -49,8 +50,33 @@ pub struct SimUniforms {
   pub num_blocks: u32,
   pub step_index: u32,
   pub max_candidates: u32,
-  pub dt: f32,
   pub interaction_radius: f32,
+}
+
+impl EngineUniforms {
+  pub fn new(sim: &GpuSim, step_index: u32) -> Self {
+    let g = sim.geometry;
+    EngineUniforms {
+      world: g.world,
+      cell_size: g.cell_size,
+      grid_dims: g.dims,
+      num_particles: sim.num_particles,
+      num_types: sim.num_types,
+      num_cells: g.num_cells(),
+      num_blocks: g.num_cells().div_ceil(SCAN_BLOCK),
+      step_index,
+      max_candidates: MAX_CANDIDATES,
+      interaction_radius: INTERACTION_RADIUS,
+    }
+  }
+}
+
+/// Parametry reguł (promienie, jądro, tarcie…) w osobnym buforze, wspólnym dla wszystkich kroków;
+/// układ jak `RuleParams` w `engine/types.wesl`. Silnik ich nie czyta, więc zmiana reguł nie dotyka
+/// geometrii.
+#[derive(ShaderType, Clone, Copy, Debug)]
+pub struct RuleParams {
+  pub dt: f32,
   pub repulsion_radius: f32,
   pub repulsion_strength: f32,
   pub kernel_middle: f32,
@@ -63,21 +89,10 @@ pub struct SimUniforms {
   pub velocity_threshold: f32,
 }
 
-impl SimUniforms {
-  pub fn new(sim: &GpuSim, step_index: u32) -> Self {
-    let g = sim.geometry;
-    SimUniforms {
-      world: g.world,
-      cell_size: g.cell_size,
-      grid_dims: g.dims,
-      num_particles: sim.num_particles,
-      num_types: sim.num_types,
-      num_cells: g.num_cells(),
-      num_blocks: g.num_cells().div_ceil(SCAN_BLOCK),
-      step_index,
-      max_candidates: MAX_CANDIDATES,
+impl Default for RuleParams {
+  fn default() -> Self {
+    RuleParams {
       dt: DELTA_TIME as f32,
-      interaction_radius: INTERACTION_RADIUS,
       repulsion_radius: REPULSION_RADIUS,
       repulsion_strength: REPULSION_STRENGTH,
       kernel_middle: KERNEL_MIDDLE,

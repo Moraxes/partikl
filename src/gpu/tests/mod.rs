@@ -7,7 +7,7 @@
 //! (rysowanie do obrazu). Wspólne pomocnicze są tutaj.
 
 use bevy::render::render_resource::ShaderType;
-use super::compute::SimUniforms;
+use super::compute::{EngineUniforms, RuleParams};
 use super::headless::Harness;
 use super::*;
 use crate::options::{Overlap, SimOptions};

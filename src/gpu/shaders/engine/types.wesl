@@ -20,7 +20,8 @@ struct Neighbour {
   crowding: f32,
 }
 
-struct SimUniforms {
+// Stałe i geometria kroku (silnik siatki). Układ jak `EngineUniforms` w `src/gpu/compute/mod.rs`.
+struct EngineUniforms {
   world: vec2<f32>,
   cell_size: vec2<f32>,
   grid_dims: vec2<u32>,
@@ -30,8 +31,12 @@ struct SimUniforms {
   num_blocks: u32,
   step_index: u32,
   max_candidates: u32,
-  dt: f32,
   interaction_radius: f32,
+}
+
+// Parametry reguł, osobny bufor; czytają je tylko reguły. Układ jak `RuleParams` w Ruście.
+struct RuleParams {
+  dt: f32,
   repulsion_radius: f32,
   repulsion_strength: f32,
   kernel_middle: f32,
@@ -45,12 +50,12 @@ struct SimUniforms {
 }
 
 // Komórka siatki cząstki; pozycje poza światem (np. NaN) trafiają do skrajnych komórek.
-fn cell_xy(pos: vec2<f32>, u: SimUniforms) -> vec2<i32> {
+fn cell_xy(pos: vec2<f32>, u: EngineUniforms) -> vec2<i32> {
   let c = floor((pos + u.world * 0.5) / u.cell_size);
   return clamp(vec2<i32>(c), vec2<i32>(0), vec2<i32>(u.grid_dims) - vec2<i32>(1));
 }
 
-fn cell_index(pos: vec2<f32>, u: SimUniforms) -> u32 {
+fn cell_index(pos: vec2<f32>, u: EngineUniforms) -> u32 {
   let c = cell_xy(pos, u);
   return u32(c.y) * u.grid_dims.x + u32(c.x);
 }

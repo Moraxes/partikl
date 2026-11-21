@@ -1,10 +1,10 @@
-//! Bufory siatki i macierz sił; stan cząstek jest osobno (`GpuSim::state`, wspólny z renderem).
+//! Bufory siatki, macierz sił i parametry reguł; stan cząstek jest osobno (`GpuSim::state`, wspólny z renderem).
 
 use bevy::prelude::*;
 use bevy::render::render_resource::*;
-use bevy::render::renderer::RenderDevice;
+use bevy::render::renderer::{RenderDevice, RenderQueue};
 
-use super::SCAN_BLOCK;
+use super::{RuleParams, SCAN_BLOCK};
 use crate::gpu::{GpuParticle, GpuSim, MAX_CELLS};
 
 /// Bufory pomocnicze kroku; opis zawartości w `engine/bindings.wesl`.
@@ -16,9 +16,10 @@ pub struct Buffers {
   pub cell_offsets: Buffer,
   pub cell_cursors: Buffer,
   pub force_matrix: Buffer,
+  pub rule_params: Buffer,
 }
 
-pub fn create(mut commands: Commands, sim: Res<GpuSim>, device: Res<RenderDevice>) {
+pub fn create(mut commands: Commands, sim: Res<GpuSim>, device: Res<RenderDevice>, queue: Res<RenderQueue>) {
   let n = sim.num_particles as u64;
   let cells = sim.geometry.num_cells() as u64;
   let storage = |label: &str, size: u64| {
@@ -42,5 +43,11 @@ pub fn create(mut commands: Commands, sim: Res<GpuSim>, device: Res<RenderDevice
       contents: bytemuck::cast_slice(&sim.matrix),
       usage: BufferUsages::STORAGE,
     }),
+    rule_params: {
+      let mut contents = UniformBuffer::from(RuleParams::default());
+      contents.add_usages(BufferUsages::COPY_DST);
+      contents.write_buffer(&device, &queue);
+      contents.buffer().expect("just written").clone()
+    },
   });
 }

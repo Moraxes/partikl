@@ -3,7 +3,8 @@ use super::*;
 #[test]
 fn layout_matches_wgsl() {
   assert_eq!(size_of::<GpuParticle>(), 32);
-  assert_eq!(SimUniforms::min_size().get(), 96);
+  assert_eq!(EngineUniforms::min_size().get(), 56);
+  assert_eq!(RuleParams::min_size().get(), 44);
 }
 
 #[test]
