@@ -124,7 +124,10 @@ fn wrap(p: Particle) -> Particle {
 fn visit(me: Particle, other: Neighbour, shift: vec2<f32>, radius_sq: f32, weight: f32, coeffs: Coeffs, accum: ptr<function, RuleAccum>) {
   let delta = other.pos + shift - me.pos;
   let dist_sq = dot(delta, delta);
-  if dist_sq > 0.0 && dist_sq <= radius_sq {
+  // 0 < dist_sq <= radius_sq jednym porównaniem całkowitym: dla nieujemnych liczb zmiennoprzecinkowych
+  // kolejność bitów jest kolejnością wartości, a 0 po odjęciu 1 przechodzi w największą liczbę
+  // (NaN daje fałsz, jak zwykłe porównanie).
+  if bitcast<u32>(dist_sq) - 1u < bitcast<u32>(radius_sq) {
     pair_interact(me, other, delta, dist_sq, coeff_for(coeffs, other.species), weight, uniforms, accum);
   }
 }
