@@ -6,6 +6,8 @@ status: todo
 priority: soon
 branch: compute-shader-1
 part_of: 35
+blocked_by:
+- 36
 created: 2026-11-21T12:39:02
 ---
 Cel: kolejność w BindGroupLayoutEntries::sequential, BindGroupEntries::sequential i @binding(n) w bindings.wesl musi dziś zgadzać się na oko. Jedna struktura z polami w kolejności wiązań i numerem w komentarzu. Następny krok: po podziale compute.rs.
