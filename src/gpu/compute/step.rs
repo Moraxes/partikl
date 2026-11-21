@@ -9,6 +9,7 @@ use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue};
 use bevy::render::storage::GpuShaderBuffer;
 
 use super::SimUniforms;
+use super::bindings;
 use super::buffers::Buffers;
 use super::pipelines::{FORCES, GRID_PASSES, Pipelines, Variant, variant};
 use super::timing::{GpuTimings, Timer};
@@ -70,20 +71,8 @@ pub fn plan(
   plan.uniforms.write_buffer(&device, &queue);
   let Some(uniforms) = plan.uniforms.binding() else { return };
   // Bind group co klatkę: bufor uniformów może zmienić się przy zapisie.
-  plan.bind_group = Some(device.create_bind_group(
-    "partikl_sim",
-    &cache.get_bind_group_layout(&pipelines.layout),
-    &BindGroupEntries::sequential((
-      uniforms,
-      state.buffer.as_entire_binding(),
-      buffers.sorted_hot.as_entire_binding(),
-      buffers.sorted_ids.as_entire_binding(),
-      buffers.cell_counts.as_entire_binding(),
-      buffers.cell_offsets.as_entire_binding(),
-      buffers.cell_cursors.as_entire_binding(),
-      buffers.force_matrix.as_entire_binding(),
-    )),
-  ));
+  let layout = cache.get_bind_group_layout(&pipelines.layout);
+  plan.bind_group = Some(bindings::create_group(&device, &layout, uniforms, &state.buffer, &buffers));
 }
 
 /// Dla każdego kroku planu: przebiegi siatki, potem siły. Zwykle jeden przebieg compute na

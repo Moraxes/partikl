@@ -1,4 +1,5 @@
-// Wspólny układ wiązań wszystkich przebiegów compute (grupa 0).
+// Wspólny układ wiązań wszystkich przebiegów compute (grupa 0). Numery i nazwy muszą zgadzać
+// się z `Binding` w `src/gpu/compute/bindings.rs` (sprawdza to test).
 
 import super::types::{Particle, Neighbour, SimUniforms};
 

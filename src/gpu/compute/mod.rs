@@ -13,6 +13,7 @@
 //!
 //! Czas GPU przebiegów (tylko w benchmarku): [`timing`].
 
+mod bindings;
 mod buffers;
 mod pipelines;
 mod step;

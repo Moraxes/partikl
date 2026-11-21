@@ -4,11 +4,10 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use bevy::prelude::*;
-use bevy::render::render_resource::binding_types::{storage_buffer_sized, uniform_buffer};
 use bevy::render::render_resource::*;
 use bevy::shader::ShaderDefVal;
 
-use super::{SCAN_BLOCK, SimUniforms, WORKGROUP};
+use super::{SCAN_BLOCK, WORKGROUP, bindings};
 use crate::gpu::{GpuParams, GpuSim};
 use crate::options::{ADAPTIVE_RANGE, RESOLVE};
 
@@ -121,28 +120,11 @@ impl Pipelines {
 }
 
 pub fn init(mut commands: Commands, asset_server: Res<AssetServer>, cache: Res<PipelineCache>) {
-  // Wspólny układ wiązań; kolejność jak `@binding` w `engine/bindings.wesl`.
-  let layout = BindGroupLayoutDescriptor::new(
-    "partikl_sim",
-    &BindGroupLayoutEntries::sequential(
-      ShaderStages::COMPUTE,
-      (
-        uniform_buffer::<SimUniforms>(true),
-        storage_buffer_sized(false, None),
-        storage_buffer_sized(false, None),
-        storage_buffer_sized(false, None),
-        storage_buffer_sized(false, None),
-        storage_buffer_sized(false, None),
-        storage_buffer_sized(false, None),
-        storage_buffer_sized(false, None),
-      ),
-    ),
-  );
   let shaders = [ShaderFile::Grid, ShaderFile::Scan, ShaderFile::Step]
     .into_iter()
     .map(|file| (file.path(), asset_server.load(file.path())))
     .collect();
-  let mut pipelines = Pipelines { layout, grid: Vec::new(), forces: HashMap::new(), shaders };
+  let mut pipelines = Pipelines { layout: bindings::layout(), grid: Vec::new(), forces: HashMap::new(), shaders };
   pipelines.grid = GRID_PASSES.iter().map(|pass| pipelines.queue(&cache, pass, vec![])).collect();
   commands.insert_resource(pipelines);
 }
