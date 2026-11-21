@@ -25,6 +25,17 @@ struct VertexOutput {
   @location(1) @interpolate(flat) species: u32,
 }
 
+// Warstwa cząstki: skrót jej numeru (PCG) jako głębokość. Stan leży w kolejności komórek siatki,
+// więc bez tego (opaque, wygrywa ostatnia rysowana) cząstka z późniejszej komórki zawsze
+// przykrywałaby wcześniejsze, a granice komórek byłyby widoczne jako prostokątne krawędzie
+// plam koloru (szczególnie przy wydłużonych, szybkich cząstkach). Test głębokości nic nie kosztuje
+// (500k–1M cząstek: bez różnicy w czasie klatki).
+fn layer(index: u32) -> f32 {
+  let state = index * 747796405u + 2891336453u;
+  let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+  return f32(((word >> 22u) ^ word) & 0xffffu) / 65536.0;
+}
+
 @vertex
 fn vertex(v: Vertex) -> VertexOutput {
   let p = particles[u32(v.position.z)];
@@ -52,7 +63,7 @@ fn vertex(v: Vertex) -> VertexOutput {
   let local = corner * pad * axes;
   let world = p.pos + vec2<f32>(rot.x * local.x - rot.y * local.y, rot.y * local.x + rot.x * local.y);
   var out: VertexOutput;
-  out.clip = view.clip_from_world * vec4<f32>(world, 0.0, 1.0);
+  out.clip = view.clip_from_world * vec4<f32>(world, 0.5 * layer(u32(v.position.z)), 1.0);
   out.corner = corner * pad;
   out.species = p.species;
   return out;
