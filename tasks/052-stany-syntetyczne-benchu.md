@@ -9,6 +9,11 @@ part_of: 50
 blocked_by:
 - 51
 created: 2026-11-21T15:00:57
-worked: 2026-11-21T15:04:30
+worked: 2026-11-21T15:08:26
+links:
+- kind: commit
+  target: 1504e2b
+  at: 2026-11-21T15:08:26
+  note: 'feat(bench): synthetic scenes with fixed density for the gpu bench'
 ---
 Cel: mierzyć silnik w kontrolowanej gęstości niezależnie od reguł (M3 zmienia trajektorie): stany jednostajny, średnio skupiony i bardzo gęsty (zbite plamy, ponad próg próbkowania 512 kandydatów), generowane z ziarna. Kolumna density w wynikach; --quick: 100k × 3 gęstości w wariancie domyślnym aplikacji (average). Następny krok: generator plam w benches/common i kolumna w schemacie.
