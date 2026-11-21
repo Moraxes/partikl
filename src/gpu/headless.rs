@@ -67,6 +67,21 @@ impl Harness {
     self.world().resource_mut::<GpuParams>().deterministic = deterministic;
   }
 
+  /// Podmienia stan cząstek (ta sama liczba cząstek) i wysyła go na GPU, bez kroku symulacji.
+  /// Benchmark mierzy dzięki temu każdy pomiar od tego samego stanu.
+  pub fn set_state(&mut self, particles: Vec<GpuParticle>) {
+    // `GpuSim` powstaje w `Startup` (pierwsza klatka).
+    if !self.world().contains_resource::<GpuSim>() {
+      self.update();
+    }
+    let sim = self.world().resource::<GpuSim>().clone();
+    assert_eq!(particles.len(), sim.num_particles as usize, "inna liczba cząstek");
+    let buffer = ShaderBuffer::new(particles, bevy::asset::RenderAssetUsages::RENDER_WORLD);
+    self.world().resource_mut::<Assets<ShaderBuffer>>().insert(&sim.state, buffer).unwrap();
+    // Wysłanie nowego bufora (ekstrakcja i przygotowanie w świecie renderowania).
+    self.update();
+  }
+
   pub fn world(&mut self) -> &mut World {
     self.apps.main.world_mut()
   }

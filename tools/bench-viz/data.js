@@ -54,7 +54,7 @@
     }[kv.bench] ?? ['ns'];
     const records = new Map();
     for (const row of rows) {
-      const key = `${row.n}|${row.spec_seed}|${row.step_offset}|${row.op ?? ''}|${row.variant ?? ''}`;
+      const key = `${row.n}|${row.spec_seed}|${row.step_offset}|${row.op ?? ''}|${row.variant ?? ''}|${row.scene ?? ''}`;
       let r = records.get(key);
       if (!r) {
         const types = row.types;
@@ -70,6 +70,7 @@
           run,
         };
         if (row.variant !== undefined) r.variant = row.variant;
+        if (row.scene !== undefined) r.scene = row.scene;
         if (row.op !== undefined) {
           r.op = row.op;
           r.state_revision = row.state_revision;

@@ -66,7 +66,7 @@ async function compareRounds(rounds, dir) {
     sides.after.push(await loadRun(path.join(dir, r.after)));
   }
   const bySeed = new Map();
-  const key = (rec) => `${rec.n}|${rec.spec_seed}|${rec.step_offset}|${rec.variant ?? ''}`;
+  const key = (rec) => `${rec.n}|${rec.spec_seed}|${rec.step_offset}|${rec.variant ?? ''}|${rec.scene ?? ''}`;
   const first = sides.before[0].records;
   for (const rec of first) {
     const recs = (side) => sides[side].map((run) => run.records.find((x) => key(x) === key(rec)));
@@ -98,10 +98,11 @@ async function compareRounds(rounds, dir) {
     }
     const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
     const seq = (x) => x.candidates_per_step?.join(',');
-    // Bench `sim`: przypadek to macierz (`spec_seed`); `gpu`: liczba cząstek i wariant opcji.
-    const label = rec.variant === undefined ? rec.spec_seed : `n=${rec.n} ${rec.variant}`;
+    // Bench `sim`: przypadek to macierz (`spec_seed`); `gpu`: liczba cząstek, scena i wariant.
+    const scene = rec.scene === undefined ? '' : `${rec.scene}, `;
+    const label = rec.variant === undefined ? rec.spec_seed : `n=${rec.n} ${scene}${rec.variant}`;
     bySeed.set(label, {
-      label: rec.variant === undefined ? `macierz ${rec.spec_seed} (n=${rec.n}` : `n=${rec.n}, ${rec.variant} (macierz ${rec.spec_seed}`,
+      label: rec.variant === undefined ? `macierz ${rec.spec_seed} (n=${rec.n}` : `n=${rec.n}, ${scene}${rec.variant} (macierz ${rec.spec_seed}`,
       n: rec.n,
       offset: rec.step_offset,
       candidates: { before: mean(b.map((x) => x.candidates_mean)), after: mean(a.map((x) => x.candidates_mean)) },

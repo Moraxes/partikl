@@ -225,3 +225,15 @@ fn deterministic_mode_repeats_bit_for_bit() {
   let (Some(first), Some(second)) = (run(), run()) else { return };
   assert_eq!(first, second, "trajektorie różnią się mimo trybu deterministycznego");
 }
+
+#[test]
+fn set_state_replaces_particles_on_gpu() {
+  let mut rng = StdRng::seed_from_u64(9);
+  let spec = spec(&mut rng, 3);
+  let first = random_particles(&mut rng, 2000, 3, false);
+  let second = random_particles(&mut rng, 2000, 3, true);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, first, WORLD) else { return };
+  harness.run(4);
+  harness.set_state(second.clone());
+  assert_eq!(harness.run(0), second);
+}
