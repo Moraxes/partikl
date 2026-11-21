@@ -1,0 +1,277 @@
+use super::*;
+
+#[test]
+fn layout_matches_wgsl() {
+  assert_eq!(size_of::<GpuParticle>(), 32);
+  assert_eq!(SimUniforms::min_size().get(), 96);
+}
+
+#[test]
+fn geometry_covers_interaction_radius() {
+  let worlds = [
+    Vec2::new(500.0, 330.0),
+    Vec2::new(2560.0, 1440.0),
+    Vec2::new(60.0, 60.0),
+    // Więcej niż `MAX_CELLS` komórek o bazowym boku: komórki rosną.
+    Vec2::new(7680.0, 4320.0),
+    Vec2::new(20_000.0, 20_000.0),
+    Vec2::new(500_000.0, 100.0),
+  ];
+  for world in worlds {
+    let g = Geometry::new(world);
+    assert!(g.dims.x >= MIN_CELLS && g.dims.y >= MIN_CELLS);
+    assert!(g.num_cells() <= MAX_CELLS, "{world}: {}", g.dims);
+    if world.x >= 100.0 {
+      assert!(g.cell_size.x * GRID_REACH as f32 >= INTERACTION_RADIUS - 1e-3, "{world}");
+      assert!(g.cell_size.y * GRID_REACH as f32 >= INTERACTION_RADIUS - 1e-3, "{world}");
+    }
+  }
+}
+
+#[test]
+fn deterministic_mode_repeats_bit_for_bit() {
+  let options = SimOptions { average_forces: false, overlap: Overlap::Spring };
+  let run = || {
+    let mut rng = StdRng::seed_from_u64(5);
+    let spec = spec(&mut rng, 3);
+    let particles = random_particles(&mut rng, 5_000, 3, false);
+    let mut harness = Harness::new(options, spec, particles, WORLD)?;
+    harness.set_deterministic(true);
+    Some(harness.run(32))
+  };
+  let (Some(first), Some(second)) = (run(), run()) else { return };
+  assert_eq!(first, second, "trajektorie różnią się mimo trybu deterministycznego");
+}
+
+/// Pętla jak w aplikacji (`real_time`): kroki wynikają ze stałego kroku w czasie rzeczywistym,
+/// więc w sekundzie wychodzi ok. 100 kroków przy pełnej prędkości symulacji.
+#[test]
+fn real_time_loop_runs_the_fixed_step_clock() {
+  use crate::gpu::headless::Offscreen;
+  let mut rng = StdRng::seed_from_u64(31);
+  let spec = spec(&mut rng, 3);
+  let particles = random_particles(&mut rng, 2_000, 3, false);
+  let offscreen = Offscreen { size: UVec2::new(64, 40), quality: RenderQuality::default(), app_colors: false, real_time: true };
+  let Some(mut harness) = Harness::with_render(SimOptions::default(), spec, particles, WORLD, Some(offscreen)) else { return };
+  harness.run_loop(std::time::Duration::from_millis(500));
+  let stats = harness.run_loop(std::time::Duration::from_secs(1));
+  assert!(stats.frame_ns.len() > 10, "klatek: {}", stats.frame_ns.len());
+  // 100 kroków na sekundę z zapasem na obciążenie maszyny.
+  assert!((50..=150).contains(&stats.steps), "kroków w sekundzie: {}", stats.steps);
+  let speed = stats.sim_speed.last().copied().flatten().expect("prędkość symulacji");
+  assert!(speed > 0.5, "prędkość {speed}");
+}
+
+#[test]
+fn set_state_replaces_particles_on_gpu() {
+  let mut rng = StdRng::seed_from_u64(9);
+  let spec = spec(&mut rng, 3);
+  let first = random_particles(&mut rng, 2000, 3, false);
+  let second = random_particles(&mut rng, 2000, 3, true);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, first, WORLD) else { return };
+  harness.run(4);
+  harness.set_state(second.clone());
+  assert_eq!(harness.run(0), second);
+}
+
+#[test]
+fn timed_step_reports_every_pass() {
+  let mut rng = StdRng::seed_from_u64(13);
+  let spec = spec(&mut rng, 3);
+  let particles = random_particles(&mut rng, 20_000, 3, false);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  harness.run(4);
+  harness.set_gpu_timing(true);
+  // Pierwsza klatka z pomiarem bywa odrzucona (zerowy znacznik).
+  harness.step(8);
+  harness.take_gpu_times();
+  harness.step(8);
+  let Some(times) = harness.take_gpu_times() else {
+    eprintln!("pomijam: brak znaczników czasu GPU");
+    return;
+  };
+  assert_eq!(times.steps, 1);
+  for (entry, ns) in &times.per_step_ns {
+    // `sort_cells` działa tylko w trybie deterministycznym.
+    if *entry == "sort_cells" {
+      assert_eq!(*ns, 0.0);
+    } else {
+      assert!(*ns > 0.0, "{entry}: {ns}");
+    }
+  }
+}
+
+#[test]
+fn timed_step_gives_the_same_state() {
+  let options = SimOptions::default();
+  let run = |timed: bool| {
+    let mut rng = StdRng::seed_from_u64(17);
+    let spec = spec(&mut rng, 3);
+    let particles = random_particles(&mut rng, 5_000, 3, false);
+    let mut harness = Harness::new(options, spec, particles, WORLD)?;
+    harness.set_deterministic(true);
+    harness.set_gpu_timing(timed);
+    harness.step(MAX_STEPS_PER_FRAME as u64);
+    Some(harness.run(0))
+  };
+  let (Some(plain), Some(timed)) = (run(false), run(true)) else { return };
+  assert_eq!(plain, timed, "pomiar czasu zmienia wynik kroku");
+}
+
+/// Co liczą reguły diagnostyczne dla jednej cząstki: suma wag sąsiadów w zasięgu oddziaływania,
+/// suma wag · delta i suma wag · coeff.
+#[derive(Clone, Copy, Debug, Default)]
+struct Neighbourhood {
+  count: f64,
+  delta: [f64; 2],
+  coeff: f64,
+}
+
+/// Wynik reguł diagnostycznych liczony wprost po wszystkich parach w f64 (odległość na torusie).
+fn brute_force_neighbourhoods(spec: &ParticleSpec, particles: &[GpuParticle], world: Vec2) -> Vec<Neighbourhood> {
+  let wrap = |d: f64, size: f64| if d > size / 2.0 { d - size } else if d < -size / 2.0 { d + size } else { d };
+  particles
+    .iter()
+    .enumerate()
+    .map(|(i, me)| {
+      let mut n = Neighbourhood::default();
+      for (j, other) in particles.iter().enumerate() {
+        let dx = wrap(other.pos[0] as f64 - me.pos[0] as f64, world.x as f64);
+        let dy = wrap(other.pos[1] as f64 - me.pos[1] as f64, world.y as f64);
+        let d = (dx * dx + dy * dy).sqrt();
+        if j == i || d == 0.0 || d > INTERACTION_RADIUS as f64 {
+          continue;
+        }
+        n.count += 1.0;
+        n.delta[0] += dx;
+        n.delta[1] += dy;
+        n.coeff += spec.interactions[other.species as usize].force_coeffs[me.species as usize] as f64;
+      }
+      n
+    })
+    .collect()
+}
+
+/// Jeden krok z regułami diagnostycznymi: wynik w polach cząstek (patrz `diagnostic_rules.wesl`).
+fn diagnostic_step(spec: ParticleSpec, particles: Vec<GpuParticle>, world: Vec2) -> Option<Vec<Neighbourhood>> {
+  let mut harness = Harness::new(SimOptions::default(), spec, particles, world)?;
+  harness.set_rules(RuleSet::Diagnostic);
+  Some(
+    harness
+      .run(1)
+      .iter()
+      .map(|p| Neighbourhood { count: p.crowding as f64, delta: [p.last[0] as f64, p.last[1] as f64], coeff: f32::from_bits(p.pad) as f64 })
+      .collect(),
+  )
+}
+
+// ---- Silnik siatki z regułami diagnostycznymi (bez fizyki) ----
+
+/// Wynik reguł diagnostycznych musi zgadzać się z wyrocznią brute force: liczba sąsiadów co do
+/// jednego (bez próbkowania), sumy delta i coeff z tolerancją na f32.
+fn assert_neighbourhoods(actual: &[Neighbourhood], expected: &[Neighbourhood], context: &str) {
+  assert_eq!(actual.len(), expected.len(), "{context}");
+  for (i, (a, e)) in actual.iter().zip(expected).enumerate() {
+    assert_eq!(a.count, e.count, "{context}: cząstka {i}: liczba sąsiadów");
+    for k in 0..2 {
+      assert!((a.delta[k] - e.delta[k]).abs() <= 5e-3 + 1e-5 * e.delta[k].abs(), "{context}: cząstka {i}: suma delta {:?} wobec {:?}", a.delta, e.delta);
+    }
+    assert!((a.coeff - e.coeff).abs() <= 1e-2 + 1e-3 * e.coeff.abs(), "{context}: cząstka {i}: suma coeff {} wobec {}", a.coeff, e.coeff);
+  }
+}
+
+#[test]
+fn engine_finds_every_neighbour_in_range() {
+  let mut rng = StdRng::seed_from_u64(50);
+  let spec = spec(&mut rng, 3);
+  let particles = random_particles(&mut rng, 700, 3, false);
+  let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
+  let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
+  assert!(expected.iter().any(|n| n.count > 10.0), "scena bez sąsiadów nic nie sprawdza");
+  assert_neighbourhoods(&actual, &expected, "700 cząstek");
+}
+
+/// Współczynnik pary czytany z macierzy sił: shader robi to inaczej dla do 4 typów (`vec4`), do 8
+/// (dwa `vec4`) i więcej (bufor), a silnik ma przekazać regule ten sam `coeff` w każdym wariancie.
+#[test]
+fn engine_passes_the_right_coefficient_for_any_number_of_types() {
+  for types in [1, 2, 4, 5, 8, 9, 13] {
+    let mut rng = StdRng::seed_from_u64(60 + types as u64);
+    let spec = spec(&mut rng, types);
+    let particles = random_particles(&mut rng, 500, types, false);
+    let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
+    let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
+    assert_neighbourhoods(&actual, &expected, &format!("{types} typów"));
+  }
+}
+
+/// Sąsiedzi przez szew torusa: cztery cząstki przy narożnikach świata widzą się nawzajem.
+#[test]
+fn engine_finds_neighbours_across_the_world_seam() {
+  let corners = [Vec2::new(-249.0, -164.0), Vec2::new(249.0, -164.0), Vec2::new(-249.0, 164.0), Vec2::new(249.0, 164.0)];
+  let mut particles: Vec<GpuParticle> = corners
+    .iter()
+    .enumerate()
+    .map(|(id, p)| GpuParticle { pos: p.to_array(), last: p.to_array(), species: 0, crowding: 0.0, id: id as u32, pad: 0 })
+    .collect();
+  // Samotna cząstka w środku, bez sąsiadów.
+  particles.push(GpuParticle { pos: [0.0, 0.0], last: [0.0, 0.0], species: 0, crowding: 0.0, id: 4, pad: 0 });
+  let spec = spec(&mut StdRng::seed_from_u64(1), 2);
+  let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
+  let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
+  assert_neighbourhoods(&actual, &expected, "narożniki");
+  // Wprost, bez wyroczni: cząstka w (-249, -164) widzi trzy pozostałe po drugiej stronie szwu,
+  // o 2 jednostki w osi (i √8 po przekątnej).
+  assert_eq!(actual[0].count, 3.0);
+  assert!((actual[0].delta[0] + 4.0).abs() < 1e-3 && (actual[0].delta[1] + 4.0).abs() < 1e-3, "{:?}", actual[0].delta);
+  assert_eq!(actual[4].count, 0.0);
+}
+
+/// Świat z więcej niż `MAX_CELLS` komórkami o bazowym boku ma większe komórki; wynik ten sam.
+#[test]
+fn engine_counts_the_same_with_bigger_cells_in_a_large_world() {
+  let world = Vec2::new(7680.0, 4320.0);
+  assert!(Geometry::new(world).cell_size.x > INTERACTION_RADIUS / GRID_REACH as f32);
+  let mut rng = StdRng::seed_from_u64(70);
+  let spec = spec(&mut rng, 3);
+  // Gęsto w pasie, żeby było dość par w zasięgu, i rzadko poza nim.
+  let mut particles = initial_particles(3000, 3, world, &mut rng);
+  for p in particles.iter_mut().take(2000) {
+    p.pos[1] *= 0.02;
+    p.last[1] = p.pos[1];
+  }
+  let expected = brute_force_neighbourhoods(&spec, &particles, world);
+  let Some(actual) = diagnostic_step(spec, particles, world) else { return };
+  assert_neighbourhoods(&actual, &expected, "duży świat");
+}
+
+/// Powyżej progu próbkowania (512 kandydatów) silnik liczy co `every`-tego sąsiada z wagą `every`:
+/// suma po wszystkich cząstkach nie ma obciążenia, a błąd pojedynczej cząstki jest ograniczony.
+#[test]
+fn engine_samples_dense_states_without_bias() {
+  let mut rng = StdRng::seed_from_u64(51);
+  let spec = spec(&mut rng, 3);
+  let particles = random_particles(&mut rng, 20_000, 3, false);
+  let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
+  let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
+  let (sum_actual, sum_expected): (f64, f64) = (actual.iter().map(|n| n.count).sum(), expected.iter().map(|n| n.count).sum());
+  // Średnio ponad 500 sąsiadów, czyli próbkowanie rzeczywiście działa.
+  assert!(sum_expected / expected.len() as f64 > 500.0, "stan za rzadki: {}", sum_expected / expected.len() as f64);
+  assert!((sum_actual / sum_expected - 1.0).abs() < 0.01, "suma sąsiadów {sum_actual} wobec {sum_expected}");
+  for (i, (a, e)) in actual.iter().zip(&expected).enumerate() {
+    assert!((a.count - e.count).abs() <= 0.25 * e.count.max(10.0), "cząstka {i}: oszacowano {} sąsiadów, jest {}", a.count, e.count);
+  }
+}
+
+/// Niezmienniki stanu dla dowolnych reguł: te same sprawdzenia co dla reguł domyślnych, tu dla
+/// diagnostycznych (nic się nie rusza, ale silnik nie może gubić ani dublować cząstek).
+#[test]
+fn state_invariants_hold_for_the_diagnostic_rules() {
+  let mut rng = StdRng::seed_from_u64(80);
+  let spec = spec(&mut rng, 3);
+  let particles = random_particles(&mut rng, 5_000, 3, false);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  harness.set_rules(RuleSet::Diagnostic);
+  assert_invariants(&harness.run(10), WORLD, "reguły diagnostyczne, 10 kroków");
+}
+

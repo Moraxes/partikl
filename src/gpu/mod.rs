@@ -164,6 +164,25 @@ impl ExtractResource<RenderApp> for SimOptions {
   }
 }
 
+/// Zestaw reguł fizyki w shaderze sił: domyślny (`rules/default_rules.wesl`) albo diagnostyczny
+/// (`rules/diagnostic_rules.wesl`: nic nie porusza, zapisuje w cząstce liczbę sąsiadów, sumę delta i
+/// sumę współczynników; do testów silnika siatki bez fizyki). Zastąpi go wymienny moduł reguł
+/// (zadanie 044).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum RuleSet {
+  #[default]
+  Default,
+  Diagnostic,
+}
+
+impl ExtractResource<RenderApp> for RuleSet {
+  type Source = RuleSet;
+
+  fn extract_resource(source: &RuleSet) -> Self {
+    *source
+  }
+}
+
 pub struct GpuPlugin;
 
 impl Plugin for GpuPlugin {
@@ -179,6 +198,7 @@ impl Plugin for GpuPlugin {
     load_shader_library!(app, "shaders/engine/step_driver.wesl");
     load_shader_library!(app, "shaders/engine/render.wesl");
     load_shader_library!(app, "shaders/rules/default_rules.wesl");
+    load_shader_library!(app, "shaders/rules/diagnostic_rules.wesl");
     app
       .insert_resource(Time::<Fixed>::from_seconds(DELTA_TIME))
       .init_state::<SimState>()
@@ -186,10 +206,12 @@ impl Plugin for GpuPlugin {
       .init_resource::<GpuParams>()
       .init_resource::<GpuProgress>()
       .init_resource::<RenderQuality>()
+      .init_resource::<RuleSet>()
       .add_plugins((
         MaterialPlugin::<ParticleMaterial>::default(),
         ExtractResourcePlugin::<GpuSim>::default(),
         ExtractResourcePlugin::<SimOptions>::default(),
+        ExtractResourcePlugin::<RuleSet>::default(),
         ExtractResourcePlugin::<GpuParams>::default(),
         ExtractResourcePlugin::<GpuProgress>::default(),
         compute::GpuComputePlugin,

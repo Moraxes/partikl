@@ -1,0 +1,168 @@
+use super::*;
+
+/// Jeden krok fizyki wprost w f64, po wszystkich parach, z odległością na torusie.
+/// Ta sama fizyka co `rules/default_rules.wesl`, bez próbkowania sąsiadów.
+fn reference_step(spec: &ParticleSpec, particles: &[GpuParticle], options: SimOptions, world: Vec2) -> Vec<GpuParticle> {
+  let radius = |crowding: f64| {
+    (REPULSION_RADIUS as f64 * (crowding / ADAPTIVE_NEIGHBOURS as f64).sqrt()).clamp(REPULSION_RADIUS as f64, ADAPTIVE_RANGE_MAX as f64)
+  };
+  let wrap = |d: f64, size: f64| if d > size / 2.0 { d - size } else if d < -size / 2.0 { d + size } else { d };
+  let dt = DELTA_TIME;
+  particles
+    .iter()
+    .enumerate()
+    .map(|(i, me)| {
+      let (px, py) = (me.pos[0] as f64, me.pos[1] as f64);
+      let (mut fx, mut fy, mut count) = (0.0f64, 0.0f64, 0.0f64);
+      let (mut cx, mut cy, mut cn) = (0.0f64, 0.0f64, 0.0f64);
+      for (j, other) in particles.iter().enumerate() {
+        let dx = wrap(other.pos[0] as f64 - px, world.x as f64);
+        let dy = wrap(other.pos[1] as f64 - py, world.y as f64);
+        let d = (dx * dx + dy * dy).sqrt();
+        if j == i || d == 0.0 || d > INTERACTION_RADIUS as f64 {
+          continue;
+        }
+        let reach = match options.overlap {
+          Overlap::AdaptiveRange => radius(me.crowding as f64).max(radius(other.crowding as f64)),
+          _ => REPULSION_RADIUS as f64,
+        };
+        let coeff = spec.interactions[other.species as usize].force_coeffs[me.species as usize] as f64;
+        let attraction = coeff * (1.0 - ((d - KERNEL_MIDDLE as f64) / KERNEL_WIDTH as f64).abs()).max(0.0);
+        let magnitude = if options.overlap == Overlap::Resolve {
+          if d < reach {
+            cx += 0.5 * (d - reach) * dx / d;
+            cy += 0.5 * (d - reach) * dy / d;
+            cn += 1.0;
+          }
+          attraction
+        } else if d < reach {
+          -(REPULSION_STRENGTH as f64) * (reach - d)
+        } else {
+          attraction
+        };
+        fx += magnitude * dx / d;
+        fy += magnitude * dy / d;
+        count += 1.0;
+      }
+      if options.average_forces && count > 0.0 {
+        let scale = (AVERAGE_NEIGHBOURS as f64 / count).min(1.0);
+        fx *= scale;
+        fy *= scale;
+      }
+      let (mut x, mut y) = (px, py);
+      if cn > 0.0 {
+        x += cx / cn;
+        y += cy / cn;
+      }
+      let mut crowding = me.crowding as f64;
+      if options.overlap == Overlap::AdaptiveRange {
+        crowding += CROWDING_SMOOTHING as f64 * (count - crowding);
+      }
+      let (mut dispx, mut dispy) = (x - me.last[0] as f64, y - me.last[1] as f64);
+      if (dispx * dispx + dispy * dispy) / (dt * dt) < VELOCITY_THRESHOLD as f64 {
+        dispx = 0.0;
+        dispy = 0.0;
+      }
+      let (freex, freey) = (dispx + fx * dt * dt, dispy + fy * dt * dt);
+      let damping = 1.0 + FRICTION_COEFF as f64 * (freex * freex + freey * freey).sqrt();
+      let (mut nx, mut ny) = (x + freex / damping, y + freey / damping);
+      let (mut lx, mut ly) = (x, y);
+      for (n, l, size) in [(&mut nx, &mut lx, world.x as f64), (&mut ny, &mut ly, world.y as f64)] {
+        if *n > size / 2.0 {
+          *n -= size;
+          *l -= size;
+        } else if *n < -size / 2.0 {
+          *n += size;
+          *l += size;
+        }
+      }
+      GpuParticle { pos: [nx as f32, ny as f32], last: [lx as f32, ly as f32], species: me.species, crowding: crowding as f32, id: me.id, pad: 0 }
+    })
+    .collect()
+}
+
+#[test]
+fn one_step_matches_reference() {
+  for (average_forces, overlap) in [
+    (false, Overlap::Spring),
+    (true, Overlap::Spring),
+    (false, Overlap::Resolve),
+    (true, Overlap::Resolve),
+    (false, Overlap::AdaptiveRange),
+    (true, Overlap::AdaptiveRange),
+  ] {
+    let options = SimOptions { average_forces, overlap };
+    let mut rng = StdRng::seed_from_u64(7);
+    let spec = spec(&mut rng, 4);
+    // Mało kandydatów w sąsiedztwie (poniżej progu próbkowania), ale dość gęsto na pary.
+    let particles = random_particles(&mut rng, 700, 4, overlap == Overlap::AdaptiveRange);
+    let expected = reference_step(&spec, &particles, options, WORLD);
+    let Some(mut harness) = Harness::new(options, spec, particles, WORLD) else { return };
+    assert_close(&harness.run(1), &expected, &format!("{options:?}"));
+  }
+}
+
+/// Świat z więcej niż `MAX_CELLS` komórkami o bazowym boku: większe komórki dają ten sam wynik.
+#[test]
+fn large_world_matches_reference() {
+  let world = Vec2::new(7680.0, 4320.0);
+  assert!(Geometry::new(world).cell_size.x > INTERACTION_RADIUS / GRID_REACH as f32);
+  let options = SimOptions::default();
+  let mut rng = StdRng::seed_from_u64(3);
+  let spec = spec(&mut rng, 3);
+  // Gęsto w pasie, żeby było dość par w zasięgu, i rzadko poza nim.
+  let mut particles = initial_particles(3000, 3, world, &mut rng);
+  for p in particles.iter_mut().take(2000) {
+    p.pos[1] *= 0.02;
+    p.last[1] = p.pos[1];
+  }
+  let expected = reference_step(&spec, &particles, options, world);
+  let Some(mut harness) = Harness::new(options, spec, particles, world) else { return };
+  assert_close(&harness.run(1), &expected, "duży świat");
+}
+
+/// Krok zgodny z wyrocznią dla różnej liczby typów: shader czyta współczynniki sił inaczej dla
+/// do 4 typów (`vec4`), do 8 (dwa `vec4`) i więcej (macierz z bufora).
+#[test]
+fn one_step_matches_reference_for_any_number_of_types() {
+  for types in [1, 2, 4, 5, 8, 9, 13] {
+    let options = SimOptions { average_forces: true, overlap: Overlap::Spring };
+    let mut rng = StdRng::seed_from_u64(40 + types as u64);
+    let spec = spec(&mut rng, types);
+    let particles = random_particles(&mut rng, 700, types, false);
+    let expected = reference_step(&spec, &particles, options, WORLD);
+    let Some(mut harness) = Harness::new(options, spec, particles, WORLD) else { return };
+    assert_close(&harness.run(1), &expected, &format!("{types} typów"));
+  }
+}
+
+/// Zmiana `SimOptions` w trakcie działa od następnego kroku: wariant sił dla nowych opcji.
+#[test]
+fn options_switch_at_runtime() {
+  let first = SimOptions { average_forces: false, overlap: Overlap::Spring };
+  let make_spec = || spec(&mut StdRng::seed_from_u64(21), 4);
+  let spec = make_spec();
+  let particles = random_particles(&mut StdRng::seed_from_u64(22), 700, 4, true);
+  let Some(mut harness) = Harness::new(first, make_spec(), particles.clone(), WORLD) else { return };
+  assert_close(&harness.run(1), &reference_step(&spec, &particles, first, WORLD), "start");
+  for next in [
+    SimOptions { average_forces: true, overlap: Overlap::AdaptiveRange },
+    SimOptions { average_forces: false, overlap: Overlap::Resolve },
+    first,
+  ] {
+    harness.set_options(next);
+    harness.set_state(particles.clone());
+    assert_close(&harness.run(1), &reference_step(&spec, &particles, next, WORLD), &format!("{next:?}"));
+  }
+}
+
+#[test]
+fn many_steps_keep_invariants() {
+  let options = SimOptions { average_forces: true, overlap: Overlap::AdaptiveRange };
+  let mut rng = StdRng::seed_from_u64(11);
+  let spec = spec(&mut rng, 3);
+  // Gęsty stan: ponad 512 kandydatów w sąsiedztwie, więc działa próbkowanie.
+  let particles = random_particles(&mut rng, 20_000, 3, false);
+  let Some(mut harness) = Harness::new(options, spec, particles, WORLD) else { return };
+  assert_invariants(&harness.run(40), WORLD, "reguły domyślne, 40 kroków");
+}

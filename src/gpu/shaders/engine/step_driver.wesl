@@ -3,7 +3,10 @@
 
 import super::types::{Particle, Neighbour, SimUniforms, cell_xy};
 import super::bindings::{uniforms, state, sorted_state, cell_counts, cell_offsets, force_matrix, load_neighbour};
-import super::super::rules::default_rules::{RuleAccum, accum_init, pair_interact, integrate_particle};
+// Zestaw reguł wybiera flaga shadera (`RuleSet` w Rust): domyślne reguły fizyki albo diagnostyczne
+// (testy silnika siatki).
+@if(RULES_DIAGNOSTIC) import super::super::rules::diagnostic_rules::{RuleAccum, accum_init, pair_interact, integrate_particle};
+@if(!RULES_DIAGNOSTIC) import super::super::rules::default_rules::{RuleAccum, accum_init, pair_interact, integrate_particle};
 
 const REACH: i32 = 2;
 

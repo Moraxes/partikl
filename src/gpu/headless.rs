@@ -112,6 +112,11 @@ impl Harness {
     }
   }
 
+  /// Wybiera zestaw reguł shadera sił (domyślny albo diagnostyczny); od następnego kroku.
+  pub fn set_rules(&mut self, rules: RuleSet) {
+    *self.world().resource_mut::<RuleSet>() = rules;
+  }
+
   /// Zmienia jakość rysowania w trakcie, jak klawisze B i A w aplikacji.
   pub fn set_quality(&mut self, quality: RenderQuality) {
     *self.world().resource_mut::<RenderQuality>() = quality;
