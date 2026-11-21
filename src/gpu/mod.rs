@@ -181,6 +181,7 @@ impl Plugin for GpuPlugin {
       .init_resource::<SimOptions>()
       .init_resource::<GpuParams>()
       .init_resource::<GpuProgress>()
+      .init_resource::<RenderQuality>()
       .add_plugins((
         MaterialPlugin::<ParticleMaterial>::default(),
         ExtractResourcePlugin::<GpuSim>::default(),
@@ -191,7 +192,36 @@ impl Plugin for GpuPlugin {
       ))
       // Bez okna (testy headless) stan dostarcza wywołujący przez `spawn_sim`.
       .add_systems(Startup, init_gpu.run_if(any_with_component::<PrimaryWindow>))
+      .add_systems(Update, apply_render_quality.run_if(resource_changed::<RenderQuality>))
       .add_systems(FixedUpdate, count_step.run_if(in_state(SimState::Running)));
+  }
+}
+
+/// Stosuje `RenderQuality` w trakcie działania (klawisze B i A): format kamery (HDR) i
+/// wygładzanie krawędzi w materiale cząstek (tryb mieszania i flaga w shaderze).
+fn apply_render_quality(
+  quality: Res<RenderQuality>,
+  mut commands: Commands,
+  cameras: Query<Entity, With<MainCamera>>,
+  mut materials: ResMut<Assets<ParticleMaterial>>,
+) {
+  for camera in &cameras {
+    let mut camera = commands.entity(camera);
+    if quality.hdr {
+      camera.insert(Hdr);
+    } else {
+      camera.remove::<Hdr>();
+    }
+    camera.insert(quality.msaa);
+    if quality.tonemapping {
+      camera.insert((Tonemapping::default(), DebandDither::default()));
+    } else {
+      camera.insert((Tonemapping::None, DebandDither::Disabled));
+    }
+  }
+  for (_, material) in materials.iter_mut() {
+    material.analytic_aa = quality.analytic_aa;
+    material.params.z = if quality.analytic_aa { 1.0 } else { 0.0 };
   }
 }
 
@@ -214,7 +244,8 @@ fn init_gpu(
   let world = screen.get();
   info!("świat symulacji {world} (ekran)");
   let particles = initial_particles(args.num_particles, spec.interactions.len(), world, &mut rng);
-  let quality = RenderQuality { analytic_aa: args.antialias, ..RenderQuality::default() };
+  let quality = RenderQuality { analytic_aa: args.antialias, hdr: args.hdr, ..RenderQuality::default() };
+  commands.insert_resource(quality);
   let look = ParticleLook { size: args.particle_size, colors: random_colors(spec.interactions.len(), &mut rng), analytic_aa: quality.analytic_aa };
   spawn_sim(&mut commands, buffers, meshes, materials, particles, &spec, world, look);
 
@@ -226,9 +257,10 @@ fn init_gpu(
 ///
 /// MSAA nie wygładza krawędzi elips: okrąg wycina `discard` w fragment shaderze (jedna decyzja
 /// na piksel), więc MSAA kosztuje (ok. 12% renderu przy 500k), a obraz zostaje taki sam. Stąd
-/// domyślnie wyłączone. HDR z tonemappingiem zostaje, bo daje obecne (przygaszone) kolory;
-/// bez HDR kamera nie tonemapuje i kolory są żywsze (np. biały 255 zamiast 196).
-#[derive(Clone, Copy, Debug)]
+/// domyślnie wyłączone. Domyślnie LDR: kamera nie tonemapuje, kolory są żywe (biały 255) i
+/// render tańszy (ok. 10%). HDR z tonemappingiem daje kolory przygaszone (biały 196) i wrażenie
+/// na ekranach HDR/OLED; w aplikacji przełącza je klawisz B, analityczne AA klawisz A.
+#[derive(Resource, Clone, Copy, Debug)]
 pub struct RenderQuality {
   pub msaa: Msaa,
   pub hdr: bool,
@@ -239,7 +271,7 @@ pub struct RenderQuality {
 
 impl Default for RenderQuality {
   fn default() -> Self {
-    RenderQuality { msaa: Msaa::Off, hdr: true, tonemapping: true, analytic_aa: false }
+    RenderQuality { msaa: Msaa::Off, hdr: false, tonemapping: true, analytic_aa: false }
   }
 }
 

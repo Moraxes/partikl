@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowMode};
 
 use crate::args::ProgramArgs;
+use crate::gpu::RenderQuality;
 use crate::options::{SimOptions, SimState};
 
 pub struct UiPlugin;
@@ -64,21 +65,28 @@ pub fn init_ui(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
 }
 
 /// Treść napisów: FPS (`None`, dopóki nie ma średniej) i opcje z klawiszami.
-pub fn hud_text(fps: Option<f64>, options: &SimOptions) -> String {
+pub fn hud_text(fps: Option<f64>, options: &SimOptions, quality: &RenderQuality) -> String {
   let fps = fps.map_or("–".to_string(), |fps| format!("{fps:.0}"));
-  let averaging = if options.average_forces { "on" } else { "off" };
-  format!("{fps} fps\naveraging {averaging}  N\noverlap {}  O\nhide  H", options.overlap)
+  let on_off = |on: bool| if on { "on" } else { "off" };
+  format!(
+    "{fps} fps\naveraging {}  N\noverlap {}  O\nhdr {}  B\nantialiasing {}  A\nhide  H",
+    on_off(options.average_forces),
+    options.overlap,
+    on_off(quality.hdr),
+    on_off(quality.analytic_aa),
+  )
 }
 
 pub fn update_text(
   diagnostics: Res<DiagnosticsStore>,
   options: Res<SimOptions>,
+  quality: Res<RenderQuality>,
   query: Query<Entity, With<Hud>>,
   mut writer: TextUiWriter,
 ) {
   let Ok(entity) = query.single() else { return };
   let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS).and_then(|fps| fps.average());
-  let text = hud_text(fps, &options);
+  let text = hud_text(fps, &options, &quality);
   let mut current = writer.text(entity, 0);
   // Bez zapisu, gdy bez zmian: zapis oznacza tekst do ponownego układu.
   if *current != text {
@@ -119,6 +127,7 @@ pub fn handle_keyboard_input(
   state: Res<State<SimState>>,
   mut next_state: ResMut<NextState<SimState>>,
   mut options: ResMut<SimOptions>,
+  mut quality: ResMut<RenderQuality>,
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
   mut hud: Query<&mut Visibility, With<Hud>>,
 ) {
@@ -134,6 +143,12 @@ pub fn handle_keyboard_input(
   }
   if keyboard.just_pressed(KeyCode::KeyO) {
     options.overlap = options.overlap.next();
+  }
+  if keyboard.just_pressed(KeyCode::KeyB) {
+    quality.hdr = !quality.hdr;
+  }
+  if keyboard.just_pressed(KeyCode::KeyA) {
+    quality.analytic_aa = !quality.analytic_aa;
   }
   if keyboard.just_pressed(KeyCode::KeyH) {
     for mut visibility in hud.iter_mut() {

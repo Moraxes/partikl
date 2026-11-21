@@ -47,8 +47,9 @@ struct Args {
   /// Próbki MSAA kamery: 1 (wyłączone, domyślne w aplikacji), 2 albo 4.
   #[arg(long, value_delimiter = ',', default_value = "1")]
   msaa: Vec<u8>,
-  /// Format głównej tekstury kamery: true = HDR (Rgba16Float), false = LDR.
-  #[arg(long, value_delimiter = ',', default_value = "true")]
+  /// Format głównej tekstury kamery: true = HDR (Rgba16Float, tonemapping), false = LDR
+  /// (domyślny w aplikacji).
+  #[arg(long, value_delimiter = ',', default_value = "false")]
   hdr: Vec<bool>,
   /// Tonemapping i dithering kamery (domyślne ustawienie Bevy); false = surowe kolory.
   #[arg(long, value_delimiter = ',', default_value = "true")]
@@ -59,9 +60,10 @@ struct Args {
   /// Katalog na zrzuty (PNG, pełny obraz) pierwszej klatki trybu `draw` każdego wariantu.
   #[arg(long)]
   screenshots: Option<PathBuf>,
-  /// Zamiast pomiaru: galeria porównań wyglądu w katalogu (PNG): ten sam stan (po `--steps`
-  /// krokach rozbiegu, `--sizes`, `--seed`) w HDR i LDR oraz bez i z analitycznym AA, z kolorami
-  /// jak w aplikacji, panele obok siebie (lewy = obecny wygląd), w skali 1:1 i 4×.
+  /// Zamiast pomiaru: galeria porównań wyglądu w katalogu (PNG): ten sam stan (po
+  /// `--gallery-steps` krokach rozbiegu, `--sizes`, `--seed`) w LDR i HDR oraz bez i z
+  /// analitycznym AA, z kolorami jak w aplikacji, panele obok siebie (lewy = domyślny wygląd
+  /// aplikacji), w skali 1:1 i 4×.
   #[arg(long)]
   gallery: Option<PathBuf>,
   /// Tryby pomiaru: draw (sam render) i draw+step (klatka z krokiem).
@@ -185,7 +187,7 @@ fn gallery(args: &Args, dir: &std::path::Path) {
   };
   let base = RenderQuality::default();
   let pairs = [
-    ("hdr_vs_ldr", base, RenderQuality { hdr: false, ..base }),
+    ("ldr_vs_hdr", base, RenderQuality { hdr: true, ..base }),
     ("noaa_vs_aa", base, RenderQuality { analytic_aa: true, ..base }),
   ];
   // Środek obrazu: 900×700 pikseli fizycznych w skali 1:1, 225×175 w skali 4×.

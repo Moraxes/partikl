@@ -248,6 +248,18 @@ fn deterministic_mode_repeats_bit_for_bit() {
 
 /// Cztery nieruchome cząstki narysowane do obrazu 2× świata; piksele RGBA8 od lewego górnego rogu.
 fn render_still_particles(quality: RenderQuality) -> Option<(Vec<u8>, UVec2, Vec2, [Vec2; 4])> {
+  let (mut harness, size, world, positions) = still_particles_harness(quality)?;
+  // Kilka klatek: zasoby (siatka, materiał, pipeline) trafiają na GPU z opóźnieniem.
+  for _ in 0..6 {
+    harness.update();
+  }
+  let pixels = harness.target_pixels();
+  assert_eq!(pixels.len(), (size.x * size.y * 4) as usize);
+  Some((pixels, size, world, positions))
+}
+
+/// Harness rysujący cztery nieruchome cząstki (jedna w środku obrazu) do obrazu 2× świata.
+fn still_particles_harness(quality: RenderQuality) -> Option<(Harness, UVec2, Vec2, [Vec2; 4])> {
   use super::headless::Offscreen;
   let world = Vec2::new(200.0, 120.0);
   let positions = [Vec2::new(0.0, 0.0), Vec2::new(-50.3, 20.7), Vec2::new(60.1, -30.9), Vec2::new(-80.0, -40.0)];
@@ -259,14 +271,8 @@ fn render_still_particles(quality: RenderQuality) -> Option<(Vec<u8>, UVec2, Vec
   // Zerowe siły: cząstki stoją w miejscu.
   let spec = zero_forces(spec(&mut StdRng::seed_from_u64(1), 2));
   let size = (world * 2.0).as_uvec2();
-  let mut harness = Harness::with_render(SimOptions::default(), spec, particles, world, Some(Offscreen { size, quality, app_colors: false }))?;
-  // Kilka klatek: zasoby (siatka, materiał, pipeline) trafiają na GPU z opóźnieniem.
-  for _ in 0..6 {
-    harness.update();
-  }
-  let pixels = harness.target_pixels();
-  assert_eq!(pixels.len(), (size.x * size.y * 4) as usize);
-  Some((pixels, size, world, positions))
+  let harness = Harness::with_render(SimOptions::default(), spec, particles, world, Some(Offscreen { size, quality, app_colors: false }))?;
+  Some((harness, size, world, positions))
 }
 
 /// Cząstki są rysowane tylko tam, gdzie leżą: na obrazie nie ma linii ani rozciągniętych
@@ -321,6 +327,41 @@ fn analytic_aa_smooths_the_edge_and_msaa_barely_does() {
   // MSAA wygładza tylko miejsca, gdzie okrąg dotyka krawędzi quada (kilka pikseli na cząstkę),
   // a nie obwód elipsy.
   assert!(msaa * 10 < smooth, "MSAA wygładziło obwód elipsy: {msaa} pikseli wobec {smooth} z analitycznym AA");
+}
+
+/// Zmiana jakości w trakcie działania (klawisze B i A) działa na obraz: HDR tonemapuje (biały
+/// ok. 196 zamiast 255), analityczne AA daje pośrednie jasności na krawędzi.
+#[test]
+fn render_quality_switches_at_runtime() {
+  let base = RenderQuality::default();
+  let Some((mut harness, size, ..)) = still_particles_harness(base) else { return };
+  let frame = |harness: &mut Harness| {
+    for _ in 0..4 {
+      harness.update();
+    }
+    harness.target_pixels()
+  };
+  let centre = |p: &[u8]| p[((size.y / 2 * size.x + size.x / 2) * 4) as usize];
+  let intermediate = |p: &[u8]| p.chunks(4).filter(|p| (40..180).contains(&p[0])).count();
+
+  let ldr = frame(&mut harness);
+  assert!(centre(&ldr) > 240, "LDR: biały powinien mieć 255, ma {}", centre(&ldr));
+  assert_eq!(intermediate(&ldr), 0);
+
+  harness.set_quality(RenderQuality { hdr: true, ..base });
+  let hdr = frame(&mut harness);
+  assert!(centre(&hdr) < 230, "HDR: biały powinien być tonemapowany, ma {}", centre(&hdr));
+
+  harness.set_quality(base);
+  assert!(centre(&frame(&mut harness)) > 240, "powrót do LDR");
+
+  harness.set_quality(RenderQuality { analytic_aa: true, ..base });
+  let smooth = frame(&mut harness);
+  assert!(intermediate(&smooth) > 0, "analityczne AA nie wygładziło krawędzi po włączeniu w trakcie");
+  assert!(centre(&smooth) > 240);
+
+  harness.set_quality(base);
+  assert_eq!(intermediate(&frame(&mut harness)), 0, "krawędź nadal wygładzona po wyłączeniu AA");
 }
 
 /// Macierz sił wyzerowana (cząstki nie przyspieszają).

@@ -53,9 +53,14 @@ pub struct ProgramArgs {
   pub particle_size: f32,
 
   /// Smooth the particle edges in the fragment shader (costs about 1 ms per frame at 500k
-  /// particles; the edges are otherwise sharp).
+  /// particles; the edges are otherwise sharp). Toggled at runtime with A.
   #[arg(long)]
   pub antialias: bool,
+
+  /// Start in HDR (tonemapped colours, subdued; better on HDR/OLED screens). Toggled at runtime
+  /// with B.
+  #[arg(long)]
+  pub hdr: bool,
 
   /// Sort particles within grid cells so runs are bit-for-bit reproducible (slower).
   #[arg(long)]

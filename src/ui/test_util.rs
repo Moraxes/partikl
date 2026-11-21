@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use bevy::window::{CursorOptions, PrimaryWindow};
 
+use crate::gpu::RenderQuality;
 use crate::options::{SimOptions, SimState};
 
 /// Aplikacja bez okna i bez `InputPlugin`: `ButtonInput` nie jest czyszczony między
@@ -13,6 +14,7 @@ pub fn input_app() -> App {
     .add_plugins((MinimalPlugins, StatesPlugin))
     .init_state::<SimState>()
     .init_resource::<SimOptions>()
+    .init_resource::<RenderQuality>()
     .init_resource::<ButtonInput<KeyCode>>()
     .init_resource::<ButtonInput<MouseButton>>()
     .add_message::<MouseWheel>()

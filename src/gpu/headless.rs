@@ -63,6 +63,9 @@ impl Harness {
           // praca kroków jest już wysłana i skończona (pomiar czasu w benchu tego wymaga).
           .disable::<PipelinedRenderingPlugin>(),
       );
+      // Jakość rysowania kamery offscreen jest też zasobem, który system `apply_render_quality`
+      // stosuje co zmianę (bez tego domyślna nadpisałaby kamerę).
+      app.insert_resource(offscreen.map(|o| o.quality).unwrap_or_default());
       app.insert_resource(options).insert_resource(spec).add_plugins(GpuPlugin);
       // Kroki liczy test, nie czas stały.
       app.insert_resource(Time::<Fixed>::from_seconds(1.0e9));
@@ -88,6 +91,11 @@ impl Harness {
       }
       Err(payload) => std::panic::resume_unwind(payload),
     }
+  }
+
+  /// Zmienia jakość rysowania w trakcie, jak klawisze B i A w aplikacji.
+  pub fn set_quality(&mut self, quality: RenderQuality) {
+    *self.world().resource_mut::<RenderQuality>() = quality;
   }
 
   /// Zmienia opcje symulacji w trakcie, jak klawisze w `ui`: od następnego kroku działa

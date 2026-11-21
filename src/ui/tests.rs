@@ -91,6 +91,22 @@ fn o_cycles_overlap_modes() {
 }
 
 #[test]
+fn b_toggles_hdr_and_a_toggles_antialiasing() {
+  let mut app = input_app();
+  app.add_systems(Update, handle_keyboard_input);
+  let quality = |app: &App| *app.world().resource::<RenderQuality>();
+  // Domyślnie LDR bez wygładzania.
+  assert!(!quality(&app).hdr && !quality(&app).analytic_aa);
+  tap_key(&mut app, KeyCode::KeyB);
+  assert!(quality(&app).hdr && !quality(&app).analytic_aa);
+  tap_key(&mut app, KeyCode::KeyA);
+  assert!(quality(&app).hdr && quality(&app).analytic_aa);
+  tap_key(&mut app, KeyCode::KeyB);
+  tap_key(&mut app, KeyCode::KeyA);
+  assert!(!quality(&app).hdr && !quality(&app).analytic_aa);
+}
+
+#[test]
 fn h_toggles_hud_visibility() {
   let mut app = input_app();
   app.add_systems(Update, handle_keyboard_input);
@@ -106,11 +122,14 @@ fn h_toggles_hud_visibility() {
 #[test]
 fn hud_text_shows_fps_and_options() {
   let options = SimOptions { average_forces: true, overlap: Overlap::AdaptiveRange };
-  let text = hud_text(Some(59.6), &options);
+  let quality = RenderQuality { hdr: true, ..RenderQuality::default() };
+  let text = hud_text(Some(59.6), &options, &quality);
   assert!(text.contains("60 fps"), "{text}");
   assert!(text.contains("averaging on"), "{text}");
   assert!(text.contains("overlap adaptive range"), "{text}");
-  assert!(hud_text(None, &SimOptions::default()).contains("– fps"));
+  assert!(text.contains("hdr on"), "{text}");
+  assert!(text.contains("antialiasing off"), "{text}");
+  assert!(hud_text(None, &SimOptions::default(), &RenderQuality::default()).contains("– fps"));
 }
 
 #[test]
