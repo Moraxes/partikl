@@ -7,7 +7,8 @@ struct Particle {
   species: u32,
   // Wygładzona liczba sąsiadów (tryb zmiennego zasięgu).
   crowding: f32,
-  // Indeks w buforze stanu (stały); w buforze posortowanym wskazuje miejsce zapisu.
+  // Stały indeks cząstki w buforze stanu. Sąsiedzi w `pair_interact` są składani z
+  // `sorted_hot` i mają tu 0 (oraz `last == pos`).
   id: u32,
   _pad: u32,
 }
