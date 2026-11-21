@@ -4,7 +4,7 @@
 //!
 //! Podział: `engine` (siatka, torus, próbkowanie, wsparcie harnessu; reguły diagnostyczne i wyrocznia
 //! brute force), `default_rules` (wyrocznia f64 dla fizyki `rules/default_rules.wesl`), `render`
-//! (rysowanie do obrazu). Wspólne pomocnicze są tutaj.
+//! (rysowanie do obrazu), `rules` (źródło modułu reguł: plik, przeładowanie). Wspólne pomocnicze są tutaj.
 
 use bevy::render::render_resource::ShaderType;
 use super::compute::{EngineUniforms, RuleParams};
@@ -16,6 +16,7 @@ use crate::spec::Interaction;
 mod default_rules;
 mod engine;
 mod render;
+mod rules;
 
 const WORLD: Vec2 = Vec2::new(500.0, 330.0);
 

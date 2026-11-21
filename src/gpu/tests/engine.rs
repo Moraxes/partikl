@@ -156,7 +156,7 @@ fn brute_force_neighbourhoods(spec: &ParticleSpec, particles: &[GpuParticle], wo
 /// Jeden krok z regułami diagnostycznymi: wynik w polach cząstek (patrz `diagnostic_rules.wesl`).
 fn diagnostic_step(spec: ParticleSpec, particles: Vec<GpuParticle>, world: Vec2) -> Option<Vec<Neighbourhood>> {
   let mut harness = Harness::new(SimOptions::default(), spec, particles, world)?;
-  harness.set_rules(RuleSet::Diagnostic);
+  harness.set_rules(RuleSource::Diagnostic);
   Some(
     harness
       .run(1)
@@ -272,7 +272,7 @@ fn state_invariants_hold_for_the_diagnostic_rules() {
   let spec = spec(&mut rng, 3);
   let particles = random_particles(&mut rng, 5_000, 3, false);
   let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
-  harness.set_rules(RuleSet::Diagnostic);
+  harness.set_rules(RuleSource::Diagnostic);
   assert_invariants(&harness.run(10), WORLD, "reguły diagnostyczne, 10 kroków");
 }
 

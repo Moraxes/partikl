@@ -112,9 +112,9 @@ impl Harness {
     }
   }
 
-  /// Wybiera zestaw reguł shadera sił (domyślny albo diagnostyczny); od następnego kroku.
-  pub fn set_rules(&mut self, rules: RuleSet) {
-    *self.world().resource_mut::<RuleSet>() = rules;
+  /// Wybiera źródło modułu reguł (domyślne, diagnostyczne albo plik); od następnego kroku.
+  pub fn set_rules(&mut self, rules: RuleSource) {
+    *self.world().resource_mut::<RuleSource>() = rules;
   }
 
   /// Podmienia macierz sił i parametry reguł (ta sama liczba typów); od następnego kroku.

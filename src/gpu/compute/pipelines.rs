@@ -8,7 +8,7 @@ use bevy::render::render_resource::*;
 use bevy::shader::ShaderDefVal;
 
 use super::{SCAN_BLOCK, WORKGROUP, bindings};
-use crate::gpu::{GpuSim, RuleSet};
+use crate::gpu::GpuSim;
 use crate::options::{Overlap, SimOptions};
 
 /// Plik shadera z entry pointem przebiegu.
@@ -150,30 +150,29 @@ impl TypeClass {
   }
 }
 
-/// Wariant pipeline'u sił: zestaw reguł, opcje symulacji i klasa liczby typów (flagi shadera).
+/// Wariant pipeline'u sił: opcje symulacji i klasa liczby typów (flagi shadera). Kod reguł to
+/// osobny moduł (`gpu::rules`), podmieniany bez nowego wariantu.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ForcesVariant {
-  pub rules: RuleSet,
   pub options: SimOptions,
   pub types: TypeClass,
 }
 
 impl ForcesVariant {
-  pub fn new(rules: RuleSet, options: SimOptions, num_types: u32) -> Self {
-    ForcesVariant { rules, options, types: TypeClass::of(num_types) }
+  pub fn new(options: SimOptions, num_types: u32) -> Self {
+    ForcesVariant { options, types: TypeClass::of(num_types) }
   }
 }
 
 /// Kolejkuje kompilację wariantu sił dla bieżących opcji i liczby typów, jeśli jeszcze go nie ma.
 pub fn queue_forces(
-  rules: Res<RuleSet>,
   options: Res<SimOptions>,
   sim: Option<Res<GpuSim>>,
   mut pipelines: ResMut<Pipelines>,
   cache: Res<PipelineCache>,
 ) {
   let Some(sim) = sim else { return };
-  let variant = ForcesVariant::new(*rules, *options, sim.num_types);
+  let variant = ForcesVariant::new(*options, sim.num_types);
   if !pipelines.forces.contains_key(&variant) {
     let id = pipelines.queue(&cache, &FORCES, forces_defs(&variant));
     pipelines.forces.insert(variant, id);
@@ -184,7 +183,6 @@ pub fn queue_forces(
 fn forces_defs(variant: &ForcesVariant) -> Vec<ShaderDefVal> {
   let options = &variant.options;
   vec![
-    ShaderDefVal::Bool("RULES_DIAGNOSTIC".into(), variant.rules == RuleSet::Diagnostic),
     ShaderDefVal::Bool("OVERLAP_RESOLVE".into(), options.overlap == Overlap::Resolve),
     ShaderDefVal::Bool("OVERLAP_ADAPTIVE".into(), options.overlap == Overlap::AdaptiveRange),
     ShaderDefVal::Bool("AVERAGE_FORCES".into(), options.average_forces),

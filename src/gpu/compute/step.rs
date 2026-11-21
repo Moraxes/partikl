@@ -13,7 +13,7 @@ use super::bindings;
 use super::buffers::Buffers;
 use super::pipelines::{FORCES, ForcesVariant, GRID_PASSES, Pipelines};
 use super::timing::{GpuTimings, Timer};
-use crate::gpu::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME, RuleSet};
+use crate::gpu::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME};
 use crate::options::SimOptions;
 
 /// Kroki tej klatki. Świat główny tylko zwiększa `GpuParams::step_count`; tu wykonujemy
@@ -37,7 +37,6 @@ pub fn plan(
   sim: Option<Res<GpuSim>>,
   params: Res<GpuParams>,
   options: Res<SimOptions>,
-  rules: Res<RuleSet>,
   mut plan: ResMut<Plan>,
   pipelines: Res<Pipelines>,
   buffers: Option<Res<Buffers>>,
@@ -49,7 +48,7 @@ pub fn plan(
   plan.count = 0;
   let (Some(sim), Some(buffers)) = (sim, buffers) else { return };
   let Some(state) = gpu_buffers.get(&sim.state) else { return };
-  plan.variant = ForcesVariant::new(*rules, *options, sim.num_types);
+  plan.variant = ForcesVariant::new(*options, sim.num_types);
   plan.deterministic = params.deterministic;
 
   // Gdy pipeline się kompiluje (start, hot reload, nowy wariant), kroki czekają.

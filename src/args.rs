@@ -1,5 +1,6 @@
 use bevy::prelude::Resource;
 
+use crate::gpu::RuleSource;
 use crate::options::{Overlap, SimOptions};
 use clap::Parser;
 use std::path::PathBuf;
@@ -35,6 +36,14 @@ pub struct ProgramArgs {
   /// ignored.
   #[arg()]
   pub interaction_spec: Option<PathBuf>,
+
+  /// Replace the built-in rules (forces, integration) with a WESL module read from this file.
+  ///
+  /// The file follows the contract described at the top of
+  /// `src/gpu/shaders/rules/default_rules.wesl`, which is a good starting point. It is watched:
+  /// saving it recompiles the rules while the simulation runs.
+  #[arg(long, value_name = "PATH")]
+  pub rules: Option<PathBuf>,
 
   /// Number of particle types, used when generating the interaction spec.
   #[arg(short = 't', long, default_value_t = 3)]
@@ -80,6 +89,11 @@ pub struct ProgramArgs {
 }
 
 impl ProgramArgs {
+  /// Źródło modułu reguł.
+  pub fn rule_source(&self) -> RuleSource {
+    self.rules.clone().map_or(RuleSource::Builtin, RuleSource::File)
+  }
+
   /// Opcje symulacji na start.
   pub fn sim_options(&self) -> SimOptions {
     SimOptions { average_forces: !self.no_average_forces, overlap: self.overlap }

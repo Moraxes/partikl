@@ -12,10 +12,16 @@ fn main() {
     eprintln!("błąd: {error}");
     std::process::exit(1);
   });
+  let rules = program_args.rule_source();
+  if let Err(error) = rules.read() {
+    eprintln!("błąd: {error}");
+    std::process::exit(1);
+  }
   let mut app = App::new();
   app
     .insert_resource(spec)
     .insert_resource(program_args.sim_options())
+    .insert_resource(rules)
     .insert_resource(program_args)
     .add_plugins(
       DefaultPlugins

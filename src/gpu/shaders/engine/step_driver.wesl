@@ -3,10 +3,9 @@
 
 import super::types::{Particle, Neighbour, cell_xy};
 import super::bindings::{uniforms, state, sorted_state, cell_counts, cell_offsets, load_neighbour};
-// Zestaw reguł wybiera flaga shadera (`RuleSet` w Rust): domyślne reguły fizyki albo diagnostyczne
-// (testy silnika siatki).
-@if(RULES_DIAGNOSTIC) import super::super::rules::diagnostic_rules::{RuleAccum, RuleSelf, accum_init, prepare_self, pair_interact, integrate_particle};
-@if(!RULES_DIAGNOSTIC) import super::super::rules::default_rules::{RuleAccum, RuleSelf, accum_init, prepare_self, pair_interact, integrate_particle};
+// Reguły: zawsze ten sam moduł `rules::model`; jego źródło wybiera Rust (`RuleSource`: wbudowane,
+// diagnostyczne albo plik `--rules`). Kontrakt w nagłówku `rules/default_rules.wesl`.
+import super::super::rules::model::{RuleAccum, RuleSelf, accum_init, prepare_self, pair_interact, integrate_particle};
 
 const REACH: i32 = 2;
 
