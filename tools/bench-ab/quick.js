@@ -66,7 +66,7 @@ async function compareRounds(rounds, dir) {
     sides.after.push(await loadRun(path.join(dir, r.after)));
   }
   const bySeed = new Map();
-  const key = (rec) => `${rec.n}|${rec.spec_seed}|${rec.step_offset}`;
+  const key = (rec) => `${rec.n}|${rec.spec_seed}|${rec.step_offset}|${rec.variant ?? ''}`;
   const first = sides.before[0].records;
   for (const rec of first) {
     const recs = (side) => sides[side].map((run) => run.records.find((x) => key(x) === key(rec)));
@@ -97,13 +97,17 @@ async function compareRounds(rounds, dir) {
       };
     }
     const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
-    const seq = (x) => x.candidates_per_step.join(',');
-    bySeed.set(rec.spec_seed, {
+    const seq = (x) => x.candidates_per_step?.join(',');
+    // Bench `sim`: przypadek to macierz (`spec_seed`); `gpu`: liczba cząstek i wariant opcji.
+    const label = rec.variant === undefined ? rec.spec_seed : `n=${rec.n} ${rec.variant}`;
+    bySeed.set(label, {
+      label: rec.variant === undefined ? `macierz ${rec.spec_seed} (n=${rec.n}` : `n=${rec.n}, ${rec.variant} (macierz ${rec.spec_seed}`,
       n: rec.n,
       offset: rec.step_offset,
       candidates: { before: mean(b.map((x) => x.candidates_mean)), after: mean(a.map((x) => x.candidates_mean)) },
       // Te same stany: identyczne sekwencje kandydatów w „przed” i „po”.
-      sameStates: seq(b[0]) === seq(a[0]),
+      // Bench `gpu` nie zapisuje kandydatów: `undefined`.
+      sameStates: seq(b[0]) === undefined ? undefined : seq(b[0]) === seq(a[0]),
       metrics,
     });
   }
@@ -122,10 +126,9 @@ function formatComparison(cmp) {
     `${cmp.rounds} rund, przed ${cmp.revisions.before}, po ${cmp.revisions.after}; stosunek median po/przed [95% CI], rundy osobno`,
   ];
   for (const [seed, s] of cmp.bySeed) {
-    lines.push(
-      `macierz ${seed} (n=${s.n}, offset ${s.offset}): kandydaci ${num(s.candidates.before, 1)} → ${num(s.candidates.after, 1)}` +
-        (s.sameStates ? ', te same stany' : ', INNE STANY (trajektoria się zmieniła)'),
-    );
+    const states = s.sameStates === undefined ? '' : s.sameStates ? ', te same stany' : ', INNE STANY (trajektoria się zmieniła)';
+    const candidates = Number.isFinite(s.candidates.before) ? `: kandydaci ${num(s.candidates.before, 1)} → ${num(s.candidates.after, 1)}` : '';
+    lines.push(`${s.label}, offset ${s.offset})${candidates}${states}`);
     for (const [col, label] of METRICS) {
       const m = s.metrics[col];
       if (!m) continue;

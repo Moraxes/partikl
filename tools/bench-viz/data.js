@@ -35,8 +35,9 @@
   }
 
   /**
-   * Wiersze (jeden na pomiar) złożone w rekordy próbek: `(n, spec_seed, step_offset[, op])`
-   * z tablicami pomiarów w kolejności `rep`, macierzą `interactions` i opisem przebiegu `run`.
+   * Wiersze (jeden na pomiar) złożone w rekordy próbek: `(n, spec_seed, step_offset[, op][,
+   * variant])` z tablicami pomiarów w kolejności `rep`, macierzą `interactions` (bench `gpu`
+   * jej nie zapisuje: pusta) i opisem przebiegu `run`.
    */
   function runFromRows(rows, kv, source = '') {
     const run = {
@@ -47,14 +48,17 @@
       measured: Number(kv.measured),
       world: JSON.parse(kv.world || '[]'),
     };
-    const series = kv.bench === 'sim' ? ['candidates', 'step_ns', ...SIM_SYSTEMS.map((s) => `${s}_ns`)] : ['ns'];
+    const series = {
+      sim: ['candidates', 'step_ns', ...SIM_SYSTEMS.map((s) => `${s}_ns`)],
+      gpu: ['step_ns'],
+    }[kv.bench] ?? ['ns'];
     const records = new Map();
     for (const row of rows) {
-      const key = `${row.n}|${row.spec_seed}|${row.step_offset}|${row.op ?? ''}`;
+      const key = `${row.n}|${row.spec_seed}|${row.step_offset}|${row.op ?? ''}|${row.variant ?? ''}`;
       let r = records.get(key);
       if (!r) {
         const types = row.types;
-        const flat = Array.from(row.interactions, Number);
+        const flat = Array.from(row.interactions ?? [], Number);
         r = {
           n: row.n,
           types,
@@ -65,6 +69,7 @@
           candidates_mean: row.candidates_mean,
           run,
         };
+        if (row.variant !== undefined) r.variant = row.variant;
         if (row.op !== undefined) {
           r.op = row.op;
           r.state_revision = row.state_revision;

@@ -5,11 +5,12 @@
 # macierz (`compare.js`) i linia JSON z plikami do wpisania w `.artifacts/perf-stages.json`
 # (`quick[].rounds`).
 #
-#   tools/bench-ab/ab.sh [rundy=3] [dodatkowe argumenty benchu sim…]
+#   tools/bench-ab/ab.sh [rundy=3] [dodatkowe argumenty benchu…]
 #
 # `AB_BASE=<rewizja>`: „przed” z tej rewizji zamiast HEAD (np. porównanie kilku commitów naraz).
+# `AB_BENCH=gpu`: bench GPU zamiast `sim` (domyślny); wynik per liczba cząstek i wariant opcji.
 #
-# `--state` (przekazywane do benchu): obie strony mierzą od stanów zapisanych w
+# `--state` (tylko `sim`, przekazywane do benchu): obie strony mierzą od stanów zapisanych w
 # `.cache/ab/states`, wygenerowanych na starcie kodem „przed”. Przebieg trwa ok. 0,8 s zamiast
 # ok. 4,5 s, a stany są te same po obu stronach także przy zmianie trajektorii; zmiany samej
 # dynamiki (np. inny wygląd skupisk po zmianie fizyki) w ten sposób nie widać.
@@ -27,6 +28,7 @@ base="$root/.cache/ab/worktree"
 target="$root/.cache/ab/target"
 out="$root/.artifacts/bench"
 rev=$(git rev-parse "${AB_BASE:-HEAD}")
+bench=${AB_BENCH:-sim}
 
 if [ ! -d "$base" ]; then
   git worktree add -q --detach "$base" "$rev"
@@ -35,18 +37,19 @@ else
 fi
 
 bench_bin() { # katalog, katalog target
-  (cd "$1" && CARGO_TARGET_DIR="$2" cargo bench --bench sim --no-run 2>&1) \
-    | grep -o '([^)]*/deps/sim-[0-9a-f]*)' | tr -d '()' | tail -1
+  (cd "$1" && CARGO_TARGET_DIR="$2" cargo bench --bench "$bench" --no-run 2>&1) \
+    | grep -o "([^)]*/deps/$bench-[0-9a-f]*)" | tr -d '()' | tail -1
 }
 before=$(bench_bin "$base" "$target")
 after=$(bench_bin "$root" "$root/target")
 [ -n "$before" ] && [ -n "$after" ] || { echo "budowanie nie powiodło się" >&2; exit 1; }
 
-# Ostatni plik przebiegu sim w katalogu wyników (nazwy z czasem startu rosną).
-latest() { ls "$out"/sim-*.parquet | sort | tail -1 | xargs basename; }
+# Ostatni plik przebiegu w katalogu wyników (nazwy z czasem startu rosną).
+latest() { ls "$out"/"$bench"-*.parquet | sort | tail -1 | xargs basename; }
 
 bench_args=("$@")
 if [[ " $* " == *" --state "* ]]; then
+  [ "$bench" = sim ] || { echo "--state działa tylko z benchem sim" >&2; exit 1; }
   states="$root/.cache/ab/states"
   bench_args+=(--state-dir "$states")
   (cd "$base" && "$before" --quick --state --regenerate --state-dir "$states" --measured 1 \
