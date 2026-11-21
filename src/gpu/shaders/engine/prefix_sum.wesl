@@ -17,6 +17,8 @@ fn block_scan(lid: u32, value: u32) -> vec2<u32> {
   }
   workgroupBarrier();
   let total = temp[BLOCK - 1u];
+  // Wszystkie wątki muszą przeczytać sumę, zanim ostatni ją wyzeruje.
+  workgroupBarrier();
   if lid == BLOCK - 1u {
     temp[lid] = 0u;
   }
