@@ -7,6 +7,7 @@ priority: soon
 branch: main
 created: 2026-11-20T18:44:47
 worked: 2026-11-21T22:43:06
+edited: 2026-11-21T22:43:15
 ---
 `init_particles` w `src/render.rs` robi naraz spawn cząstek z gizmami, budowę `SpatialGrid` i spawn kamery, a rozmiar świata bierze z okna (symulacja zależy od rozdzielczości). Następny krok: rozdzielić na osobne systemy, rozmiar świata przenieść do konfiguracji (`config.rs` albo zasób).
 
@@ -18,3 +19,5 @@ worked: 2026-11-21T22:43:06
 
 ## Testy czekające na naprawę
 Zamierzone zachowanie opisują testy z `#[ignore]` (`cargo test -- --ignored` pokazuje, że failują): `click_selects_particle_under_cursor_when_zoomed` (zoom ignorowany w `select_on_click`) i `click_selects_particle_under_cursor_when_camera_is_panned_in_y` (odwrócony znak y przy przeliczaniu kursora). Po naprawie usunąć `#[ignore]`. Logika `CursorOptions` nie ma testu: zamierzone zachowanie trzeba najpierw ustalić, potem napisać test.
+
+Zamknięte (2026-11-21, review backlogu): init_particles, select_on_click i testy #[ignore] zniknęły ze ścieżką CPU; font jest w assets. Przeciąganie kamery lewym przyciskiem z kursorem blokowanym tylko podczas przeciągania naprawione i przetestowane (commit bea5125). Rozmiar świata z ekranu to świadoma decyzja (ScreenSize).

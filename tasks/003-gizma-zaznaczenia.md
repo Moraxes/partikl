@@ -9,9 +9,12 @@ relates:
 - 2
 created: 2026-11-20T18:44:48
 worked: 2026-11-21T22:43:06
+edited: 2026-11-21T22:43:15
 ---
 Każda cząstka ma dwoje ukrytych dzieci (`Selection`, `Highlight` w `src/render.rs`), czyli 3 encje na cząstkę i osobny materiał na każde dziecko. Następny krok: jedna gizma zaznaczenia i pula/instancje podświetleń dla sąsiadów (albo Bevy `Gizmos` rysowane co klatkę).
 
 ## Uwagi
 - Benchmark `sim` tego nie zmierzy (bez renderingu). Zysk widać w czasie startu, pamięci i klatce renderingu; do pomiaru np. `bevy/trace_tracy` albo czas `init_particles`.
 - Testy zaznaczenia (`src/ui/selection/tests.rs`) budują dzieci ręcznie, trzeba je przepisać jakościowo: klik zaznacza, sąsiedzi podświetleni, klik w tło chowa.
+
+Zamknięte (2026-11-21, review backlogu): zaznaczanie zniknęło razem ze ścieżką CPU; nowe zaznaczanie na GPU to osobne zadanie.
