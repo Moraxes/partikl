@@ -5,7 +5,6 @@ summary: 'Ścieżka par w f16 (jednostki F16 bezczynne, F32 na 84% limitera): wa
 status: todo
 priority: later
 branch: compute-shader-1
-part_of: 54
 relates:
 - 58
 - 60
