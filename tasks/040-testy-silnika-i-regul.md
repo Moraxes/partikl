@@ -12,6 +12,11 @@ blocked_by:
 - 38
 - 39
 created: 2026-11-21T12:39:03
-worked: 2026-11-21T20:07:35
+worked: 2026-11-21T20:14:03
+links:
+- kind: commit
+  target: 759e842
+  at: 2026-11-21T20:14:03
+  note: 'test(gpu): test the grid engine with diagnostic rules, split tests by topic'
 ---
 Cel: reference_step powiela całą fizykę w f64, więc każda zmiana reguł psuje wyrocznię. Test silnika z regułą diagnostyczną (liczba sąsiadów, suma delta) vs brute force; wyrocznia tylko dla default_rules; test niezmienników (skończone wartości, cząstki w świecie, komplet id) dla dowolnych reguł. Następny krok: reguła diagnostyczna w WESL.
