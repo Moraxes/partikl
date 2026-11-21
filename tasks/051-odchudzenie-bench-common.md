@@ -7,6 +7,11 @@ priority: soon
 branch: compute-shader-1
 part_of: 50
 created: 2026-11-21T15:00:57
-worked: 2026-11-21T15:00:57
+worked: 2026-11-21T15:02:54
+links:
+- kind: commit
+  target: e5783d6
+  at: 2026-11-21T15:02:54
+  note: 'refactor(bench): keep only what the gpu bench uses in benches/common'
 ---
 Cel: usunąć z benches/common resztki benchów CPU (--n, --offsets, --matrices, Sample, Progress, format_table, quantile, QUICK_N, opis QUICK_SEEDS pod CPU) i dać benchowi gpu spójne argumenty (--sizes, --steps, --batch, --quick, warianty). Bez zmiany formatu wyników (A/B i bench-viz działają dalej). Następny krok: lista użyć w benches/gpu/main.rs.
