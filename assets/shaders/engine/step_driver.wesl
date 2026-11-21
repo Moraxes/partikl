@@ -2,7 +2,7 @@
 // liczonym na przebieg komórek, próbkowanie powyżej `max_candidates` kandydatów.
 
 import super::types::{Particle, SimUniforms, cell_xy};
-import super::bindings::{uniforms, state, sorted, cell_counts, cell_offsets, force_matrix};
+import super::bindings::{uniforms, state, sorted_hot, sorted_ids, cell_counts, cell_offsets, force_matrix};
 import super::super::rules::default_rules::{RuleAccum, accum_init, pair_interact, integrate_particle};
 
 const REACH: i32 = 2;
@@ -73,7 +73,7 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
   if j >= uniforms.num_particles {
     return;
   }
-  let me = sorted[j];
+  let me = state[sorted_ids[j]];
   let cell = cell_xy(me.pos, uniforms);
 
   var candidates = 0u;
@@ -86,7 +86,7 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
   }
   let every = max((candidates + uniforms.max_candidates - 1u) / uniforms.max_candidates, 1u);
-  let offset = (me.id + uniforms.step_index) % every;
+  let offset = (sorted_ids[j] + uniforms.step_index) % every;
   let radius_sq = uniforms.interaction_radius * uniforms.interaction_radius;
   let weight = f32(every);
 
@@ -100,11 +100,13 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
       }
       var s = r.start + (offset + every - k % every) % every;
       while s < r.end {
-        let other = sorted[s];
-        let delta = other.pos + r.shift - me.pos;
+        let hot = sorted_hot[s];
+        let delta = hot.xy + r.shift - me.pos;
         let dist_sq = dot(delta, delta);
         if dist_sq > 0.0 && dist_sq <= radius_sq {
-          let coeff = force_matrix[other.species * uniforms.num_types + me.species];
+          let other_species = bitcast<u32>(hot.z);
+          let other = Particle(hot.xy, hot.xy, other_species, hot.w, 0u, 0u);
+          let coeff = force_matrix[other_species * uniforms.num_types + me.species];
           pair_interact(me, other, delta, dist_sq, coeff, weight, uniforms, &accum);
         }
         s += every;
@@ -112,5 +114,5 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
       k += r.end - r.start;
     }
   }
-  state[me.id] = wrap(integrate_particle(me, accum, uniforms));
+  state[sorted_ids[j]] = wrap(integrate_particle(me, accum, uniforms));
 }

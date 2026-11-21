@@ -112,11 +112,11 @@ struct Pipelines {
 /// Bufory pomocnicze siatki i uniformy; tworzone, gdy stan cząstek jest już na GPU.
 #[derive(Resource)]
 struct Buffers {
-  sorted: Buffer,
+  sorted_hot: Buffer,
+  sorted_ids: Buffer,
   counts: Buffer,
   offsets: Buffer,
   cursors: Buffer,
-  block_sums: Buffer,
   matrix: Buffer,
   uniforms: DynamicUniformBuffer<SimUniforms>,
   bind_group: Option<BindGroup>,
@@ -214,11 +214,12 @@ fn prepare(
       usage: BufferUsages::STORAGE,
     });
     commands.insert_resource(Buffers {
-      sorted: create("sorted", n * size_of::<super::GpuParticle>() as u64),
+      sorted_hot: create("sorted_hot", n * 16),
+      sorted_ids: create("sorted_ids", n * 4),
       counts: create("cell_counts", cells * 4),
-      offsets: create("cell_offsets", cells * 4),
+      // Dalej sumy bloków sumy prefiksowej (do 256).
+      offsets: create("cell_offsets", (cells + 256) * 4),
       cursors: create("cell_cursors", cells * 4),
-      block_sums: create("block_sums", 256 * 4),
       matrix,
       uniforms: DynamicUniformBuffer::default(),
       bind_group: None,
@@ -269,11 +270,11 @@ fn prepare(
     &BindGroupEntries::sequential((
       uniforms,
       state.buffer.as_entire_binding(),
-      buffers.sorted.as_entire_binding(),
+      buffers.sorted_hot.as_entire_binding(),
+      buffers.sorted_ids.as_entire_binding(),
       buffers.counts.as_entire_binding(),
       buffers.offsets.as_entire_binding(),
       buffers.cursors.as_entire_binding(),
-      buffers.block_sums.as_entire_binding(),
       buffers.matrix.as_entire_binding(),
     )),
   );
