@@ -4,6 +4,9 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use bevy::prelude::*;
+use bevy::render::RenderApp;
+use bevy::render::extract_resource::ExtractResource;
+use bevy::shader::Shader;
 use bevy::render::render_resource::*;
 use bevy::shader::ShaderDefVal;
 
@@ -87,10 +90,22 @@ pub const GRID_PASSES: [Pass; 7] = [
 /// Siły i całkowanie: zapisuje nowy stan cząstek. Wariant wg opcji (shader defs).
 pub const FORCES: Pass = pass("forces", ShaderFile::Step, Dispatch::Particles);
 
+/// Moduły shaderów importowane przez inne (ładowane asynchronicznie przez `AssetServer`).
+/// Pipeline kolejkowany przed ich załadowaniem kończy się błędem `module not found`.
+#[derive(Resource, Clone, ExtractResource)]
+#[extract_app(RenderApp)]
+pub struct ShaderLibrary(pub Vec<Handle<Shader>>);
+
+impl ShaderLibrary {
+  fn loaded(&self, assets: &AssetServer) -> bool {
+    self.0.iter().all(|handle| assets.is_loaded_with_dependencies(handle))
+  }
+}
+
 #[derive(Resource)]
 pub struct Pipelines {
   pub layout: BindGroupLayoutDescriptor,
-  /// Pipeline'y `GRID_PASSES` (te same indeksy).
+  /// Pipeline'y `GRID_PASSES` (te same indeksy); puste, dopóki moduły shaderów się ładują.
   pub grid: Vec<CachedComputePipelineId>,
   /// Warianty `FORCES` wg opcji symulacji i liczby typów, kolejkowane przy pierwszym użyciu.
   pub forces: HashMap<ForcesVariant, CachedComputePipelineId>,
@@ -112,17 +127,16 @@ impl Pipelines {
   /// Wszystkie pipeline'y kroku z wariantem sił `variant` są skompilowane.
   pub fn ready(&self, cache: &PipelineCache, variant: &ForcesVariant) -> bool {
     let Some(&forces) = self.forces.get(variant) else { return false };
-    self.grid.iter().copied().chain([forces]).all(|id| cache.get_compute_pipeline(id).is_some())
+    !self.grid.is_empty() && self.grid.iter().copied().chain([forces]).all(|id| cache.get_compute_pipeline(id).is_some())
   }
 }
 
-pub fn init(mut commands: Commands, asset_server: Res<AssetServer>, cache: Res<PipelineCache>) {
+pub fn init(mut commands: Commands, asset_server: Res<AssetServer>) {
   let shaders = [ShaderFile::Grid, ShaderFile::Scan, ShaderFile::Step]
     .into_iter()
     .map(|file| (file.path(), asset_server.load(file.path())))
     .collect();
-  let mut pipelines = Pipelines { layout: bindings::layout(), grid: Vec::new(), forces: HashMap::new(), shaders };
-  pipelines.grid = GRID_PASSES.iter().map(|pass| pipelines.queue(&cache, pass, vec![])).collect();
+  let pipelines = Pipelines { layout: bindings::layout(), grid: Vec::new(), forces: HashMap::new(), shaders };
   commands.insert_resource(pipelines);
 }
 
@@ -164,13 +178,23 @@ impl ForcesVariant {
   }
 }
 
-/// Kolejkuje kompilację wariantu sił dla bieżących opcji i liczby typów, jeśli jeszcze go nie ma.
+/// Kolejkuje pipeline'y siatki (raz) i kompilację wariantu sił dla bieżących opcji i liczby
+/// typów, jeśli jeszcze go nie ma. Nic nie robi, dopóki nie załadują się moduły shaderów.
 pub fn queue_forces(
+  library: Res<ShaderLibrary>,
+  assets: Res<AssetServer>,
   flags: Res<RuleFlags>,
   sim: Option<Res<GpuSim>>,
   mut pipelines: ResMut<Pipelines>,
   cache: Res<PipelineCache>,
 ) {
+  if !library.loaded(&assets) {
+    return;
+  }
+  if pipelines.grid.is_empty() {
+    let grid = GRID_PASSES.iter().map(|pass| pipelines.queue(&cache, pass, vec![])).collect();
+    pipelines.grid = grid;
+  }
   let Some(sim) = sim else { return };
   let variant = ForcesVariant::new(&flags, sim.num_types);
   if !pipelines.forces.contains_key(&variant) {

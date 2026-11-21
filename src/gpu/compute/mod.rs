@@ -18,6 +18,7 @@ mod bindings;
 mod buffers;
 mod pipelines;
 mod step;
+pub use pipelines::ShaderLibrary;
 pub mod timing;
 
 use bevy::core_pipeline::schedule::camera_driver;
@@ -151,7 +152,10 @@ pub struct GpuComputePlugin;
 
 impl Plugin for GpuComputePlugin {
   fn build(&self, app: &mut App) {
-    app.init_resource::<timing::GpuTimings>().add_plugins(ExtractResourcePlugin::<timing::GpuTimings>::default());
+    app.init_resource::<timing::GpuTimings>().add_plugins((
+      ExtractResourcePlugin::<timing::GpuTimings>::default(),
+      ExtractResourcePlugin::<ShaderLibrary>::default(),
+    ));
     let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
     render_app
       .init_resource::<step::Plan>()

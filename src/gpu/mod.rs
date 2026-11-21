@@ -2,7 +2,7 @@
 //! shaderach (`src/gpu/shaders`), rysowanie wprost z bufora stanu. W testach wyrocznią jest
 //! skalarna implementacja f64 (`tests.rs`).
 
-use bevy::asset::RenderAssetUsages;
+use bevy::asset::{RenderAssetUsages, embedded_asset, load_embedded_asset};
 use bevy::camera::{ClearColorConfig, Hdr, RenderTarget, ScalingMode};
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::mesh::PrimitiveTopology;
@@ -11,7 +11,6 @@ use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
 use bevy::render::storage::ShaderBuffer;
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::render::RenderApp;
-use bevy::shader::load_shader_library;
 use bevy::window::PrimaryWindow;
 use bytemuck::{Pod, Zeroable};
 use rand::prelude::*;
@@ -160,15 +159,27 @@ impl Plugin for GpuPlugin {
     // potrzeba katalogu `assets/`. Ładujemy wszystkie moduły, bo importy WESL między
     // modułami wbudowanymi nie doczytują się same. Z feature `dev` zapis pliku przeładowuje
     // shader.
-    load_shader_library!(app, "shaders/engine/types.wesl");
-    load_shader_library!(app, "shaders/engine/uniforms.wesl");
-    load_shader_library!(app, "shaders/rules/bindings.wesl");
-    load_shader_library!(app, "shaders/engine/bindings.wesl");
-    load_shader_library!(app, "shaders/engine/grid_build.wesl");
-    load_shader_library!(app, "shaders/engine/prefix_sum.wesl");
-    load_shader_library!(app, "shaders/engine/step_driver.wesl");
-    load_shader_library!(app, "shaders/engine/render.wesl");
-    load_shader_library!(app, "shaders/rules/matrix.wesl");
+    // Uchwyty trzymamy: pipeline'y kolejkuje się dopiero po załadowaniu wszystkich modułów.
+    let mut library = Vec::new();
+    embedded_asset!(app, "shaders/engine/types.wesl");
+    library.push(load_embedded_asset!(app, "shaders/engine/types.wesl"));
+    embedded_asset!(app, "shaders/engine/uniforms.wesl");
+    library.push(load_embedded_asset!(app, "shaders/engine/uniforms.wesl"));
+    embedded_asset!(app, "shaders/rules/bindings.wesl");
+    library.push(load_embedded_asset!(app, "shaders/rules/bindings.wesl"));
+    embedded_asset!(app, "shaders/engine/bindings.wesl");
+    library.push(load_embedded_asset!(app, "shaders/engine/bindings.wesl"));
+    embedded_asset!(app, "shaders/engine/grid_build.wesl");
+    library.push(load_embedded_asset!(app, "shaders/engine/grid_build.wesl"));
+    embedded_asset!(app, "shaders/engine/prefix_sum.wesl");
+    library.push(load_embedded_asset!(app, "shaders/engine/prefix_sum.wesl"));
+    embedded_asset!(app, "shaders/engine/step_driver.wesl");
+    library.push(load_embedded_asset!(app, "shaders/engine/step_driver.wesl"));
+    embedded_asset!(app, "shaders/engine/render.wesl");
+    library.push(load_embedded_asset!(app, "shaders/engine/render.wesl"));
+    embedded_asset!(app, "shaders/rules/matrix.wesl");
+    library.push(load_embedded_asset!(app, "shaders/rules/matrix.wesl"));
+    app.insert_resource(compute::ShaderLibrary(library));
     app
       .insert_resource(Time::<Fixed>::from_seconds(DELTA_TIME))
       .init_state::<SimState>()
@@ -222,6 +233,7 @@ fn apply_render_quality(
   }
 }
 
+#[allow(clippy::too_many_arguments)] // parametry systemu Bevy
 fn init_gpu(
   mut commands: Commands,
   args: Res<ProgramArgs>,
