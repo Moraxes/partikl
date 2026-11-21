@@ -15,7 +15,7 @@ use bevy::render::storage::GpuShaderBuffer;
 use bevy::render::{Render, RenderApp, RenderStartup, RenderSystems};
 use bevy::shader::ShaderDefVal;
 
-use super::{GpuParams, GpuSim, MAX_STEPS_PER_FRAME};
+use super::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME};
 use crate::config::*;
 use crate::sim::{ADAPTIVE_RANGE, RESOLVE};
 
@@ -241,11 +241,15 @@ fn prepare(
     pipelines.forces.insert(variant, id);
   }
 
-  // Kroki od ostatniej klatki; gdy pipeline się kompiluje (start, hot reload), pomijamy.
-  let pending = params.step_count.saturating_sub(steps.done);
+  // Kroki od ostatniej klatki. Gdy pipeline się kompiluje (start, hot reload), czekamy;
+  // zaległość ponad `MAX_STEPS_PER_FRAME` pomijamy.
+  if !pipelines.ready(&cache, variant) {
+    steps.count = 0;
+    return;
+  }
+  let pending = params.step_count.saturating_sub(steps.done).min(MAX_STEPS_PER_FRAME as u64);
   steps.done = params.step_count;
-  let ready = pipelines.ready(&cache, variant);
-  steps.count = if ready { pending.min(MAX_STEPS_PER_FRAME as u64) as u32 } else { 0 };
+  steps.count = pending as u32;
 
   buffers.uniforms.clear();
   buffers.offsets_per_step.clear();
@@ -289,6 +293,7 @@ fn run_steps(
   mut context: RenderContext,
   sim: Option<Res<GpuSim>>,
   steps: Res<Steps>,
+  progress: Res<GpuProgress>,
   pipelines: Res<Pipelines>,
   buffers: Option<Res<Buffers>>,
   cache: Res<PipelineCache>,
@@ -319,4 +324,5 @@ fn run_steps(
       pass.dispatch_workgroups(groups, 1, 1);
     }
   }
+  progress.0.fetch_add(steps.count as u64, std::sync::atomic::Ordering::SeqCst);
 }

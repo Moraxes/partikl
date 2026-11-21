@@ -14,8 +14,10 @@ use bevy::window::PrimaryWindow;
 use bytemuck::{Pod, Zeroable};
 use rand::prelude::*;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 mod compute;
+pub mod headless;
 mod material;
 
 use crate::args::ProgramArgs;
@@ -117,6 +119,12 @@ pub struct GpuParams {
   pub step_count: u64,
 }
 
+/// Liczba kroków wykonanych na GPU; `Arc` jest wspólny dla świata głównego i renderowania
+/// (do wiadomości testów i metryk, bez readbacku).
+#[derive(Resource, Clone, Default, ExtractResource)]
+#[extract_app(RenderApp)]
+pub struct GpuProgress(pub Arc<AtomicU64>);
+
 pub struct GpuPlugin;
 
 impl Plugin for GpuPlugin {
@@ -126,13 +134,16 @@ impl Plugin for GpuPlugin {
       .init_state::<SimState>()
       .init_resource::<SimOptions>()
       .init_resource::<GpuParams>()
+      .init_resource::<GpuProgress>()
       .add_plugins((
         MaterialPlugin::<ParticleMaterial>::default(),
         ExtractResourcePlugin::<GpuSim>::default(),
         ExtractResourcePlugin::<GpuParams>::default(),
+        ExtractResourcePlugin::<GpuProgress>::default(),
         compute::GpuComputePlugin,
       ))
-      .add_systems(Startup, init_gpu)
+      // Bez okna (testy headless) stan dostarcza wywołujący przez `spawn_sim`.
+      .add_systems(Startup, init_gpu.run_if(any_with_component::<PrimaryWindow>))
       .add_systems(Update, sync_options)
       .add_systems(FixedUpdate, count_step.run_if(in_state(SimState::Running)));
   }
@@ -155,38 +166,16 @@ fn init_gpu(
   args: Res<ProgramArgs>,
   spec: Res<ParticleSpec>,
   windows: Query<&Window, With<PrimaryWindow>>,
-  mut buffers: ResMut<Assets<ShaderBuffer>>,
-  mut meshes: ResMut<Assets<Mesh>>,
-  mut materials: ResMut<Assets<ParticleMaterial>>,
+  buffers: ResMut<Assets<ShaderBuffer>>,
+  meshes: ResMut<Assets<Mesh>>,
+  materials: ResMut<Assets<ParticleMaterial>>,
 ) {
   let mut rng = rand::rng();
   let window = windows.single().expect("no primary window");
   let world = Vec2::new(window.width(), window.height());
-  let types = spec.interactions.len();
-  let particles = initial_particles(args.num_particles, types, world, &mut rng);
-  let colors: Vec<[f32; 4]> =
-    get_random_colors(types, &mut rng).into_iter().map(|color| LinearRgba::from(color).to_f32_array()).collect();
-
-  let state = buffers.add(ShaderBuffer::new(particles, RenderAssetUsages::RENDER_WORLD));
-  let colors = buffers.add(ShaderBuffer::new(colors, RenderAssetUsages::RENDER_WORLD));
-
-  // Siatka wierzchołków tylko z licznością (6 na cząstkę); pozycje czyta vertex shader z bufora.
-  let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD);
-  mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0f32; 3]; 6 * args.num_particles]);
-  let material = materials.add(ParticleMaterial {
-    particles: state.clone(),
-    colors,
-    params: Vec4::new(args.particle_size, VELOCITY_THRESHOLD, 0.0, 0.0),
-  });
-  commands.spawn((Mesh3d(meshes.add(mesh)), MeshMaterial3d(material), NoFrustumCulling));
-
-  commands.insert_resource(GpuSim {
-    state,
-    num_particles: args.num_particles as u32,
-    num_types: types as u32,
-    geometry: Geometry::new(world),
-    matrix: Arc::new(flatten_matrix(&spec)),
-  });
+  let particles = initial_particles(args.num_particles, spec.interactions.len(), world, &mut rng);
+  let colors = get_random_colors(spec.interactions.len(), &mut rng);
+  spawn_sim(&mut commands, buffers, meshes, materials, particles, &spec, world, args.particle_size, colors);
 
   commands.spawn((
     MainCamera { zoom_base: 1.125, zoom_exponent: 1 },
@@ -197,6 +186,45 @@ fn init_gpu(
     Transform::from_xyz(0.0, 0.0, 1000.0).looking_at(Vec3::ZERO, Vec3::Y),
     Projection::from(OrthographicProjection { scaling_mode: ScalingMode::WindowSize, ..OrthographicProjection::default_3d() }),
   ));
+}
+
+/// Wysyła `particles` na GPU, tworzy encję do rysowania i zasób `GpuSim`; zwraca uchwyt bufora
+/// stanu (do readbacku).
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_sim(
+  commands: &mut Commands,
+  mut buffers: ResMut<Assets<ShaderBuffer>>,
+  mut meshes: ResMut<Assets<Mesh>>,
+  mut materials: ResMut<Assets<ParticleMaterial>>,
+  particles: Vec<GpuParticle>,
+  spec: &ParticleSpec,
+  world: Vec2,
+  particle_size: f32,
+  colors: Vec<Color>,
+) -> Handle<ShaderBuffer> {
+  let n = particles.len();
+  let colors: Vec<[f32; 4]> = colors.into_iter().map(|color| LinearRgba::from(color).to_f32_array()).collect();
+  let state = buffers.add(ShaderBuffer::new(particles, RenderAssetUsages::RENDER_WORLD));
+  let colors = buffers.add(ShaderBuffer::new(colors, RenderAssetUsages::RENDER_WORLD));
+
+  // Siatka wierzchołków tylko z licznością (6 na cząstkę); pozycje czyta vertex shader z bufora.
+  let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD);
+  mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0f32; 3]; 6 * n]);
+  let material = materials.add(ParticleMaterial {
+    particles: state.clone(),
+    colors,
+    params: Vec4::new(particle_size, VELOCITY_THRESHOLD, 0.0, 0.0),
+  });
+  commands.spawn((Mesh3d(meshes.add(mesh)), MeshMaterial3d(material), NoFrustumCulling));
+
+  commands.insert_resource(GpuSim {
+    state: state.clone(),
+    num_particles: n as u32,
+    num_types: spec.interactions.len() as u32,
+    geometry: Geometry::new(world),
+    matrix: Arc::new(flatten_matrix(spec)),
+  });
+  state
 }
 
 #[cfg(test)]

@@ -49,3 +49,8 @@ harness = false
 [profile.bench]
 inherits = "release"
 debug = "line-tables-only"
+
+[[bench]]
+name = "gpu"
+path = "benches/gpu/main.rs"
+harness = false
