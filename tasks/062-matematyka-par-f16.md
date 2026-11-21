@@ -7,6 +7,7 @@ priority: soon
 branch: compute-shader-1
 part_of: 54
 relates:
+- 58
 - 60
 created: 2026-11-21T19:19:16
 ---
