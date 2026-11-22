@@ -2,11 +2,12 @@
 id: opt-002
 title: Fuzja budowy siatki
 summary: Fuzja budowy siatki w przebiegu sił (sonnet)
-status: todo
+status: doing
 priority: soon
 branch: main
 part_of: opt-001
 created: 2026-11-22T01:12:30
+worked: 2026-11-22T01:26:31
 ---
 Model: sonnet (zmiana układu buforów i przebiegów compute, ryzyko hazardów pamięci).
 
