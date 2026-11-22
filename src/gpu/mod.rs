@@ -151,7 +151,7 @@ pub struct GpuParams {
 
 /// Domyślny próg próbkowania sąsiadów (kandydatów na cząstkę); powyżej niego silnik liczy
 /// co `every`-tego kandydata z wagą `every`.
-pub const DEFAULT_MAX_CANDIDATES: u32 = 512;
+pub const DEFAULT_MAX_CANDIDATES: u32 = 256;
 
 /// Wartości klawisza C, w kolejności cyklu.
 pub const SAMPLING_CAPS: [u32; 4] = [128, 256, 512, 1024];

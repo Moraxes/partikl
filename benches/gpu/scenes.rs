@@ -21,7 +21,7 @@ pub enum Scene {
   /// Plamy zajmujące ok. ¼ świata: gęstość w plamach ×4 względem `uniform`.
   Clusters,
   /// Plamy zajmujące ok. 1/16 świata: gęstość ×16; przy dużym `n` ponad progiem próbkowania
-  /// sąsiadów (512 kandydatów), czyli najgorszy przypadek pętli sił.
+  /// sąsiadów (256 kandydatów), czyli najgorszy przypadek pętli sił.
   Dense,
 }
 

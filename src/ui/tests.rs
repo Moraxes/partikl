@@ -142,7 +142,7 @@ fn c_cycles_the_sampling_cap() {
     tap_key(&mut app, KeyCode::KeyC);
     seen.push(cap(&app));
   }
-  assert_eq!(seen, [512, 1024, 128, 256, 512]);
+  assert_eq!(seen, [256, 512, 1024, 128, 256]);
 }
 
 #[test]
@@ -166,10 +166,10 @@ fn hud_text_shows_fps_and_options() {
   assert!(text.contains("candidates 256  C"), "{text}");
   assert!(text.contains("hdr on"), "{text}");
   assert!(text.contains("antialiasing off"), "{text}");
-  assert!(hud_text(None, None, &schema, &SimOptions::default(), &RenderQuality::default(), 512, 1).contains("– fps"));
+  assert!(hud_text(None, None, &schema, &SimOptions::default(), &RenderQuality::default(), DEFAULT_MAX_CANDIDATES, 1).contains("– fps"));
   // Prędkość symulacji widać tylko, gdy zwalnia.
   assert!(!text.contains("speed"), "{text}");
-  let slow = hud_text(Some(55.0), Some(54.6), &schema, &options, &quality, 512, 1);
+  let slow = hud_text(Some(55.0), Some(54.6), &schema, &options, &quality, DEFAULT_MAX_CANDIDATES, 1);
   assert!(slow.contains("sim speed 55%"), "{slow}");
 }
 
@@ -177,7 +177,7 @@ fn hud_text_shows_fps_and_options() {
 #[test]
 fn hud_shows_substeps_only_above_one() {
   let schema = builtin_schema();
-  let hud = |k: u32| hud_text(Some(60.0), None, &schema, &SimOptions::default(), &RenderQuality::default(), 512, k);
+  let hud = |k: u32| hud_text(Some(60.0), None, &schema, &SimOptions::default(), &RenderQuality::default(), DEFAULT_MAX_CANDIDATES, k);
   assert!(!hud(1).contains("substeps"), "{}", hud(1));
   assert!(hud(2).contains("substeps 2  S"), "{}", hud(2));
   assert!(hud(4).contains("substeps 4  S"), "{}", hud(4));
