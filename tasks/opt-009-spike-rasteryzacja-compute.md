@@ -6,6 +6,8 @@ status: todo
 priority: later
 branch: main
 part_of: opt-001
+relates:
+- 72
 created: 2026-11-22T01:12:31
 ---
 Model: sonnet (nowy przebieg compute, atomics, własny kompozyt do tekstury kamery; spike z bramką).
