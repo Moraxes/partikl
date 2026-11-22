@@ -19,6 +19,9 @@ links:
 - kind: data
   target: .artifacts/bench/gpu-2026-11-22-01-54-55.parquet
   at: 2026-11-22T01:58:50
+- kind: data
+  target: .artifacts/bench/gpu-2026-11-22-01-55-00.parquet
+  at: 2026-11-22T01:58:50
 ---
 Model: sonnet (plan kroków, dt w RuleParams, przeskalowanie Verleta, warunkowy przebieg; subtelne zależności).
 
