@@ -11,6 +11,11 @@ relates:
 created: 2026-11-22T01:12:31
 worked: 2026-11-22T13:50:31
 edited: 2026-11-22T14:05:12
+links:
+- kind: file
+  target: .artifacts/patches/opt-009-raster-spike.patch
+  at: 2026-11-22T14:05:12
+  note: prototyp compute raster (bez zysku)
 ---
 Model: sonnet (nowy przebieg compute, atomics, własny kompozyt do tekstury kamery; spike z bramką).
 
