@@ -173,6 +173,7 @@ impl Harness {
     assert_eq!(particles.len(), sim.num_particles as usize, "inna liczba cząstek");
     let buffer = ShaderBuffer::new(particles, bevy::asset::RenderAssetUsages::RENDER_WORLD);
     self.world().resource_mut::<Assets<ShaderBuffer>>().insert(&sim.state, buffer).unwrap();
+    self.world().resource_mut::<GpuSim>().state_epoch += 1;
     // Wysłanie nowego bufora (ekstrakcja i przygotowanie w świecie renderowania).
     self.update();
   }

@@ -17,7 +17,8 @@ pub struct Buffers {
   pub sorted_model: Buffer,
   pub cell_counts: Buffer,
   pub cell_offsets: Buffer,
-  pub cell_cursors: Buffer,
+  pub next_counts: Buffer,
+  pub cell_ranks: Buffer,
   pub force_matrix: Buffer,
   pub rule_params: Buffer,
 }
@@ -41,7 +42,8 @@ pub fn create(mut commands: Commands, sim: Res<GpuSim>, spec: Res<ParticleSpec>,
     cell_counts: storage("cell_counts", cells * 4),
     // Za komórkami sumy bloków sumy prefiksowej.
     cell_offsets: storage("cell_offsets", (cells + (MAX_CELLS / SCAN_BLOCK) as u64) * 4),
-    cell_cursors: storage("cell_cursors", cells * 4),
+    next_counts: storage("next_counts", cells * 4),
+    cell_ranks: storage("cell_ranks", n * 4),
     force_matrix: device.create_buffer_with_data(&BufferInitDescriptor {
       label: Some("force_matrix"),
       contents: bytemuck::cast_slice(&spec.flat_matrix()),

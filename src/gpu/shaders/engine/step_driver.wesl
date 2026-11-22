@@ -1,9 +1,9 @@
 // Krok symulacji: jeden wątek na cząstkę (model gather), sąsiedztwo 5x5 komórek z torusem
 // liczonym na przebieg komórek, próbkowanie powyżej `max_candidates` kandydatów.
 
-import super::types::{Particle, cell_xy};
+import super::types::{Particle, cell_xy, cell_index};
 import super::uniforms::uniforms;
-import super::bindings::{state, model, sorted_state, sorted_model, cell_counts, cell_offsets, load_neighbour};
+import super::bindings::{state, model, sorted_state, sorted_model, cell_counts, cell_offsets, next_counts, cell_ranks, load_neighbour};
 // Reguły: zawsze ten sam moduł `rules::model`; jego źródło wybiera Rust (`RuleSource`: wbudowane,
 // diagnostyczne albo plik `--rules`). Kontrakt w nagłówku `rules/default_rules.wesl`.
 import super::super::rules::model::{Neighbour, RuleAccum, RuleSelf, accum_init, prepare_self, pair_interact, integrate_particle};
@@ -141,6 +141,9 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
   }
   // Wynik na miejsce `j`: stan zostaje w kolejności siatki.
-  state[j] = wrap(integrate_particle(me, &my_model, accum));
+  let next = wrap(integrate_particle(me, &my_model, accum));
+  state[j] = next;
+  // Histogram następnego kroku z nowej pozycji; ranga wskaże miejsce w komórce przy scatterze.
+  cell_ranks[j] = atomicAdd(&next_counts[cell_index(next.pos, uniforms)], 1u);
   model[j] = my_model;
 }

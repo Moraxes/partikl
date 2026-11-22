@@ -2,7 +2,7 @@
 // bloki po 256 -> suma sum bloków (jedna grupa, do 256 bloków) -> dodanie przesunięć.
 
 import super::uniforms::uniforms;
-import super::bindings::{cell_counts, cell_offsets, cell_cursors};
+import super::bindings::{cell_counts, cell_offsets};
 
 const BLOCK: u32 = 256u;
 var<workgroup> temp: array<u32, 256>;
@@ -67,8 +67,6 @@ fn scan_sums(@builtin(local_invocation_id) lid: vec3<u32>) {
 fn add_offsets(@builtin(global_invocation_id) gid: vec3<u32>) {
   let g = gid.x;
   if g < uniforms.num_cells {
-    let v = cell_offsets[g] + cell_offsets[uniforms.num_cells + g / BLOCK];
-    cell_offsets[g] = v;
-    atomicStore(&cell_cursors[g], v);
+    cell_offsets[g] += cell_offsets[uniforms.num_cells + g / BLOCK];
   }
 }

@@ -40,7 +40,8 @@ pub struct PassTimes {
   /// Zmierzonych kroków (1: pierwszy krok klatki).
   pub steps: u32,
   /// `(entry point, ns na krok)` w kolejności przebiegów; przebiegi pominięte w tej klatce
-  /// (`sort_cells` bez trybu deterministycznego) mają 0.
+  /// (`sort_cells` bez trybu deterministycznego, `count` poza pierwszym krokiem po wgraniu stanu)
+  /// mają 0.
   pub per_step_ns: Vec<(&'static str, f64)>,
 }
 

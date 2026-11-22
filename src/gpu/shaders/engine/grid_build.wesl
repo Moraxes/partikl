@@ -1,13 +1,17 @@
-// Budowa siatki: zerowanie, histogram (atomicAdd), scatter w kolejności komórek.
+// Budowa siatki. Histogram następnego kroku liczy przebieg sił (`next_counts`, `cell_ranks`), więc
+// zwykły krok to: `clear` (przejęcie histogramu), suma prefiksowa, `scatter` bez atomics.
+// `count` liczy histogram i rangi od zera: tylko w pierwszym kroku po wgraniu stanu.
 
 import super::types::{Particle, cell_index};
 import super::uniforms::uniforms;
-import super::bindings::{state, model, sorted_state, sorted_model, cell_counts, cell_offsets, cell_cursors, store_neighbour};
+import super::bindings::{state, model, sorted_state, sorted_model, cell_counts, cell_offsets, next_counts, cell_ranks, store_neighbour};
 
 @compute @workgroup_size(64)
 fn clear(@builtin(global_invocation_id) gid: vec3<u32>) {
-  if gid.x < uniforms.num_cells {
-    atomicStore(&cell_counts[gid.x], 0u);
+  let c = gid.x;
+  if c < uniforms.num_cells {
+    atomicStore(&cell_counts[c], atomicLoad(&next_counts[c]));
+    atomicStore(&next_counts[c], 0u);
   }
 }
 
@@ -17,7 +21,8 @@ fn count(@builtin(global_invocation_id) gid: vec3<u32>) {
   if i >= uniforms.num_particles {
     return;
   }
-  atomicAdd(&cell_counts[cell_index(state[i].pos, uniforms)], 1u);
+  // `next_counts` jest wyzerowany przed krokiem; `clear` przenosi go do `cell_counts`.
+  cell_ranks[i] = atomicAdd(&next_counts[cell_index(state[i].pos, uniforms)], 1u);
 }
 
 @compute @workgroup_size(64)
@@ -28,14 +33,14 @@ fn scatter(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
   let p = state[i];
   let m = model[i];
-  let dst = atomicAdd(&cell_cursors[cell_index(p.pos, uniforms)], 1u);
+  let dst = cell_offsets[cell_index(p.pos, uniforms)] + cell_ranks[i];
   store_neighbour(dst, p, m);
   sorted_state[dst] = p;
   sorted_model[dst] = m;
 }
 
 // Tryb deterministyczny: kolejność cząstek w komórce zależy od harmonogramu `atomicAdd` w
-// `scatter`, więc sortujemy każdą komórkę po id (jeden wątek na komórkę, sortowanie przez
+// histogramie (rangi), więc sortujemy każdą komórkę po id (jeden wątek na komórkę, sortowanie przez
 // wstawianie, cząstki 24 B z modelem) i odtwarzamy gorące dane. Wtedy sumy f32 mają stałą kolejność, a
 // trajektorie są takie same co do bitu.
 @compute @workgroup_size(64)

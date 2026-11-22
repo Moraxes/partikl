@@ -177,6 +177,23 @@ fn many_steps_keep_invariants() {
   assert!(after.crowding.iter().all(|c| c.is_finite() && *c >= 0.0), "crowding poza zakresem");
 }
 
+/// Histogram następnego kroku liczą siły poprzedniego kroku, więc podmiana stanu między krokami
+/// (cząstki w innych komórkach) wymaga przeliczenia od zera: po scatterze nic nie ginie ani się nie powtarza.
+#[test]
+fn swapping_state_between_steps_keeps_every_particle() {
+  let options = Mode { average_forces: true, overlap: Overlap::AdaptiveRange };
+  let mut rng = StdRng::seed_from_u64(41);
+  let spec = spec(&mut rng, 3);
+  let first = State::new(random_particles(&mut rng, 5_000, 3));
+  let Some(mut harness) = harness_for(options.sim(), spec, &first, WORLD) else { return };
+  assert_invariants(&run_state(&mut harness, 3).particles, WORLD, "przed podmianą");
+  for round in 0..3 {
+    let next = State::new(random_particles(&mut rng, 5_000, 3));
+    reset(&mut harness, &next);
+    assert_invariants(&run_state(&mut harness, 2).particles, WORLD, &format!("po podmianie {round}"));
+  }
+}
+
 /// Zmiana `ParticleSpec` w trakcie (macierz i parametry reguł) trafia do buforów od następnego
 /// kroku, bez rekompilacji i bez nowego `GpuSim`.
 #[test]

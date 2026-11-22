@@ -133,6 +133,9 @@ pub struct GpuSim {
   pub num_particles: u32,
   pub num_types: u32,
   pub geometry: Geometry,
+  /// Zwiększany przy każdym zapisie do `state` z zewnątrz symulacji (podmiana stanu): krok po
+  /// zmianie liczy histogram komórek od zera zamiast brać go z przebiegu sił poprzedniego kroku.
+  pub state_epoch: u32,
 }
 
 /// Parametry silnika inne niż opcje reguł i licznik kroków: świat renderowania wykonuje
@@ -348,6 +351,7 @@ pub fn spawn_sim(
     num_particles: n as u32,
     num_types: spec.interactions.len() as u32,
     geometry: Geometry::new(world),
+    state_epoch: 0,
   });
   state
 }

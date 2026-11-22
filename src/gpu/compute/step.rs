@@ -26,6 +26,12 @@ pub struct Plan {
   count: u32,
   variant: ForcesVariant,
   deterministic: bool,
+  /// Pierwszy krok tej klatki liczy histogram od zera (`When::Recount`).
+  recount: bool,
+  /// Czy pierwszy krok planu ma `When::Recount`.
+  recount_first: bool,
+  /// Bufor stanu i `GpuSim::state_epoch` z ostatniego planu; zmiana (podmiana stanu) wymusza przeliczenie.
+  state: Option<(BufferId, u32)>,
   /// Uniformy kolejnych kroków (różnią się `step_index`) i ich przesunięcia w buforze.
   uniforms: DynamicUniformBuffer<EngineUniforms>,
   offsets: Vec<u32>,
@@ -50,6 +56,14 @@ pub fn plan(
   let (Some(state), Some(model)) = (gpu_buffers.get(&sim.state), gpu_buffers.get(&sim.model)) else { return };
   plan.variant = ForcesVariant::new(&flags, sim.num_types);
   plan.deterministic = params.deterministic;
+  // Histogram następnego kroku liczą siły, więc nowe bufory i podmieniony stan (cząstki wskakują w
+  // inne komórki bez przebiegu sił) wymagają przeliczenia od zera. Zapis do istniejącego bufora
+  // (ten sam rozmiar) nie zmienia jego id, więc podmianę zgłasza `GpuSim::state_epoch`. Flaga czeka na krok, który
+  // faktycznie się wykona.
+  if buffers.is_changed() || plan.state != Some((state.buffer.id(), sim.state_epoch)) {
+    plan.recount = true;
+    plan.state = Some((state.buffer.id(), sim.state_epoch));
+  }
 
   // Gdy pipeline się kompiluje (start, hot reload, nowy wariant), kroki czekają.
   if !pipelines.ready(&cache, &plan.variant) {
@@ -62,6 +76,7 @@ pub fn plan(
     return;
   }
   plan.count = pending as u32;
+  plan.recount_first = std::mem::take(&mut plan.recount);
 
   let first_step = params.step_count - pending;
   let plan = &mut *plan;
@@ -85,13 +100,14 @@ pub fn run(
   mut context: RenderContext,
   sim: Option<Res<GpuSim>>,
   plan: Res<Plan>,
+  buffers: Option<Res<Buffers>>,
   progress: Res<GpuProgress>,
   pipelines: Res<Pipelines>,
   cache: Res<PipelineCache>,
   timings: Option<Res<GpuTimings>>,
   timer: Option<ResMut<Timer>>,
 ) {
-  let Some(sim) = sim else { return };
+  let (Some(sim), Some(buffers)) = (sim, buffers) else { return };
   let Some(bind_group) = &plan.bind_group else { return };
   // Ponowne sprawdzenie: hot reload może unieważnić pipeline między `plan` a `run`.
   if plan.count == 0 || !pipelines.ready(&cache, &plan.variant) {
@@ -100,22 +116,31 @@ pub fn run(
   let get = |id| cache.get_compute_pipeline(id).unwrap();
   let forces = pipelines.forces[&plan.variant];
   // Dispatche kroku w kolejności: (entry point, pipeline, liczba grup).
-  let mut dispatches = Vec::new();
-  for (def, &id) in GRID_PASSES.iter().zip(&pipelines.grid) {
-    if !def.deterministic_only || plan.deterministic {
-      dispatches.push((def.entry, get(id), def.dispatch.groups(&sim)));
+  let dispatches_for = |recount: bool| {
+    let mut dispatches = Vec::new();
+    for (def, &id) in GRID_PASSES.iter().zip(&pipelines.grid) {
+      if def.when.runs(plan.deterministic, recount) {
+        dispatches.push((def.entry, get(id), def.dispatch.groups(&sim)));
+      }
     }
+    dispatches.push((FORCES.entry, get(forces), FORCES.dispatch.groups(&sim)));
+    dispatches
+  };
+  let first_dispatches = dispatches_for(plan.recount_first);
+  let rest_dispatches = if plan.recount_first { dispatches_for(false) } else { first_dispatches.clone() };
+  if plan.recount_first {
+    // `count` dolicza do `next_counts`, który po podmianie stanu zawiera stary histogram.
+    context.command_encoder().clear_buffer(&buffers.next_counts, 0, None);
   }
-  dispatches.push((FORCES.entry, get(forces), FORCES.dispatch.groups(&sim)));
 
   let timed = timings.is_some_and(|t| t.enabled);
   match timer.filter(|t| timed && t.idle()) {
     None => {
       let encoder = context.command_encoder();
       let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor { label: Some("partikl_step"), ..default() });
-      for &offset in &plan.offsets {
+      for (k, &offset) in plan.offsets.iter().enumerate() {
         pass.set_bind_group(0, bind_group, &[offset]);
-        for &(_, pipeline, groups) in &dispatches {
+        for &(_, pipeline, groups) in if k == 0 { &first_dispatches } else { &rest_dispatches } {
           pass.set_pipeline(pipeline);
           pass.dispatch_workgroups(groups, 1, 1);
         }
@@ -127,7 +152,7 @@ pub fn run(
       let encoder = context.command_encoder();
       let (&first, rest) = plan.offsets.split_first().unwrap();
       let mut entries = Vec::new();
-      for &(entry, pipeline, groups) in &dispatches {
+      for &(entry, pipeline, groups) in &first_dispatches {
         let writes = timer.writes(entries.len() as u32);
         let mut pass =
           encoder.begin_compute_pass(&ComputePassDescriptor { label: Some(entry), timestamp_writes: Some(writes) });
@@ -140,7 +165,7 @@ pub fn run(
         let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor { label: Some("partikl_step"), ..default() });
         for &offset in rest {
           pass.set_bind_group(0, bind_group, &[offset]);
-          for &(_, pipeline, groups) in &dispatches {
+          for &(_, pipeline, groups) in &rest_dispatches {
             pass.set_pipeline(pipeline);
             pass.dispatch_workgroups(groups, 1, 1);
           }

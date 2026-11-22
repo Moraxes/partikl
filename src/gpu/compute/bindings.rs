@@ -28,8 +28,8 @@ pub enum Binding {
   CellCounts = 4,
   /// `cell_offsets`: początek komórki w kolejności siatki (i sumy bloków za komórkami).
   CellOffsets = 5,
-  /// `cell_cursors`: kursory zapisu w scatterze.
-  CellCursors = 6,
+  /// `next_counts`: histogram komórek następnego kroku, liczony w przebiegu sił z nowych pozycji.
+  NextCounts = 6,
   /// `force_matrix`: macierz sił `[typ a * T + typ b]`.
   ForceMatrix = 7,
   /// `rule_params`: parametry reguł, wspólne dla kroków klatki (bez przesunięcia dynamicznego).
@@ -38,21 +38,24 @@ pub enum Binding {
   Model = 9,
   /// `sorted_model`: model w kolejności siatki, równolegle do `sorted_state`.
   SortedModel = 10,
+  /// `cell_ranks`: ranga cząstki `state[i]` w jej komórce (z histogramu przebiegu sił lub `count`).
+  CellRanks = 11,
 }
 
 impl Binding {
-  pub const ALL: [Binding; 11] = [
+  pub const ALL: [Binding; 12] = [
     Binding::Uniforms,
     Binding::State,
     Binding::SortedHot,
     Binding::SortedState,
     Binding::CellCounts,
     Binding::CellOffsets,
-    Binding::CellCursors,
+    Binding::NextCounts,
     Binding::ForceMatrix,
     Binding::RuleParams,
     Binding::Model,
     Binding::SortedModel,
+    Binding::CellRanks,
   ];
 
   /// Nazwa zmiennej w `bindings.wesl` (do testu zgodności z plikiem).
@@ -65,11 +68,12 @@ impl Binding {
       Binding::SortedState => "sorted_state",
       Binding::CellCounts => "cell_counts",
       Binding::CellOffsets => "cell_offsets",
-      Binding::CellCursors => "cell_cursors",
+      Binding::NextCounts => "next_counts",
       Binding::ForceMatrix => "force_matrix",
       Binding::RuleParams => "rule_params",
       Binding::Model => "model",
       Binding::SortedModel => "sorted_model",
+      Binding::CellRanks => "cell_ranks",
     }
   }
 
@@ -115,11 +119,12 @@ pub fn create_group(
         Binding::SortedState => buffers.sorted_state.as_entire_binding(),
         Binding::CellCounts => buffers.cell_counts.as_entire_binding(),
         Binding::CellOffsets => buffers.cell_offsets.as_entire_binding(),
-        Binding::CellCursors => buffers.cell_cursors.as_entire_binding(),
+        Binding::NextCounts => buffers.next_counts.as_entire_binding(),
         Binding::ForceMatrix => buffers.force_matrix.as_entire_binding(),
         Binding::RuleParams => buffers.rule_params.as_entire_binding(),
         Binding::Model => model.as_entire_binding(),
         Binding::SortedModel => buffers.sorted_model.as_entire_binding(),
+        Binding::CellRanks => buffers.cell_ranks.as_entire_binding(),
       },
     })
     .collect();

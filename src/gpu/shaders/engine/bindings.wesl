@@ -17,12 +17,16 @@ import super::super::rules::model::{Model, Neighbour, pack_neighbour, unpack_nei
 @group(0) @binding(3) var<storage, read_write> sorted_state: array<Particle>;
 @group(0) @binding(4) var<storage, read_write> cell_counts: array<atomic<u32>>;
 @group(0) @binding(5) var<storage, read_write> cell_offsets: array<u32>;
-@group(0) @binding(6) var<storage, read_write> cell_cursors: array<atomic<u32>>;
+// Histogram komórek następnego kroku: przebieg sił dolicza do niego nową pozycję każdej cząstki,
+// a `clear` następnego kroku przejmuje go do `cell_counts` i zeruje.
+@group(0) @binding(6) var<storage, read_write> next_counts: array<atomic<u32>>;
 // Sumy bloków sumy prefiksowej leżą w `cell_offsets` od indeksu `num_cells`.
 // Model cząstek (`Model` z reguł) równolegle do `state`, a `sorted_model` do `sorted_state`:
 // silnik przenosi je razem z cząstką i nie zna ich pól.
 @group(0) @binding(9) var<storage, read_write> model: array<Model>;
 @group(0) @binding(10) var<storage, read_write> sorted_model: array<Model>;
+// Ranga `state[i]` w jej komórce (wynik `atomicAdd` na histogramie): miejsce w komórce przy scatterze.
+@group(0) @binding(11) var<storage, read_write> cell_ranks: array<u32>;
 
 fn store_neighbour(slot: u32, p: Particle, m: Model) {
   sorted_hot[slot] = pack_neighbour(p, m);

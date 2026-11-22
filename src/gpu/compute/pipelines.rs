@@ -62,29 +62,50 @@ pub struct Pass {
   pub entry: &'static str,
   pub file: ShaderFile,
   pub dispatch: Dispatch,
+  /// Kiedy przebieg się wykonuje.
+  pub when: When,
+}
+
+/// Warunek wykonania przebiegu w kroku.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum When {
+  Always,
   /// Tylko w trybie deterministycznym.
-  pub deterministic_only: bool,
+  Deterministic,
+  /// Tylko w pierwszym kroku po wgraniu stanu (nowe bufory, podmiana stanu): histogram i rangi
+  /// liczy wtedy `count`, bo przebieg sił nie miał jeszcze poprzedniego kroku.
+  Recount,
+}
+
+impl When {
+  pub fn runs(self, deterministic: bool, recount: bool) -> bool {
+    match self {
+      When::Always => true,
+      When::Deterministic => deterministic,
+      When::Recount => recount,
+    }
+  }
 }
 
 const fn pass(entry: &'static str, file: ShaderFile, dispatch: Dispatch) -> Pass {
-  Pass { entry, file, dispatch, deterministic_only: false }
+  Pass { entry, file, dispatch, when: When::Always }
 }
 
 /// Budowa siatki w kolejności wykonania: po niej cząstki są w `sorted_*` w kolejności
 /// komórek, a `cell_offsets[c]` wskazuje początek komórki `c`.
 pub const GRID_PASSES: [Pass; 7] = [
-  // cell_counts = 0
+  // next_counts[c] = liczba cząstek w komórce c, cell_ranks[i] = ranga (histogram z `state`)
+  Pass { when: When::Recount, ..pass("count", ShaderFile::Grid, Dispatch::Particles) },
+  // cell_counts = next_counts, next_counts = 0 (w zwykłym kroku histogram liczą siły poprzedniego kroku)
   pass("clear", ShaderFile::Grid, Dispatch::Cells),
-  // cell_counts[c] = liczba cząstek w komórce c
-  pass("count", ShaderFile::Grid, Dispatch::Particles),
   // cell_offsets = wykluczająca suma prefiksowa cell_counts (trzy przebiegi)
   pass("scan_blocks", ShaderFile::Scan, Dispatch::ScanBlocks),
   pass("scan_sums", ShaderFile::Scan, Dispatch::Once),
   pass("add_offsets", ShaderFile::Scan, Dispatch::ScanBlocks),
-  // sorted_hot, sorted_state w kolejności komórek (w komórce: kolejność atomicAdd)
+  // sorted_hot, sorted_state w kolejności komórek (w komórce: kolejność rang)
   pass("scatter", ShaderFile::Grid, Dispatch::Particles),
   // w komórce: kolejność po id
-  Pass { deterministic_only: true, ..pass("sort_cells", ShaderFile::Grid, Dispatch::Cells) },
+  Pass { when: When::Deterministic, ..pass("sort_cells", ShaderFile::Grid, Dispatch::Cells) },
 ];
 
 /// Siły i całkowanie: zapisuje nowy stan cząstek. Wariant wg opcji (shader defs).

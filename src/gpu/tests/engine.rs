@@ -93,8 +93,9 @@ fn timed_step_reports_every_pass() {
   };
   assert_eq!(times.steps, 1);
   for (entry, ns) in &times.per_step_ns {
-    // `sort_cells` działa tylko w trybie deterministycznym.
-    if *entry == "sort_cells" {
+    // `sort_cells` działa tylko w trybie deterministycznym, a `count` tylko w pierwszym kroku po
+    // wgraniu stanu (potem histogram liczą siły).
+    if matches!(*entry, "sort_cells" | "count") {
       assert_eq!(*ns, 0.0);
     } else {
       assert!(*ns > 0.0, "{entry}: {ns}");
