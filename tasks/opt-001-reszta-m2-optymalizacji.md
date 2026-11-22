@@ -2,13 +2,14 @@
 id: opt-001
 title: Reszta M2 optymalizacji
 summary: 'Reszta M2 optymalizacji GPU: cel 1M cząstek płynnie'
-status: todo
+status: done
 priority: soon
 branch: main
 relates:
 - 54
 - 66
 created: 2026-11-22T01:12:24
+worked: 2026-11-22T16:26:15
 ---
 Cel: symulacja 1M cząstek tak płynna, jak się da, z zapasem na droższe reguły. Stan (M5, bench gpu quick 100k): siły ok. 85% czasu GPU (375/525/560 µs uniform/clusters/dense), budowa siatki ok. 15% (count 22, scan 8, scatter ok. 40 µs), render 1M ok. 7 ms na klatkę. Profil 061: pętla sił ograniczona instrukcjami (F32 84%, integer 74%), nie pamięcią (L1 2,6%); przy dużych n koszt sił ∝ min(kandydaci, max_candidates=512). Plan z sesji 2026-11-22 rozbity na podzadania; kolejność wynika z blokad (tq tree).
 
