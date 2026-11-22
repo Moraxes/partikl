@@ -24,6 +24,10 @@ links:
   target: a37cb88
   at: 2026-11-22T13:08:28
   note: 'data(bench): opt-010 A/B series (quick x5 vs e99ea18+074, 500k/1M)'
+- kind: data
+  target: a37cb88
+  at: 2026-11-22T13:08:35
+  note: 'A/B serii opt: quick x5 vs e99ea18+074 (5a19c34), HEAD 8e32d8b; 500k/1M gpu i render'
 ---
 Model: haiku (uruchomienie skryptów i zapis liczb; bez zmian w kodzie).
 
