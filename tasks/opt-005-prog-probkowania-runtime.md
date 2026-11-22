@@ -2,13 +2,14 @@
 id: opt-005
 title: Próg próbkowania runtime
 summary: Próg próbkowania sterowany w runtime (haiku)
-status: todo
+status: doing
 priority: soon
 branch: main
 part_of: opt-001
 relates:
 - 66
 created: 2026-11-22T01:12:30
+worked: 2026-11-22T01:44:30
 ---
 Model: haiku (zasób + klawisz + flaga + HUD według istniejącego wzorca; brak zmian w shaderach).
 
