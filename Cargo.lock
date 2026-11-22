@@ -4819,11 +4819,13 @@ dependencies = [
  "bytemuck",
  "chrono",
  "clap",
+ "naga",
  "parquet",
  "rand",
  "ron",
  "serde",
  "serde_json",
+ "wesl",
  "wgpu",
 ]
 

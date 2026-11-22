@@ -32,6 +32,9 @@ features = [ "serde_derive" ]
 
 [dev-dependencies]
 serde_json = "1"
+# Kompilacja każdego shadera osobno w testach (`gpu/tests/shaders.rs`): te same wersje co w Bevy.
+wesl = { version = "0.6.0", features = [ "naga-ext" ] }
+naga = { version = "30.0.2", features = [ "wgsl-in" ] }
 arrow-array = "60.1"
 arrow-schema = "60.1"
 
