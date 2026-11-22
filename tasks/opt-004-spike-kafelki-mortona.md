@@ -21,6 +21,9 @@ links:
 - kind: commit
   target: f50e533
   at: 2026-11-22T13:04:09
+- kind: data
+  target: bench/gpu-2026-11-22-13-03-53.parquet
+  at: 2026-11-22T13:04:17
 ---
 Model: sonnet (indeksowanie komórek i dzielenie biegów, ocena wyniku pomiaru).
 
