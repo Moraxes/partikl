@@ -9,7 +9,12 @@ part_of: opt-001
 blocked_by:
 - opt-002
 created: 2026-11-22T01:12:30
-worked: 2026-11-22T01:50:16
+worked: 2026-11-22T01:58:23
+links:
+- kind: commit
+  target: 6a4abbb
+  at: 2026-11-22T01:58:23
+  note: 'feat(gpu): sub-stepping engine with dt/K and Verlet rescale'
 ---
 Model: sonnet (plan kroków, dt w RuleParams, przeskalowanie Verleta, warunkowy przebieg; subtelne zależności).
 
