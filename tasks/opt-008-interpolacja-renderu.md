@@ -47,6 +47,9 @@ links:
   at: 2026-11-22T02:09:08
   rev: 13de01d
   note: galeria PNG
+- kind: commit
+  target: ea67677
+  at: 2026-11-22T02:09:08
 ---
 Model: sonnet (przekazanie ułamka taktu do świata renderowania, matematyka w vertex shaderze, ocena wyglądu).
 
