@@ -2,13 +2,14 @@
 id: opt-006
 title: Sub-stepping silnik
 summary: 'Sub-stepping: silnik i dt/K (sonnet)'
-status: todo
+status: doing
 priority: soon
 branch: main
 part_of: opt-001
 blocked_by:
 - opt-002
 created: 2026-11-22T01:12:30
+worked: 2026-11-22T01:50:16
 ---
 Model: sonnet (plan kroków, dt w RuleParams, przeskalowanie Verleta, warunkowy przebieg; subtelne zależności).
 
