@@ -2,7 +2,7 @@
 id: opt-010
 title: A/B serii opt
 summary: A/B całej serii opt względem e99ea18 (haiku)
-status: todo
+status: done
 priority: later
 branch: main
 part_of: opt-001
@@ -14,7 +14,7 @@ blocked_by:
 - opt-007
 - opt-008
 created: 2026-11-22T01:12:31
-worked: 2026-11-22T13:08:28
+worked: 2026-11-22T13:08:42
 links:
 - kind: commit
   target: 5a19c34
