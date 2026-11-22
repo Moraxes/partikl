@@ -7,12 +7,16 @@ priority: soon
 branch: main
 part_of: opt-001
 created: 2026-11-22T01:12:31
-worked: 2026-11-22T02:08:57
+worked: 2026-11-22T02:09:00
 links:
 - kind: commit
   target: ea67677
   at: 2026-11-22T02:08:57
   note: 'feat(gpu): render interpolation between ticks'
+- kind: commit
+  target: 13de01d
+  at: 2026-11-22T02:09:00
+  note: 'chore: opt-008 render bench runs and gallery'
 ---
 Model: sonnet (przekazanie ułamka taktu do świata renderowania, matematyka w vertex shaderze, ocena wyglądu).
 
