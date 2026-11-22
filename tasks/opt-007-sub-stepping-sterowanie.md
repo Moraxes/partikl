@@ -2,14 +2,14 @@
 id: opt-007
 title: Sub-stepping sterowanie
 summary: 'Sub-stepping: klawisz, flaga, HUD (haiku)'
-status: doing
+status: done
 priority: later
 branch: main
 part_of: opt-001
 blocked_by:
 - opt-006
 created: 2026-11-22T01:12:31
-worked: 2026-11-22T02:02:26
+worked: 2026-11-22T02:03:48
 edited: 2026-11-22T02:03:45
 links:
 - kind: commit
