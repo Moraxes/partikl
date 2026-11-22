@@ -458,7 +458,7 @@ struct OffscreenTarget(Handle<Image>, UVec2);
 
 /// Prośba o readback obrazu docelowego.
 #[derive(Resource)]
-struct ImageRequest(Option<Arc<Mutex<Option<Vec<u8>>>>>);
+struct ImageRequest(Option<Sink>);
 
 fn request_image(
   mut commands: Commands,
@@ -472,9 +472,12 @@ fn request_image(
   }
 }
 
+/// Miejsce na bajty z readbacku, wypełniane przez obserwatora `ReadbackComplete`.
+type Sink = Arc<Mutex<Option<Vec<u8>>>>;
+
 /// Prośba o readback stanu; `ReadbackOnce` musi powstać w trakcie klatki (czyszczone w `First`).
 #[derive(Resource)]
-struct Request(Option<(Arc<Mutex<Option<Vec<u8>>>>, Handle<ShaderBuffer>)>);
+struct Request(Option<(Sink, Handle<ShaderBuffer>)>);
 
 fn request_readback(mut commands: Commands, mut request: ResMut<Request>) {
   if let Some((sink, buffer)) = request.0.take() {
@@ -496,6 +499,7 @@ fn is_missing_gpu(payload: &(dyn std::any::Any + Send)) -> bool {
 #[derive(Resource)]
 struct Initial(Option<Vec<GpuParticle>>, Vec2, Option<Offscreen>);
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_test_sim(
   mut commands: Commands,
   mut initial: ResMut<Initial>,

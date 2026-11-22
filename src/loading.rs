@@ -24,7 +24,8 @@ pub enum LoadError {
   },
   Parse {
     path: PathBuf,
-    source: ron::error::SpannedError,
+    /// W pudełku: `SpannedError` ma ponad 100 B, a `LoadError` wraca w każdym `Result`.
+    source: Box<ron::error::SpannedError>,
   },
   Write {
     path: PathBuf,
@@ -61,7 +62,7 @@ impl Error for LoadError {
   fn source(&self) -> Option<&(dyn Error + 'static)> {
     match self {
       LoadError::Io { source, .. } => Some(source),
-      LoadError::Parse { source, .. } => Some(source),
+      LoadError::Parse { source, .. } => Some(source.as_ref()),
       LoadError::Write { source, .. } => Some(source),
       LoadError::Malformed { .. } => None,
     }
@@ -116,7 +117,7 @@ pub fn load_spec(path: &Path) -> Result<ParticleSpec, LoadError> {
       .from_reader(file)
       .map_err(|source| LoadError::Parse {
         path: path.into(),
-        source,
+        source: Box::new(source),
       })?;
   let spec = match parsed {
     SpecFile::Full(spec) => spec,
