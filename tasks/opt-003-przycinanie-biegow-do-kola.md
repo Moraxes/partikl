@@ -8,6 +8,10 @@ branch: main
 part_of: opt-001
 created: 2026-11-22T01:12:30
 worked: 2026-11-22T01:36:59
+links:
+- kind: data
+  target: .artifacts/bench/gpu-2026-11-22-01-43-05.parquet
+  at: 2026-11-22T01:43:27
 ---
 Model: sonnet (matematyka zakresów komórek i szew torusa w shaderze, wpływ na próbkowanie).
 
