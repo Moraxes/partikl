@@ -1,7 +1,7 @@
 ---
 id: 74
 title: 'Bench: krok nie-pierwszy'
-status: todo
+status: done
 priority: later
 branch: main
 created: 2026-11-22T01:36:52
