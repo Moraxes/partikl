@@ -55,6 +55,9 @@ links:
 - kind: data
   target: .artifacts/bench/render-2026-11-22-01-55-35.parquet
   at: 2026-11-22T01:58:51
+- kind: data
+  target: .artifacts/bench/render-2026-11-22-01-56-05.parquet
+  at: 2026-11-22T01:58:51
 ---
 Model: sonnet (plan kroków, dt w RuleParams, przeskalowanie Verleta, warunkowy przebieg; subtelne zależności).
 
