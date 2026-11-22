@@ -1,6 +1,6 @@
 use bevy::prelude::Resource;
 
-use crate::gpu::RuleSource;
+use crate::gpu::{DEFAULT_MAX_CANDIDATES, RuleSource};
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -83,6 +83,11 @@ pub struct ProgramArgs {
   /// choice.
   #[arg(long = "option", value_name = "NAME=CHOICE")]
   pub options: Vec<String>,
+
+  /// Neighbour sampling cap: above this many candidates per particle, the engine samples them
+  /// (each sampled one weighted by the stride). Cycles through 128, 256, 512, 1024 with C.
+  #[arg(long, value_name = "N", default_value_t = DEFAULT_MAX_CANDIDATES, value_parser = clap::value_parser!(u32).range(1..))]
+  pub max_candidates: u32,
 }
 
 impl ProgramArgs {

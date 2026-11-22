@@ -274,6 +274,31 @@ fn engine_samples_dense_states_without_bias() {
   }
 }
 
+/// Próg próbkowania zmieniany w trakcie (klawisz C): dla każdego progu kroki nie dają NaN i stan
+/// zachowuje wszystkie cząstki (te same id, ta sama liczba).
+#[test]
+fn sampling_cap_keeps_every_particle_finite_and_present() {
+  let mut rng = StdRng::seed_from_u64(77);
+  let spec = spec(&mut rng, 3);
+  let particles = random_particles(&mut rng, 20_000, 3);
+  let mut ids: Vec<u32> = particles.iter().map(|p| p.id).collect();
+  ids.sort_unstable();
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  for cap in [128, 256, 512, 1024] {
+    harness.set_max_candidates(cap);
+    harness.run(3);
+    let state = harness.run(0);
+    assert_eq!(state.len(), ids.len(), "próg {cap}");
+    assert!(
+      state.iter().all(|p| p.pos.iter().chain(&p.last).all(|v| v.is_finite())),
+      "próg {cap}: nieskończone położenie"
+    );
+    let mut got: Vec<u32> = state.iter().map(|p| p.id).collect();
+    got.sort_unstable();
+    assert_eq!(got, ids, "próg {cap}: id cząstek");
+  }
+}
+
 /// Niezmienniki stanu dla dowolnych reguł: te same sprawdzenia co dla reguł domyślnych, tu dla
 /// diagnostycznych (nic się nie rusza, ale silnik nie może gubić ani dublować cząstek).
 #[test]

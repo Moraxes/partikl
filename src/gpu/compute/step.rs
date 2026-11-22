@@ -13,7 +13,7 @@ use super::bindings;
 use super::buffers::Buffers;
 use super::pipelines::{FORCES, ForcesVariant, GRID_PASSES, Pipelines};
 use super::timing::{GpuTimings, Timer};
-use crate::gpu::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME};
+use crate::gpu::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME, SamplingCap};
 use crate::gpu::rules::RuleFlags;
 
 /// Kroki tej klatki. Świat główny tylko zwiększa `GpuParams::step_count`; tu wykonujemy
@@ -43,6 +43,7 @@ pub fn plan(
   sim: Option<Res<GpuSim>>,
   params: Res<GpuParams>,
   flags: Res<RuleFlags>,
+  cap: Res<SamplingCap>,
   mut plan: ResMut<Plan>,
   pipelines: Res<Pipelines>,
   buffers: Option<Res<Buffers>>,
@@ -83,7 +84,7 @@ pub fn plan(
   plan.uniforms.clear();
   plan.offsets.clear();
   for k in 0..pending {
-    plan.offsets.push(plan.uniforms.push(&EngineUniforms::new(&sim, (first_step + k) as u32)));
+    plan.offsets.push(plan.uniforms.push(&EngineUniforms::new(&sim, (first_step + k) as u32, cap.0)));
   }
   plan.uniforms.write_buffer(&device, &queue);
   let Some(uniforms) = plan.uniforms.binding() else { return };

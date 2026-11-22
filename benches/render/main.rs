@@ -25,7 +25,7 @@ use bevy::prelude::*;
 use clap::Parser;
 
 use common::{Output, median, nanos, particle_spec, rng};
-use partikl::gpu::RenderQuality;
+use partikl::gpu::{DEFAULT_MAX_CANDIDATES, RenderQuality};
 use partikl::gpu::headless::{Harness, Offscreen};
 use partikl::options::SimOptions;
 use scenes::{Scene, candidates_mean};
@@ -83,6 +83,9 @@ struct Args {
   /// Kroki rozbiegu stanu w trybie `--gallery`.
   #[arg(long, default_value_t = 800)]
   gallery_steps: u64,
+  /// Próg próbkowania sąsiadów w trybie `--gallery` (klawisz C w aplikacji).
+  #[arg(long, default_value_t = DEFAULT_MAX_CANDIDATES, value_parser = clap::value_parser!(u32).range(1..))]
+  max_candidates: u32,
   /// Ziarno macierzy sił i rozmieszczenia.
   #[arg(long, default_value_t = 0)]
   seed: u64,
@@ -183,11 +186,13 @@ fn gallery(args: &Args, dir: &std::path::Path) {
   let initial = Scene::Uniform.particles(n, args.types, WORLD, &mut rng(args.seed));
   // Rozbieg: stan z prawdziwej dynamiki (struktury), potem ten sam stan dla każdego wariantu.
   let Some(mut harness) = Harness::new(options.clone(), spec(), initial, WORLD) else { return };
+  harness.set_max_candidates(args.max_candidates);
   let state = harness.run(args.gallery_steps);
   drop(harness);
   let render = |quality: RenderQuality| -> Vec<u8> {
     let offscreen = Offscreen { size: TARGET, quality, app_colors: true, real_time: false };
     let mut harness = Harness::with_render(options.clone(), spec(), state.clone(), WORLD, Some(offscreen)).expect("GPU");
+    harness.set_max_candidates(args.max_candidates);
     for _ in 0..6 {
       harness.update();
     }

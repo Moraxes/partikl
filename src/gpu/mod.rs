@@ -148,6 +148,33 @@ pub struct GpuParams {
   pub step_count: u64,
 }
 
+/// Domyślny próg próbkowania sąsiadów (kandydatów na cząstkę); powyżej niego silnik liczy
+/// co `every`-tego kandydata z wagą `every`.
+pub const DEFAULT_MAX_CANDIDATES: u32 = 512;
+
+/// Wartości klawisza C, w kolejności cyklu.
+pub const SAMPLING_CAPS: [u32; 4] = [128, 256, 512, 1024];
+
+/// Próg próbkowania sąsiadów, czytany przy każdym kroku (`EngineUniforms::max_candidates`), więc
+/// zmiana (klawisz C, `--max-candidates`, bench) działa od następnego kroku bez przekompilowania.
+#[derive(Resource, Clone, Copy, Debug, ExtractResource)]
+#[extract_app(RenderApp)]
+pub struct SamplingCap(pub u32);
+
+impl Default for SamplingCap {
+  fn default() -> Self {
+    SamplingCap(DEFAULT_MAX_CANDIDATES)
+  }
+}
+
+impl SamplingCap {
+  /// Następna wartość z `SAMPLING_CAPS`; po największej wraca do najmniejszej, a wartość spoza
+  /// listy (z flagi) przechodzi do najbliższej większej.
+  pub fn next(self) -> u32 {
+    SAMPLING_CAPS.into_iter().find(|&cap| cap > self.0).unwrap_or(SAMPLING_CAPS[0])
+  }
+}
+
 /// Liczba kroków wykonanych na GPU; `Arc` jest wspólny dla świata głównego i renderowania
 /// (do wiadomości testów i metryk, bez readbacku).
 #[derive(Resource, Clone, Default, ExtractResource)]
@@ -189,6 +216,7 @@ impl Plugin for GpuPlugin {
       .init_resource::<SimOptions>()
       .init_resource::<GpuParams>()
       .init_resource::<GpuProgress>()
+      .init_resource::<SamplingCap>()
       .init_resource::<RenderQuality>()
       .add_plugins((
         MaterialPlugin::<ParticleMaterial>::default(),
@@ -197,6 +225,7 @@ impl Plugin for GpuPlugin {
         ExtractResourcePlugin::<rules::RuleFlags>::default(),
         ExtractResourcePlugin::<GpuParams>::default(),
         ExtractResourcePlugin::<GpuProgress>::default(),
+        ExtractResourcePlugin::<SamplingCap>::default(),
         rules::RulesPlugin,
         compute::GpuComputePlugin,
       ))
@@ -244,11 +273,13 @@ fn init_gpu(
   schema: Res<RuleSchema>,
   screen: ScreenSize,
   mut params: ResMut<GpuParams>,
+  mut cap: ResMut<SamplingCap>,
   buffers: ResMut<Assets<ShaderBuffer>>,
   meshes: ResMut<Assets<Mesh>>,
   materials: ResMut<Assets<ParticleMaterial>>,
 ) {
   params.deterministic = args.gpu_deterministic;
+  cap.0 = args.max_candidates;
   let mut rng = rand::rng();
   let world = screen.get();
   info!("świat symulacji {world} (ekran)");

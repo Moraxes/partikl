@@ -1,4 +1,5 @@
 use super::*;
+use crate::gpu::DEFAULT_MAX_CANDIDATES;
 use crate::ui::test_util::*;
 use bevy::camera::{OrthographicProjection, Projection};
 use bevy::input::mouse::MouseScrollUnit;
@@ -131,20 +132,44 @@ fn h_toggles_hud_visibility() {
 }
 
 #[test]
+fn c_cycles_the_sampling_cap() {
+  let mut app = input_app();
+  app.add_systems(Update, handle_keyboard_input);
+  let cap = |app: &App| app.world().resource::<SamplingCap>().0;
+  assert_eq!(cap(&app), DEFAULT_MAX_CANDIDATES);
+  let mut seen = vec![cap(&app)];
+  for _ in 0..4 {
+    tap_key(&mut app, KeyCode::KeyC);
+    seen.push(cap(&app));
+  }
+  assert_eq!(seen, [512, 1024, 128, 256, 512]);
+}
+
+#[test]
+fn sampling_cap_next_handles_values_off_the_cycle() {
+  assert_eq!(SamplingCap(128).next(), 256);
+  assert_eq!(SamplingCap(1024).next(), 128);
+  // Wartość z flagi spoza cyklu przechodzi do najbliższej większej.
+  assert_eq!(SamplingCap(300).next(), 512);
+  assert_eq!(SamplingCap(5000).next(), 128);
+}
+
+#[test]
 fn hud_text_shows_fps_and_options() {
   let schema = builtin_schema();
   let options = SimOptions::default().with("average_forces", "on").with("overlap", "adaptive_range");
   let quality = RenderQuality { hdr: true, ..RenderQuality::default() };
-  let text = hud_text(Some(59.6), Some(100.0), &schema, &options, &quality);
+  let text = hud_text(Some(59.6), Some(100.0), &schema, &options, &quality, 256);
   assert!(text.contains("60 fps"), "{text}");
   assert!(text.contains("average forces on  N"), "{text}");
   assert!(text.contains("overlap adaptive range  O"), "{text}");
+  assert!(text.contains("candidates 256  C"), "{text}");
   assert!(text.contains("hdr on"), "{text}");
   assert!(text.contains("antialiasing off"), "{text}");
-  assert!(hud_text(None, None, &schema, &SimOptions::default(), &RenderQuality::default()).contains("– fps"));
+  assert!(hud_text(None, None, &schema, &SimOptions::default(), &RenderQuality::default(), 512).contains("– fps"));
   // Prędkość symulacji widać tylko, gdy zwalnia.
   assert!(!text.contains("speed"), "{text}");
-  let slow = hud_text(Some(55.0), Some(54.6), &schema, &options, &quality);
+  let slow = hud_text(Some(55.0), Some(54.6), &schema, &options, &quality, 512);
   assert!(slow.contains("sim speed 55%"), "{slow}");
 }
 

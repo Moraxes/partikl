@@ -38,8 +38,6 @@ use crate::config::*;
 const WORKGROUP: u32 = 64;
 /// Komórek na blok sumy prefiksowej; jak `BLOCK` w `prefix_sum.wesl`.
 const SCAN_BLOCK: u32 = 256;
-/// Próbkowanie sąsiadów powyżej tylu kandydatów (ochrona przed bardzo gęstymi skupiskami).
-const MAX_CANDIDATES: u32 = 512;
 
 /// Stałe i geometria kroku (silnik siatki); układ jak `EngineUniforms` w `engine/types.wesl`.
 /// Różni się między krokami klatki tylko `step_index`.
@@ -58,7 +56,8 @@ pub struct EngineUniforms {
 }
 
 impl EngineUniforms {
-  pub fn new(sim: &GpuSim, step_index: u32) -> Self {
+  /// `max_candidates`: próg próbkowania (`SamplingCap`), dzielnik `every` w `step_driver.wesl`.
+  pub fn new(sim: &GpuSim, step_index: u32, max_candidates: u32) -> Self {
     let g = sim.geometry;
     EngineUniforms {
       world: g.world,
@@ -69,7 +68,7 @@ impl EngineUniforms {
       num_cells: g.num_cells(),
       num_blocks: g.num_cells().div_ceil(SCAN_BLOCK),
       step_index,
-      max_candidates: MAX_CANDIDATES,
+      max_candidates,
       interaction_radius: INTERACTION_RADIUS,
     }
   }
