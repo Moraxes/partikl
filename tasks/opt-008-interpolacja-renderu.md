@@ -17,6 +17,11 @@ links:
   target: 13de01d
   at: 2026-11-22T02:09:00
   note: 'chore: opt-008 render bench runs and gallery'
+- kind: data
+  target: .artifacts/bench/render-2026-11-22-02-05-45.parquet
+  at: 2026-11-22T02:09:08
+  rev: 13de01d
+  note: baseline HEAD, loop 500k/1M
 ---
 Model: sonnet (przekazanie ułamka taktu do świata renderowania, matematyka w vertex shaderze, ocena wyglądu).
 
