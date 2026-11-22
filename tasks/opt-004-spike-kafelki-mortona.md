@@ -27,6 +27,9 @@ links:
 - kind: data
   target: bench/gpu-2026-11-22-13-02-40.parquet
   at: 2026-11-22T13:04:18
+- kind: data
+  target: bench/gpu-2026-11-22-13-02-49.parquet
+  at: 2026-11-22T13:04:18
 ---
 Model: sonnet (indeksowanie komórek i dzielenie biegów, ocena wyniku pomiaru).
 
