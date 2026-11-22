@@ -14,12 +14,16 @@ blocked_by:
 - opt-007
 - opt-008
 created: 2026-11-22T01:12:31
-worked: 2026-11-22T13:05:09
+worked: 2026-11-22T13:08:28
 links:
 - kind: commit
   target: 5a19c34
   at: 2026-11-22T13:05:09
   note: 'chore(bench): e99ea18 with 074 steady-state warm-up (A/B baseline only)'
+- kind: commit
+  target: a37cb88
+  at: 2026-11-22T13:08:28
+  note: 'data(bench): opt-010 A/B series (quick x5 vs e99ea18+074, 500k/1M)'
 ---
 Model: haiku (uruchomienie skryptów i zapis liczb; bez zmian w kodzie).
 
