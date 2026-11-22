@@ -4,13 +4,17 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use bevy::app::SubApps;
+use bevy::app::{AppLabel, SubApps, TerminalCtrlCHandlerPlugin};
+use bevy::log::{Level, LogPlugin};
+use bevy::render::RenderApp;
 use bevy::render::RenderPlugin;
 use bevy::render::gpu_readback::{ReadbackComplete, ReadbackOnce};
 use bevy::render::pipelined_rendering::PipelinedRenderingPlugin;
+use bevy::render::render_resource::{CachedPipelineState, PipelineCache};
 use bevy::render::render_resource::{PollType, TextureFormat, TextureUsages};
 use bevy::render::renderer::RenderDevice;
 use bevy::render::storage::ShaderBuffer;
+use bevy::shader::ShaderCacheError;
 use bevy::window::ExitCondition;
 use bevy::winit::WinitPlugin;
 
@@ -20,6 +24,10 @@ use crate::options::{RuleSchema, SimOptions};
 
 /// Jedna aplikacja GPU naraz w procesie (wspólne pule wątków i dziennik).
 static LOCK: Mutex<()> = Mutex::new(());
+
+/// Dziennik (`tracing`) jest globalny dla procesu: instaluje go tylko pierwsza aplikacja, kolejne
+/// (każdy test tworzy własną) mają `LogPlugin` wyłączony, zamiast zgłaszać błąd podwójnej instalacji.
+static LOGGING: std::sync::Once = std::sync::Once::new();
 
 /// Rysowanie bez okna: kamera renderuje cały świat do obrazu o rozmiarze `size` (w pikselach
 /// fizycznych) z podaną jakością. Do benchmarku renderu i testów rysowania.
@@ -116,7 +124,22 @@ impl Harness {
           synchronous_pipeline_compilation: true,
           ..default()
         })
-        .disable::<WinitPlugin>();
+        .disable::<WinitPlugin>()
+        // Obsługa Ctrl+C z Bevy przechwytuje SIGINT całego procesu: `cargo test` nie dałby się
+        // przerwać. Bez niej Ctrl+C kończy proces jak zwykle.
+        .disable::<TerminalCtrlCHandlerPlugin>();
+      // Testy i benchmarki: tylko ostrzeżenia i błędy (komunikaty INFO o adapterze i systemie
+      // powtarzałyby się przy każdej aplikacji); `RUST_LOG` nadal działa.
+      let mut first = false;
+      LOGGING.call_once(|| first = true);
+      let plugins = if first {
+        plugins.set(LogPlugin {
+          level: Level::WARN,
+          ..default()
+        })
+      } else {
+        plugins.disable::<LogPlugin>()
+      };
       // Render w tym samym wywołaniu `update` co świat główny: po `update` i `poll(Wait)` praca
       // kroków jest już wysłana i skończona (pomiar czasu w benchu tego wymaga). Tylko pętla
       // `real_time` zostawia potokowanie jak w aplikacji.
@@ -257,6 +280,25 @@ impl Harness {
     self.update();
   }
 
+  /// Błąd kompilacji pipeline'u (np. shadera reguł) kończy test od razu z treścią błędu, zamiast
+  /// czekać na kroki do limitu czasu. Przy potokowanym renderze świat renderowania jest w innym
+  /// wątku i sprawdzenie jest pomijane.
+  fn fail_on_pipeline_error(&self) {
+    let Some(render) = self.apps.sub_apps.get(&RenderApp.intern()) else {
+      return;
+    };
+    for pipeline in render.world().resource::<PipelineCache>().pipelines() {
+      // `ShaderNotLoaded` i `ShaderImportNotYetAvailable` to stany przejściowe (shader jeszcze się
+      // ładuje, cache ponawia); błędem jest tylko przetworzenie albo utworzenie modułu.
+      if let CachedPipelineState::Err(
+        error @ (ShaderCacheError::ProcessShaderError(_) | ShaderCacheError::CreateShaderModule(_)),
+      ) = &pipeline.state
+      {
+        panic!("pipeline się nie skompilował: {error}");
+      }
+    }
+  }
+
   pub fn world(&mut self) -> &mut World {
     self.apps.main.world_mut()
   }
@@ -370,6 +412,7 @@ impl Harness {
         "GPU nie wykonał kroków w 120 s (pipeline się nie skompilował?)"
       );
       self.update();
+      self.fail_on_pipeline_error();
     }
   }
 
@@ -416,6 +459,7 @@ impl Harness {
     while slot.lock().unwrap().is_none() {
       assert!(Instant::now() < deadline, "brak odpowiedzi readbacku");
       self.update();
+      self.fail_on_pipeline_error();
     }
     slot.lock().unwrap().take().unwrap()
   }
