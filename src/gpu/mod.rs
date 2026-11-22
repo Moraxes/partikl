@@ -268,9 +268,46 @@ impl Plugin for GpuPlugin {
       ))
       // Bez okna (testy headless) stan dostarcza wywołujący przez `spawn_sim`.
       .add_systems(Startup, init_gpu.run_if(any_with_component::<PrimaryWindow>))
+      .init_resource::<RenderInterpolation>()
       .add_systems(Update, apply_render_quality.run_if(resource_changed::<RenderQuality>))
+      .add_systems(Update, update_interpolation.run_if(resource_exists::<GpuSim>))
       .add_plugins(StepBudgetPlugin)
       .add_systems(FixedUpdate, count_step.run_if(in_state(SimState::Running)));
+  }
+}
+
+/// Czy render interpoluje pozycje między taktami (`params.w` materiału). Wyłączony w testach
+/// headless, gdzie zegar stały nie biegnie (ułamek taktu byłby zawsze 0).
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct RenderInterpolation(pub bool);
+
+impl Default for RenderInterpolation {
+  fn default() -> Self {
+    RenderInterpolation(true)
+  }
+}
+
+/// Cofnięcie rysowanej pozycji w podkrokach: `(1 − α)·K`, gdzie `α` to ułamek taktu od ostatniego
+/// kroku, a `K` liczba podkroków na takt (`pos − last` to jeden podkrok). Gdy takt przepadł
+/// (`dropped`), GPU jest za zegarem i ułamek taktu nie dotyczy jego ostatniego kroku: 0 (rysunek
+/// ostatniego stanu bez opóźnienia).
+pub fn interpolation_lag(alpha: f32, substeps: u32, dropped: bool) -> f32 {
+  if dropped { 0.0 } else { (1.0 - alpha.clamp(0.0, 1.0)) * substeps as f32 }
+}
+
+/// Co klatkę przekazuje materiałowi cofnięcie pozycji (`params.w`).
+fn update_interpolation(
+  enabled: Res<RenderInterpolation>,
+  fixed: Res<Time<Fixed>>,
+  substeps: Res<Substeps>,
+  budget: Res<StepBudget>,
+  mut materials: ResMut<Assets<ParticleMaterial>>,
+) {
+  let lag = if enabled.0 { interpolation_lag(fixed.overstep_fraction(), substeps.get(), budget.dropped()) } else { 0.0 };
+  for (_, material) in materials.iter_mut() {
+    if material.params.w != lag {
+      material.params.w = lag;
+    }
   }
 }
 

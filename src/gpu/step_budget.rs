@@ -44,6 +44,11 @@ impl Default for StepBudget {
 }
 
 impl StepBudget {
+  /// Czy w tej klatce jakiś takt przepadł (GPU jest wtedy za zegarem stałego kroku).
+  pub fn dropped(&self) -> bool {
+    self.wanted > self.taken
+  }
+
   /// Prędkość symulacji względem czasu rzeczywistego; `None`, dopóki nie było taktów (pauza).
   pub fn speed(&self) -> Option<f32> {
     (self.wanted_avg > 1.0e-3).then(|| (self.taken_avg / self.wanted_avg).min(1.0))

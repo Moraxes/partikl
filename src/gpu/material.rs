@@ -14,7 +14,8 @@ pub struct ParticleMaterial {
   #[storage(1, read_only)]
   pub colors: Handle<ShaderBuffer>,
   /// x: promień cząstki, y: próg kwadratu prędkości dla kształtu, z: 1 = krawędź wygładzona w
-  /// fragment shaderze (alpha blending), 0 = ostra krawędź (`discard`).
+  /// fragment shaderze (alpha blending), 0 = ostra krawędź (`discard`), w: cofnięcie pozycji w
+  /// podkrokach (`(1 − α)·K`, patrz `interpolation_lag`): rysowana pozycja to `pos − w·(pos − last)`.
   #[uniform(2)]
   pub params: Vec4,
   /// Jak `params.z`; wybiera tryb mieszania materiału.

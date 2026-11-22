@@ -109,6 +109,7 @@ impl Harness {
       app.insert_resource(options).insert_resource(rules).insert_resource(spec).add_plugins(GpuPlugin);
       // Kroki liczy test, nie czas stały (chyba że `real_time`: zegar jak w aplikacji).
       if !offscreen.is_some_and(|o| o.real_time) {
+        app.insert_resource(RenderInterpolation(false));
         app.insert_resource(Time::<Fixed>::from_seconds(1.0e9));
       }
       app.insert_resource(Initial(Some(particles), world, offscreen));

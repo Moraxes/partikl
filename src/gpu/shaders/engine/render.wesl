@@ -7,7 +7,8 @@ import super::types::Particle;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<storage, read> particles: array<Particle>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var<storage, read> colors: array<vec4<f32>>;
-// x: promień cząstki, y: próg kwadratu prędkości, z: 1 = wygładzona krawędź (alpha blending).
+// x: promień cząstki, y: próg kwadratu prędkości, z: 1 = wygładzona krawędź (alpha blending),
+// w: cofnięcie pozycji w podkrokach (interpolacja klatki między taktami, 0 = bez interpolacji).
 @group(constants::MATERIAL_BIND_GROUP) @binding(2) var<uniform> params: vec4<f32>;
 
 // Obrzeże quada (w promieniach cząstki) na wygładzenie krawędzi: ok. 1 piksela przy promieniu
@@ -61,7 +62,10 @@ fn vertex(v: Vertex) -> VertexOutput {
   // Z wygładzaniem quad jest większy od okręgu o obrzeże na przejście krycia (poza okręgiem).
   let pad = select(1.0, AA_PAD, params.z > 0.5);
   let local = corner * pad * axes;
-  let world = p.pos + vec2<f32>(rot.x * local.x - rot.y * local.y, rot.y * local.x + rot.x * local.y);
+  // Interpolacja: pozycja sprzed `w` podkroków (dla K = 1 to mix(last, pos, α)). Zawinięcie na torusie
+  // przesuwa też `last`, więc `pos − last` jest ciągłe i cząstka nie rysuje pasa przez świat.
+  let center = p.pos - params.w * velocity;
+  let world = center + vec2<f32>(rot.x * local.x - rot.y * local.y, rot.y * local.x + rot.x * local.y);
   var out: VertexOutput;
   out.clip = view.clip_from_world * vec4<f32>(world, 0.5 * layer(u32(v.position.z)), 1.0);
   out.corner = corner * pad;

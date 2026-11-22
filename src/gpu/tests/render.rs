@@ -117,3 +117,69 @@ fn render_quality_switches_at_runtime() {
   harness.set_quality(base);
   assert_eq!(intermediate(&frame(&mut harness)), 0, "krawędź nadal wygładzona po wyłączeniu AA");
 }
+
+/// Środek ciężkości zapalonych pikseli (współrzędna x świata) jednej cząstki ruchomej o `pos = (10, 0)`,
+/// `last = (6, 0)`, gdy ułamek taktu wynosi `alpha`.
+fn interpolated_centroid_x(alpha: f64, substeps: u32) -> Option<f32> {
+  use crate::gpu::headless::Offscreen;
+  use std::time::Duration;
+  let world = Vec2::new(200.0, 120.0);
+  let particles = vec![GpuParticle { pos: [10.0, 0.0], last: [6.0, 0.0], species: 0, id: 0 }];
+  let spec = zero_forces(spec(&mut StdRng::seed_from_u64(1), 2));
+  let size = (world * 2.0).as_uvec2();
+  let offscreen = Offscreen { size, quality: RenderQuality::default(), app_colors: false, real_time: false };
+  let mut harness = Harness::with_render(SimOptions::default(), spec, particles, world, Some(offscreen))?;
+  harness.set_substeps(substeps);
+  {
+    let w = harness.world();
+    w.insert_resource(RenderInterpolation(true));
+    // Zegar stały tak wolny, że klatki testu nie kończą taktu; ułamek zadany ręcznie.
+    let mut fixed = w.resource_mut::<Time<Fixed>>();
+    fixed.set_timestep(Duration::from_secs(1000));
+    let rest = fixed.overstep();
+    fixed.discard_overstep(rest);
+    fixed.accumulate_overstep(Duration::from_secs_f64(1000.0 * alpha));
+  }
+  for _ in 0..6 {
+    harness.update();
+  }
+  let pixels = harness.target_pixels();
+  let (mut sum, mut count) = (0.0f64, 0u32);
+  for y in 0..size.y {
+    for x in 0..size.x {
+      let i = ((y * size.x + x) * 4) as usize;
+      if pixels[i..i + 3].iter().any(|&c| c > 40) {
+        sum += (x as f64 + 0.5) / 2.0 - world.x as f64 / 2.0;
+        count += 1;
+      }
+    }
+  }
+  assert!(count > 0, "cząstka nie jest narysowana");
+  Some((sum / count as f64) as f32)
+}
+
+#[test]
+fn render_interpolates_between_last_and_pos_by_the_step_fraction() {
+  let (Some(start), Some(half), Some(end)) = (interpolated_centroid_x(0.0, 1), interpolated_centroid_x(0.5, 1), interpolated_centroid_x(1.0, 1)) else {
+    return;
+  };
+  // Cząstka (promień 2) jest elipsą wokół środka, więc środek ciężkości = środek (z tolerancją na piksel).
+  assert!((start - 6.0).abs() < 0.6, "alpha 0: {start}");
+  assert!((half - 8.0).abs() < 0.6, "alpha 0.5: {half}");
+  assert!((end - 10.0).abs() < 0.6, "alpha 1: {end}");
+}
+
+/// Z K podkrokami `pos − last` to jeden podkrok, a takt ma K takich odcinków.
+#[test]
+fn interpolation_spans_the_whole_tick_with_substeps() {
+  let Some(start) = interpolated_centroid_x(0.0, 2) else { return };
+  assert!((start - 2.0).abs() < 0.6, "alpha 0, K=2: {start}");
+}
+
+#[test]
+fn interpolation_lag_scales_with_substeps_and_vanishes_when_ticks_are_dropped() {
+  assert_eq!(interpolation_lag(0.25, 1, false), 0.75);
+  assert_eq!(interpolation_lag(0.25, 4, false), 3.0);
+  assert_eq!(interpolation_lag(1.0, 4, false), 0.0);
+  assert_eq!(interpolation_lag(0.25, 4, true), 0.0);
+}
