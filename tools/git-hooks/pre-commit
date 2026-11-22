@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Pre-commit: `cargo fmt` i `cargo clippy --fix`, potem clippy bez ostrzeżeń. Jeśli któreś zmieniło
+# pliki, commit jest odrzucany: przejrzyj zmiany i dodaj je (`git add -u`), potem commit jeszcze raz.
+# Instalacja: ln -s ../../tools/git-hooks/pre-commit .git/hooks/pre-commit
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+before=$(git diff | git hash-object --stdin)
+cargo fmt
+cargo clippy --release --all-targets --quiet --fix --allow-dirty --allow-staged 2>/dev/null || true
+after=$(git diff | git hash-object --stdin)
+
+if [ "$before" != "$after" ]; then
+  echo "pre-commit: cargo fmt / clippy --fix zmieniły pliki:" >&2
+  git diff --stat >&2
+  echo "Przejrzyj i dodaj zmiany (git add -u), potem commit ponownie." >&2
+  exit 1
+fi
+
+if ! cargo clippy --release --all-targets --quiet -- -D warnings; then
+  echo "pre-commit: clippy zgłasza ostrzeżenia, których nie da się poprawić automatycznie." >&2
+  exit 1
+fi
