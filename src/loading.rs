@@ -35,6 +35,8 @@ pub enum LoadError {
     path: PathBuf,
     reason: String,
   },
+  /// Błędne argumenty specyfikacji (kilka plików, nadpisanie `PATH=VALUE` nie pasuje do pól).
+  Args(String),
 }
 
 impl Display for LoadError {
@@ -54,6 +56,7 @@ impl Display for LoadError {
       LoadError::Malformed { path, reason } => {
         write!(f, "{}: błędna specyfikacja: {reason}", path.display())
       }
+      LoadError::Args(reason) => write!(f, "{reason}"),
     }
   }
 }
@@ -64,7 +67,7 @@ impl Error for LoadError {
       LoadError::Io { source, .. } => Some(source),
       LoadError::Parse { source, .. } => Some(source.as_ref()),
       LoadError::Write { source, .. } => Some(source),
-      LoadError::Malformed { .. } => None,
+      LoadError::Malformed { .. } | LoadError::Args(_) => None,
     }
   }
 }
@@ -79,8 +82,16 @@ enum SpecFile {
 }
 
 pub fn get_particle_spec(program_args: &args::ProgramArgs) -> Result<ParticleSpec, LoadError> {
-  if let Some(path) = &program_args.interaction_spec {
-    load_spec(path)
+  let files = program_args.spec_files();
+  if files.len() > 1 {
+    return Err(LoadError::Args(format!(
+      "podano {} pliki specyfikacji, można najwyżej jeden",
+      files.len()
+    )));
+  }
+  let overrides = program_args.spec_overrides();
+  if let Some(path) = files.first() {
+    apply_overrides(load_spec(path)?, &overrides)
   } else {
     use rand::SeedableRng;
 
@@ -97,13 +108,90 @@ pub fn get_particle_spec(program_args: &args::ProgramArgs) -> Result<ParticleSpe
       rand::rngs::SmallRng::from_rng(&mut rand::rng())
     };
     let type_count = program_args.num_types;
-    let particle_spec = generate_particle_spec(&mut rng, type_count);
+    // Zapis po nadpisaniach: plik odtwarza dokładnie tę symulację.
+    let particle_spec = apply_overrides(generate_particle_spec(&mut rng, type_count), &overrides)?;
     if !program_args.no_dump_interaction_spec {
       let path = PathBuf::from(format!("spec-{}.ron", Utc::now().format("%F-%H-%M-%S")));
       dump_spec(&path, &particle_spec)?;
     }
     Ok(particle_spec)
   }
+}
+
+/// Nadpisuje pola specyfikacji (`PATH=VALUE`, np. `params.repulsion_radius=1`,
+/// `interactions.0.force_coeffs.2=-300`): ścieżka idzie po polach jak w pliku `.ron`, pozycje
+/// list to liczby, a wartość jest w składni `.ron`. Wynik przechodzi tę samą kontrolę co plik.
+pub fn apply_overrides(
+  spec: ParticleSpec,
+  overrides: &[(&str, &str)],
+) -> Result<ParticleSpec, LoadError> {
+  if overrides.is_empty() {
+    return Ok(spec);
+  }
+  let error =
+    |path: &str, value: &str, reason: String| LoadError::Args(format!("{path}={value}: {reason}"));
+  let text = ron::to_string(&spec).map_err(|e| LoadError::Args(e.to_string()))?;
+  let mut tree: ron::Value = ron::from_str(&text).map_err(|e| LoadError::Args(e.to_string()))?;
+  for &(path, value) in overrides {
+    let parsed: ron::Value = ron::from_str(value)
+      .map_err(|e| error(path, value, format!("wartość nie jest poprawnym RON: {e}")))?;
+    let mut node = &mut tree;
+    for segment in path.split('.') {
+      node = match node {
+        ron::Value::Map(map) => {
+          let names: Vec<String> = map
+            .keys()
+            .filter_map(|k| match k {
+              ron::Value::String(s) => Some(s.clone()),
+              _ => None,
+            })
+            .collect();
+          map
+            .get_mut(&ron::Value::String(segment.into()))
+            .ok_or_else(|| {
+              error(
+                path,
+                value,
+                format!("nie ma pola `{segment}` (są: {})", names.join(", ")),
+              )
+            })?
+        }
+        ron::Value::Seq(items) => {
+          let len = items.len();
+          segment
+            .parse::<usize>()
+            .ok()
+            .and_then(|i| items.get_mut(i))
+            .ok_or_else(|| {
+              error(
+                path,
+                value,
+                format!("`{segment}`: oczekiwano pozycji 0..{len}"),
+              )
+            })?
+        }
+        _ => {
+          return Err(error(
+            path,
+            value,
+            format!("`{segment}`: wartość wyżej nie ma pól"),
+          ));
+        }
+      };
+    }
+    *node = parsed;
+    // Sprawdzenie typu od razu, żeby błąd wskazał nadpisanie, które go spowodowało.
+    tree
+      .clone()
+      .into_rust::<ParticleSpec>()
+      .map_err(|e| error(path, value, e.to_string()))?;
+  }
+  let spec: ParticleSpec = tree
+    .into_rust()
+    .map_err(|e| LoadError::Args(format!("nadpisania specyfikacji: {e}")))?;
+  validate_spec(&spec)
+    .map_err(|reason| LoadError::Args(format!("specyfikacja po nadpisaniach: {reason}")))?;
+  Ok(spec)
 }
 
 /// Wczytuje i sprawdza specyfikację z pliku `.ron`.

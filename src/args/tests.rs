@@ -46,3 +46,28 @@ fn substeps_flag_accepts_only_one_two_or_four() {
 fn no_options_means_the_rules_defaults() {
   assert_eq!(parse(&[]).unwrap().options, Vec::<String>::new());
 }
+
+#[test]
+fn positional_args_split_into_spec_file_and_overrides() {
+  let args = parse(&[
+    "spec.ron",
+    "params.repulsion_radius=1",
+    "interactions.0.force_coeffs.1=-2",
+  ])
+  .unwrap();
+  assert_eq!(args.spec_files(), [&std::path::PathBuf::from("spec.ron")]);
+  assert_eq!(
+    args.spec_overrides(),
+    [
+      ("params.repulsion_radius", "1"),
+      ("interactions.0.force_coeffs.1", "-2")
+    ]
+  );
+  // Same nadpisania, bez pliku (specyfikacja generowana).
+  let only = parse(&["params.friction=0.02"]).unwrap();
+  assert!(only.spec_files().is_empty());
+  assert_eq!(only.spec_overrides(), [("params.friction", "0.02")]);
+  // `=` w ścieżce pliku nie robi z niego nadpisania.
+  assert_eq!(parse(&["dir/a=b.ron"]).unwrap().spec_files().len(), 1);
+  assert!(parse(&["=1"]).is_err());
+}

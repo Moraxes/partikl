@@ -33,8 +33,13 @@ pub struct ProgramArgs {
   ///
   /// If present, --no-dump-interaction-spec is assumed, and --num-types is
   /// ignored.
-  #[arg()]
-  pub interaction_spec: Option<PathBuf>,
+  ///
+  /// Any number of PATH=VALUE arguments override fields of the spec (loaded or
+  /// generated), e.g. `params.repulsion_radius=1` or
+  /// `interactions.0.force_coeffs.2=-300`. PATH names fields as in the `.ron`
+  /// file, with list positions as numbers; VALUE is written as in the file.
+  #[arg(value_name = "SPEC.ron | PATH=VALUE", value_parser = parse_spec_arg)]
+  pub spec: Vec<SpecArg>,
 
   /// Replace the built-in rules (forces, integration) with a WESL module read from this file.
   ///
@@ -112,6 +117,61 @@ impl ProgramArgs {
       .rules
       .clone()
       .map_or(RuleSource::Builtin, RuleSource::File)
+  }
+}
+
+/// Argument pozycyjny: plik specyfikacji albo nadpisanie jej pola.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SpecArg {
+  File(PathBuf),
+  /// `PATH=VALUE`, np. `params.repulsion_radius=1`.
+  Set {
+    path: String,
+    value: String,
+  },
+}
+
+fn parse_spec_arg(arg: &str) -> Result<SpecArg, String> {
+  // Nadpisanie ma `=` przed pierwszym separatorem ścieżki pliku; plik `.ron` nigdy nim nie jest.
+  match arg.split_once('=') {
+    Some((path, value)) if !arg.ends_with(".ron") && !path.contains(['/', '\\']) => {
+      if path.is_empty() || value.is_empty() {
+        return Err(format!(
+          "`{arg}`: oczekiwano PATH=VALUE, np. params.repulsion_radius=1"
+        ));
+      }
+      Ok(SpecArg::Set {
+        path: path.into(),
+        value: value.into(),
+      })
+    }
+    _ => Ok(SpecArg::File(arg.into())),
+  }
+}
+
+impl ProgramArgs {
+  /// Pliki specyfikacji spośród argumentów pozycyjnych (poprawnie najwyżej jeden).
+  pub fn spec_files(&self) -> Vec<&PathBuf> {
+    self
+      .spec
+      .iter()
+      .filter_map(|a| match a {
+        SpecArg::File(path) => Some(path),
+        SpecArg::Set { .. } => None,
+      })
+      .collect()
+  }
+
+  /// Nadpisania pól specyfikacji `(PATH, VALUE)` w kolejności podania.
+  pub fn spec_overrides(&self) -> Vec<(&str, &str)> {
+    self
+      .spec
+      .iter()
+      .filter_map(|a| match a {
+        SpecArg::Set { path, value } => Some((path.as_str(), value.as_str())),
+        SpecArg::File(_) => None,
+      })
+      .collect()
   }
 }
 

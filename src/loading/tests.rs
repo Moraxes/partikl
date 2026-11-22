@@ -90,3 +90,50 @@ fn errors_name_the_file_and_do_not_panic() {
     Err(LoadError::Malformed { .. })
   ));
 }
+
+#[test]
+fn overrides_change_params_and_matrix_entries() {
+  let spec = ParticleSpec::new(vec![
+    Interaction {
+      force_coeffs: vec![1.0, 2.0],
+    },
+    Interaction {
+      force_coeffs: vec![3.0, 4.0],
+    },
+  ]);
+  let spec = apply_overrides(
+    spec,
+    &[
+      ("params.repulsion_radius", "1"),
+      ("interactions.1.force_coeffs.0", "-300.5"),
+    ],
+  )
+  .unwrap();
+  assert_eq!(spec.params.repulsion_radius, 1.0);
+  assert_eq!(spec.flat_matrix(), [1.0, 2.0, -300.5, 4.0]);
+  // Pozostałe parametry bez zmian.
+  let defaults = crate::gpu::RuleParams::default();
+  assert_eq!(spec.params.kernel_middle, defaults.kernel_middle);
+  assert_eq!(spec.params.dt, defaults.dt);
+}
+
+#[test]
+fn overrides_reject_unknown_fields_and_bad_values() {
+  let spec = || {
+    ParticleSpec::new(vec![Interaction {
+      force_coeffs: vec![1.0],
+    }])
+  };
+  for (path, value) in [
+    ("params.nope", "1"),
+    ("interactions.5.force_coeffs.0", "1"),
+    ("params.repulsion_radius", "abc"),
+    ("params.repulsion_radius.x", "1"),
+  ] {
+    let error = apply_overrides(spec(), &[(path, value)]).unwrap_err();
+    assert!(
+      matches!(error, LoadError::Args(_)),
+      "{path}={value}: {error}"
+    );
+  }
+}
