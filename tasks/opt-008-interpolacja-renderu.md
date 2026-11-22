@@ -2,11 +2,12 @@
 id: opt-008
 title: Interpolacja renderu
 summary: Interpolacja pozycji w renderze (sonnet)
-status: todo
+status: doing
 priority: soon
 branch: main
 part_of: opt-001
 created: 2026-11-22T01:12:31
+worked: 2026-11-22T02:04:05
 ---
 Model: sonnet (przekazanie ułamka taktu do świata renderowania, matematyka w vertex shaderze, ocena wyglądu).
 
