@@ -2,14 +2,14 @@
 id: opt-004
 title: Spike kafelki Mortona
 summary: 'Spike: kafelkowy indeks komórek (sonnet)'
-status: todo
+status: dropped
 priority: later
 branch: main
 part_of: opt-001
 blocked_by:
 - opt-003
 created: 2026-11-22T01:12:30
-worked: 2026-11-22T13:04:09
+worked: 2026-11-22T13:04:18
 edited: 2026-11-22T13:04:18
 links:
 - kind: commit
