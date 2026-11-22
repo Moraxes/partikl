@@ -9,7 +9,12 @@ part_of: opt-001
 relates:
 - 66
 created: 2026-11-22T01:12:30
-worked: 2026-11-22T01:44:30
+worked: 2026-11-22T01:49:39
+links:
+- kind: commit
+  target: b734c6d
+  at: 2026-11-22T01:49:39
+  note: 'chore: opt-005 bench runs (sampling cap) and galleries'
 ---
 Model: haiku (zasób + klawisz + flaga + HUD według istniejącego wzorca; brak zmian w shaderach).
 
