@@ -2,7 +2,7 @@
 id: 23
 title: Krótsze odpychanie
 summary: Zasięg odpychania 2 i gładki kształt (1−d²/r²)²; tylko z rozsuwaniem lub uśrednianiem
-status: todo
+status: dropped
 priority: later
 branch: main
 blocked_by:
@@ -11,6 +11,7 @@ relates:
 - 24
 - 25
 created: 2026-11-20T23:12:14
+worked: 2026-11-22T16:39:28
 edited: 2026-11-21T22:43:15
 ---
 Cel: zasięg odpychania 2 zamiast 10 i kształt dzwonowy zamiast liniowego, np. siła `k·(1−d²/r²)²` (zależy tylko od d², 3 mnożenia). Następny krok: zrobić po rozsuwaniu lub uśrednianiu i zmierzyć sondą; samo zmniejszenie zasięgu pogorszy stabilność.
