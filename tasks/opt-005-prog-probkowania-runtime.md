@@ -6,6 +6,8 @@ status: todo
 priority: soon
 branch: main
 part_of: opt-001
+relates:
+- 66
 created: 2026-11-22T01:12:30
 ---
 Model: haiku (zasób + klawisz + flaga + HUD według istniejącego wzorca; brak zmian w shaderach).
