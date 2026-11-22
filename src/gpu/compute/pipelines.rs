@@ -10,6 +10,7 @@ use bevy::shader::Shader;
 use bevy::render::render_resource::*;
 use bevy::shader::ShaderDefVal;
 
+use super::stats::GpuStats;
 use super::{SCAN_BLOCK, WORKGROUP, bindings};
 use crate::gpu::GpuSim;
 use crate::gpu::rules::RuleFlags;
@@ -20,6 +21,7 @@ pub enum ShaderFile {
   Grid,
   Scan,
   Step,
+  Stats,
 }
 
 impl ShaderFile {
@@ -28,6 +30,7 @@ impl ShaderFile {
       ShaderFile::Grid => "embedded://partikl/gpu/shaders/engine/grid_build.wesl",
       ShaderFile::Scan => "embedded://partikl/gpu/shaders/engine/prefix_sum.wesl",
       ShaderFile::Step => "embedded://partikl/gpu/shaders/engine/step_driver.wesl",
+      ShaderFile::Stats => "embedded://partikl/gpu/shaders/engine/stats.wesl",
     }
   }
 }
@@ -116,6 +119,9 @@ pub const GRID_PASSES: [Pass; 8] = [
 /// Siły i całkowanie: zapisuje nowy stan cząstek. Wariant wg opcji (shader defs).
 pub const FORCES: Pass = pass("forces", ShaderFile::Step, Dispatch::Particles);
 
+/// Statystyki stanu po siłach (opcja, `stats.wesl`): jedna grupa na `WORKGROUP` cząstek.
+pub const STATS: Pass = pass("reduce_stats", ShaderFile::Stats, Dispatch::Particles);
+
 /// Moduły shaderów importowane przez inne (ładowane asynchronicznie przez `AssetServer`).
 /// Pipeline kolejkowany przed ich załadowaniem kończy się błędem `module not found`.
 #[derive(Resource, Clone, ExtractResource)]
@@ -135,6 +141,8 @@ pub struct Pipelines {
   pub grid: Vec<CachedComputePipelineId>,
   /// Warianty `FORCES` wg opcji symulacji i liczby typów, kolejkowane przy pierwszym użyciu.
   pub forces: HashMap<ForcesVariant, CachedComputePipelineId>,
+  /// Pipeline `STATS`: kolejkowany dopiero, gdy statystyki są włączone po raz pierwszy.
+  pub stats: Option<CachedComputePipelineId>,
   shaders: HashMap<&'static str, Handle<Shader>>,
 }
 
@@ -158,11 +166,12 @@ impl Pipelines {
 }
 
 pub fn init(mut commands: Commands, asset_server: Res<AssetServer>) {
-  let shaders = [ShaderFile::Grid, ShaderFile::Scan, ShaderFile::Step]
+  let shaders = [ShaderFile::Grid, ShaderFile::Scan, ShaderFile::Step, ShaderFile::Stats]
     .into_iter()
     .map(|file| (file.path(), asset_server.load(file.path())))
     .collect();
-  let pipelines = Pipelines { layout: bindings::layout(), grid: Vec::new(), forces: HashMap::new(), shaders };
+  let pipelines =
+    Pipelines { layout: bindings::layout(), grid: Vec::new(), forces: HashMap::new(), stats: None, shaders };
   commands.insert_resource(pipelines);
 }
 
@@ -211,6 +220,7 @@ pub fn queue_forces(
   assets: Res<AssetServer>,
   flags: Res<RuleFlags>,
   sim: Option<Res<GpuSim>>,
+  gpu_stats: Res<GpuStats>,
   mut pipelines: ResMut<Pipelines>,
   cache: Res<PipelineCache>,
 ) {
@@ -220,6 +230,10 @@ pub fn queue_forces(
   if pipelines.grid.is_empty() {
     let grid = GRID_PASSES.iter().map(|pass| pipelines.queue(&cache, pass, vec![])).collect();
     pipelines.grid = grid;
+  }
+  if gpu_stats.enabled && pipelines.stats.is_none() {
+    let id = pipelines.queue(&cache, &STATS, vec![]);
+    pipelines.stats = Some(id);
   }
   let Some(sim) = sim else { return };
   let variant = ForcesVariant::new(&flags, sim.num_types);

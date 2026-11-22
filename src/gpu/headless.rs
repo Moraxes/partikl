@@ -266,6 +266,26 @@ impl Harness {
     None
   }
 
+  /// Włącza statystyki stanu po kroku (`GpuStats`): od teraz klatka z krokami liczy je na GPU, a wynik
+  /// odbiera `take_stats`. Domyślnie wyłączone (zero kosztu). Pierwszy przebieg po włączeniu kompiluje
+  /// pipeline, więc wynik bywa dopiero po kilku krokach.
+  pub fn set_stats(&mut self, enabled: bool) {
+    self.world().resource_mut::<GpuStats>().enabled = enabled;
+  }
+
+  /// Statystyki ostatniej klatki z krokami; czeka (najwyżej kilka klatek bez kroków) na odczyt. `None`:
+  /// statystyki wyłączone albo próbka jeszcze nie gotowa.
+  pub fn take_stats(&mut self) -> Option<SimStats> {
+    let latest = self.world().resource::<GpuStats>().latest.clone();
+    for _ in 0..8 {
+      if let Some(stats) = latest.lock().unwrap().take() {
+        return Some(stats);
+      }
+      self.update();
+    }
+    None
+  }
+
   fn step_chunk(&mut self, steps: u64) {
     let before = self.world().resource::<GpuProgress>().0.load(Ordering::SeqCst);
     // `GpuProgress` liczy podkroki GPU: takty × K.

@@ -40,10 +40,12 @@ pub enum Binding {
   SortedModel = 10,
   /// `cell_ranks`: ranga cząstki `state[i]` w jej komórce (z histogramu przebiegu sił lub `count`).
   CellRanks = 11,
+  /// `stats`: wynik statystyk kroku (przebieg `reduce_stats`); dotyka go tylko on i kopia do odczytu.
+  Stats = 12,
 }
 
 impl Binding {
-  pub const ALL: [Binding; 12] = [
+  pub const ALL: [Binding; 13] = [
     Binding::Uniforms,
     Binding::State,
     Binding::SortedHot,
@@ -56,6 +58,7 @@ impl Binding {
     Binding::Model,
     Binding::SortedModel,
     Binding::CellRanks,
+    Binding::Stats,
   ];
 
   /// Nazwa zmiennej w `bindings.wesl` (do testu zgodności z plikiem).
@@ -74,6 +77,7 @@ impl Binding {
       Binding::Model => "model",
       Binding::SortedModel => "sorted_model",
       Binding::CellRanks => "cell_ranks",
+      Binding::Stats => "stats",
     }
   }
 
@@ -125,6 +129,7 @@ pub fn create_group(
         Binding::Model => model.as_entire_binding(),
         Binding::SortedModel => buffers.sorted_model.as_entire_binding(),
         Binding::CellRanks => buffers.cell_ranks.as_entire_binding(),
+        Binding::Stats => buffers.stats.as_entire_binding(),
       },
     })
     .collect();

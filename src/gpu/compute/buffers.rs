@@ -5,6 +5,7 @@ use bevy::render::render_resource::encase;
 use bevy::render::render_resource::*;
 use bevy::render::renderer::{RenderDevice, RenderQueue};
 
+use super::stats;
 use super::{RuleParams, SCAN_BLOCK};
 use crate::gpu::{GpuParticle, GpuSim, MAX_CELLS, Substeps};
 use crate::spec::ParticleSpec;
@@ -21,6 +22,9 @@ pub struct Buffers {
   pub cell_ranks: Buffer,
   pub force_matrix: Buffer,
   pub rule_params: Buffer,
+  /// Wynik statystyk kroku (`stats.rs`); kopia do odczytu `stats_read` tylko gdy statystyki włączone.
+  pub stats: Buffer,
+  pub stats_read: Buffer,
 }
 
 /// Parametry reguł na GPU: `dt` dzielony przez liczbę podkroków.
@@ -50,6 +54,13 @@ pub fn create(mut commands: Commands, sim: Res<GpuSim>, spec: Res<ParticleSpec>,
     cell_offsets: storage("cell_offsets", (cells + (MAX_CELLS / SCAN_BLOCK) as u64) * 4),
     next_counts: storage("next_counts", cells * 4),
     cell_ranks: storage("cell_ranks", n * 4),
+    stats: storage("stats", stats::words(sim.num_particles) * 4),
+    stats_read: device.create_buffer(&BufferDescriptor {
+      label: Some("stats_read"),
+      size: stats::words(sim.num_particles) * 4,
+      usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
+      mapped_at_creation: false,
+    }),
     force_matrix: device.create_buffer_with_data(&BufferInitDescriptor {
       label: Some("force_matrix"),
       contents: bytemuck::cast_slice(&spec.flat_matrix()),

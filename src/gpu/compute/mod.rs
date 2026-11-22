@@ -12,13 +12,15 @@
 //! 3. [`step::plan`]: ile kroków w tej klatce, uniformy na każdy krok, bind group,
 //! 4. [`step::run`] (w `RenderGraph`, przed kamerą): dispatch przebiegów każdego kroku.
 //!
-//! Czas GPU przebiegów (tylko w benchmarku): [`timing`].
+//! Czas GPU przebiegów (tylko w benchmarku): [`timing`]. Statystyki stanu po kroku (opcja, domyślnie
+//! wyłączona): [`stats`].
 
 mod bindings;
 mod buffers;
 mod pipelines;
 mod step;
 pub use pipelines::ShaderLibrary;
+pub mod stats;
 pub mod timing;
 
 use bevy::core_pipeline::schedule::camera_driver;
@@ -160,13 +162,15 @@ pub struct GpuComputePlugin;
 
 impl Plugin for GpuComputePlugin {
   fn build(&self, app: &mut App) {
-    app.init_resource::<timing::GpuTimings>().add_plugins((
+    app.init_resource::<timing::GpuTimings>().init_resource::<stats::GpuStats>().add_plugins((
       ExtractResourcePlugin::<timing::GpuTimings>::default(),
+      ExtractResourcePlugin::<stats::GpuStats>::default(),
       ExtractResourcePlugin::<ShaderLibrary>::default(),
     ));
     let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
     render_app
       .init_resource::<step::Plan>()
+      .init_resource::<stats::Reader>()
       .add_systems(RenderStartup, (pipelines::init, timing::init))
       .add_systems(
         Render,
@@ -183,11 +187,16 @@ impl Plugin for GpuComputePlugin {
           pipelines::queue_forces.in_set(RenderSystems::PrepareResources),
           step::plan.in_set(RenderSystems::PrepareBindGroups),
           timing::collect.in_set(RenderSystems::PrepareResources),
+          stats::collect.in_set(RenderSystems::PrepareResources),
         ),
       )
       .add_systems(
         RenderGraph,
-        (step::run.before(camera_driver), timing::map.in_set(RenderGraphSystems::Finish)),
+        (
+          step::run.before(camera_driver),
+          timing::map.in_set(RenderGraphSystems::Finish),
+          stats::map.in_set(RenderGraphSystems::Finish),
+        ),
       );
   }
 }

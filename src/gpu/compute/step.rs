@@ -11,7 +11,8 @@ use bevy::render::storage::GpuShaderBuffer;
 use super::EngineUniforms;
 use super::bindings;
 use super::buffers::Buffers;
-use super::pipelines::{FORCES, ForcesVariant, GRID_PASSES, Pipelines};
+use super::pipelines::{FORCES, ForcesVariant, GRID_PASSES, Pipelines, STATS};
+use super::stats::{GpuStats, Reader};
 use super::timing::{GpuTimings, Timer};
 use crate::gpu::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME, SamplingCap, Substeps};
 use crate::gpu::rules::RuleFlags;
@@ -153,6 +154,8 @@ pub fn run(
   cache: Res<PipelineCache>,
   timings: Option<Res<GpuTimings>>,
   mut timer: Option<ResMut<Timer>>,
+  gpu_stats: Option<Res<GpuStats>>,
+  reader: Option<ResMut<Reader>>,
 ) {
   if let Some(timer) = timer.as_mut() {
     timer.resolve(context.command_encoder());
@@ -224,6 +227,23 @@ pub fn run(
       }
       timer.finish_frame(1, entries);
     }
+  }
+
+  // Statystyki stanu po ostatnim kroku klatki (opcja): tylko gdy włączone, pipeline gotowy i poprzednia
+  // próbka odebrana. Wyłączone: ani przebiegu, ani kopii.
+  let stats_on = gpu_stats.is_some_and(|s| s.enabled);
+  if let Some(mut reader) = reader.filter(|r| stats_on && r.idle())
+    && let (Some(pipeline), Some(&last)) = (pipelines.stats.and_then(|id| cache.get_compute_pipeline(id)), plan.offsets.last())
+  {
+    let encoder = context.command_encoder();
+    encoder.clear_buffer(&buffers.stats, 0, None);
+    {
+      let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor { label: Some("partikl_stats"), ..default() });
+      pass.set_bind_group(0, bind_group, &[last]);
+      pass.set_pipeline(pipeline);
+      pass.dispatch_workgroups(STATS.dispatch.groups(&sim), 1, 1);
+    }
+    reader.encode(encoder, &buffers, sim.num_particles);
   }
   progress.0.fetch_add(plan.count as u64, Ordering::SeqCst);
 }

@@ -17,6 +17,7 @@ mod default_rules;
 mod engine;
 mod render;
 mod rules;
+mod stats;
 
 /// Opcje wbudowanych reguł tak, jak widzi je wyrocznia f64 (`default_rules.rs`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

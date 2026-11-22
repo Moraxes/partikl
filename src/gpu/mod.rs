@@ -20,6 +20,7 @@ use std::sync::atomic::AtomicU64;
 mod compute;
 mod step_budget;
 pub use compute::RuleParams;
+pub use compute::stats::{GpuStats, SimStats};
 pub use compute::timing::{GpuTimings, PassTimes, entries as timing_entries};
 pub use step_budget::{SIM_SPEED, StepBudget, count_step};
 use step_budget::StepBudgetPlugin;
@@ -240,6 +241,8 @@ impl Plugin for GpuPlugin {
     library.push(load_embedded_asset!(app, "shaders/engine/prefix_sum.wesl"));
     embedded_asset!(app, "shaders/engine/step_driver.wesl");
     library.push(load_embedded_asset!(app, "shaders/engine/step_driver.wesl"));
+    embedded_asset!(app, "shaders/engine/stats.wesl");
+    library.push(load_embedded_asset!(app, "shaders/engine/stats.wesl"));
     embedded_asset!(app, "shaders/engine/render.wesl");
     library.push(load_embedded_asset!(app, "shaders/engine/render.wesl"));
     embedded_asset!(app, "shaders/rules/matrix.wesl");

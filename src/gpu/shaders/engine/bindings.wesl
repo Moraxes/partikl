@@ -27,6 +27,8 @@ import super::super::rules::model::{Model, Neighbour, pack_neighbour, unpack_nei
 @group(0) @binding(10) var<storage, read_write> sorted_model: array<Model>;
 // Ranga `state[i]` w jej komórce (wynik `atomicAdd` na histogramie): miejsce w komórce przy scatterze.
 @group(0) @binding(11) var<storage, read_write> cell_ranks: array<u32>;
+// Wynik statystyk kroku (`stats.wesl`): licznik nie-skończonych, maksimum prędkości i sumy grup (bity f32).
+@group(0) @binding(12) var<storage, read_write> stats: array<atomic<u32>>;
 
 fn store_neighbour(slot: u32, p: Particle, m: Model) {
   sorted_hot[slot] = pack_neighbour(p, m);
