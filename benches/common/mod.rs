@@ -20,6 +20,9 @@ use arrow_schema::SchemaRef;
 use bevy::prelude::*;
 use rand::prelude::*;
 
+use clap::Args;
+use partikl::gpu::{RuleParams, RuleSource};
+use partikl::options::SimOptions;
 use partikl::spec::{Interaction, ParticleSpec};
 use results::{ResultsFile, Run};
 
@@ -41,6 +44,53 @@ pub fn particle_spec(types: usize, seed: u64) -> ParticleSpec {
     })
     .collect();
   ParticleSpec::new(interactions)
+}
+
+/// Flagi wspólne dla benchów: opcje reguł i częściowe nadpisanie parametrów (`#[command(flatten)]`).
+#[derive(Args, Debug, Clone, Default)]
+pub struct SimArgs {
+  /// Opcja reguł `nazwa=wybór` (powtarzalna), nakładana na domyślne, np. `--option resolve_kick=vel`.
+  #[arg(long = "option", value_name = "NAZWA=WYBÓR")]
+  pub options: Vec<String>,
+  /// Częściowe nadpisanie `RuleParams` w RON, np. `--params "(repulsion_radius: 1.0)"`.
+  #[arg(long)]
+  pub params: Option<String>,
+}
+
+impl SimArgs {
+  /// Opcje z flag `--option` (błąd dla nieznanej opcji albo wyboru kończy program).
+  pub fn sim_options(&self) -> SimOptions {
+    let schema = RuleSource::Builtin.read().expect("wbudowane reguły").schema;
+    SimOptions::from_overrides(&schema, &self.options).unwrap_or_else(|e| panic!("--option: {e}"))
+  }
+
+  /// Nakłada `--params` na parametry specyfikacji (`dt` i próg ruchu zostają, jak w plikach `.ron`).
+  pub fn apply_params(&self, spec: &mut ParticleSpec) {
+    let Some(text) = &self.params else { return };
+    let over: RuleParams = ron::from_str(text).unwrap_or_else(|e| panic!("--params: {e}"));
+    // Pola nieobecne w tekście mają wartości domyślne (`serde(default)`), a spec benchów ma domyślne
+    // parametry, więc wystarczy podmienić całość; `dt` i próg ruchu (`serde(skip)`) zostają.
+    let (dt, threshold) = (spec.params.dt, spec.params.velocity_threshold);
+    spec.params = over;
+    spec.params.dt = dt;
+    spec.params.velocity_threshold = threshold;
+  }
+
+  /// Opis wybranych opcji i parametrów (do kolumny `variant`); pusty, gdy nic nie ustawiono.
+  pub fn label(&self) -> String {
+    let mut parts: Vec<String> = self.options.clone();
+    if let Some(params) = &self.params {
+      parts.push(format!(
+        "params={}",
+        params.split_whitespace().collect::<Vec<_>>().join("")
+      ));
+    }
+    if parts.is_empty() {
+      String::new()
+    } else {
+      format!(" [{}]", parts.join(" "))
+    }
+  }
 }
 
 pub fn nanos(d: Duration) -> u64 {

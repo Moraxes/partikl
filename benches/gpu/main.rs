@@ -28,7 +28,7 @@ use arrow_schema::{DataType, Field, Schema};
 use clap::Parser;
 use partikl::gpu::{DEFAULT_MAX_CANDIDATES, MAX_STEPS_PER_FRAME, PassTimes};
 
-use common::{Output, WORLD, median, nanos, particle_spec, rng};
+use common::{Output, SimArgs, WORLD, median, nanos, particle_spec, rng};
 use partikl::gpu::RuleSource;
 use partikl::gpu::headless::Harness;
 use partikl::options::SimOptions;
@@ -74,6 +74,8 @@ struct Args {
   /// Liczba typów cząstek.
   #[arg(long, default_value_t = 3)]
   types: usize,
+  #[command(flatten)]
+  sim: SimArgs,
   /// Niemierzone pomiary przed mierzonymi.
   #[arg(long, default_value_t = 3)]
   warmup: usize,
@@ -142,8 +144,11 @@ fn main() {
       .schema
       .combinations()
   } else {
-    vec![SimOptions::default()]
+    vec![args.sim.sim_options()]
   };
+  if args.all_variants && !args.sim.options.is_empty() {
+    panic!("--option nie łączy się z --all-variants");
+  }
   println!(
     "{:>9} {:<9} {:<16} {:>9} {:>9} {:>9} {:>9} {:>9}",
     "n", "scene", "variant", "kandydaci", "krok µs", "GPU µs", "siatka", "siły"
@@ -151,7 +156,8 @@ fn main() {
   'cases: for &n in &sizes {
     for &scene in &args.scenes {
       for options in &variants {
-        let spec = particle_spec(args.types, seed);
+        let mut spec = particle_spec(args.types, seed);
+        args.sim.apply_params(&mut spec);
         let state = scene.particles(n, args.types, WORLD, &mut rng(seed));
         let Some(mut harness) = Harness::new(options.clone(), spec, state.clone(), WORLD) else {
           // Zapisane już wiersze trafiają do pliku (`finish` poniżej).
@@ -196,12 +202,13 @@ fn main() {
           .unwrap_or("spring")
           .replace('_', " ");
         let variant = format!(
-          "{overlap}{}",
+          "{overlap}{}{}",
           if options.value("average_forces").unwrap_or("on") == "on" {
             "+average"
           } else {
             ""
-          }
+          },
+          args.sim.label()
         );
         let rows = samples.len();
         let batch = RecordBatch::try_new(

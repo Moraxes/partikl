@@ -26,10 +26,9 @@ use arrow_schema::{DataType, Field, Schema};
 use bevy::prelude::*;
 use clap::Parser;
 
-use common::{Output, median, nanos, particle_spec, rng};
+use common::{Output, SimArgs, median, nanos, particle_spec, rng};
 use partikl::gpu::headless::{Harness, Offscreen};
 use partikl::gpu::{DEFAULT_MAX_CANDIDATES, RenderQuality};
-use partikl::options::SimOptions;
 use scenes::{Scene, candidates_mean};
 
 /// Świat jak na ekranie 3600×2338 przy skali 2 (jednostki logiczne).
@@ -68,6 +67,19 @@ struct Args {
   /// aplikacji), w skali 1:1 i 4×.
   #[arg(long)]
   gallery: Option<PathBuf>,
+  /// Zamiast pomiaru: ślad symulacji w katalogu. Od `Scene::Uniform` (`--sizes`: pierwszy rozmiar,
+  /// `--seed`, `--types`, `--option`, `--params`) `--gallery-steps` kroków; co `--snapshot-every`
+  /// kroków (także w kroku 0) PNG całego świata w połowie rozdzielczości (`step_NNNNN_full.png`)
+  /// i wycinek środka 900×700 w skali 1:1 (`step_NNNNN_crop.png`), kolory jak w aplikacji, oraz
+  /// wiersz `stats.csv` (`step,nan_count,max_speed,kinetic_energy,candidates_mean`). Przy NaN
+  /// kończy wcześniej.
+  #[arg(long)]
+  snapshots: Option<PathBuf>,
+  /// Odstęp między zrzutami w trybie `--snapshots` (w krokach).
+  #[arg(long, default_value_t = 250, value_parser = clap::value_parser!(u64).range(1..))]
+  snapshot_every: u64,
+  #[command(flatten)]
+  sim: SimArgs,
   /// Tryby pomiaru: draw (sam render), draw+step (klatka z krokiem) i loop (pętla jak w
   /// aplikacji: prawdziwy stały krok i `StepBudget`, klatki bez przerwy; mierzy czas klatki i
   /// prędkość symulacji w % czasu rzeczywistego).
@@ -206,9 +218,13 @@ fn save_png(path: &std::path::Path, width: u32, height: u32, rgba: Vec<u8>) {
 /// Galeria porównań wyglądu: jeden stan (po rozbiegu), rysowany w parach wariantów.
 fn gallery(args: &Args, dir: &std::path::Path) {
   std::fs::create_dir_all(dir).expect("cannot create gallery directory");
-  let options = SimOptions::default();
+  let options = args.sim.sim_options();
   let n = args.sizes[0];
-  let spec = || particle_spec(args.types, args.seed);
+  let spec = || {
+    let mut spec = particle_spec(args.types, args.seed);
+    args.sim.apply_params(&mut spec);
+    spec
+  };
   let initial = Scene::Uniform.particles(n, args.types, WORLD, &mut rng(args.seed));
   // Rozbieg: stan z prawdziwej dynamiki (struktury), potem ten sam stan dla każdego wariantu.
   let Some(mut harness) = Harness::new(options.clone(), spec(), initial, WORLD) else {
@@ -268,8 +284,126 @@ fn gallery(args: &Args, dir: &std::path::Path) {
   }
 }
 
+/// Obraz pomniejszony `factor` razy (średnia z bloków), RGBA8.
+fn downscale(pixels: &[u8], factor: u32) -> (Vec<u8>, u32, u32) {
+  let (w, h) = (TARGET.x / factor, TARGET.y / factor);
+  let mut out = Vec::with_capacity((w * h * 4) as usize);
+  for y in 0..h {
+    for x in 0..w {
+      let mut sum = [0u32; 4];
+      for dy in 0..factor {
+        for dx in 0..factor {
+          let i = (((y * factor + dy) * TARGET.x + x * factor + dx) * 4) as usize;
+          for (c, s) in sum.iter_mut().enumerate() {
+            *s += pixels[i + c] as u32;
+          }
+        }
+      }
+      out.extend(sum.iter().map(|s| (s / (factor * factor)) as u8));
+    }
+  }
+  (out, w, h)
+}
+
+/// Ślad symulacji: zrzuty i statystyki co `--snapshot-every` kroków (patrz `--snapshots`).
+fn snapshots(args: &Args, dir: &std::path::Path) {
+  use std::io::Write;
+  std::fs::create_dir_all(dir).expect("cannot create snapshot directory");
+  let options = args.sim.sim_options();
+  let n = args.sizes[0];
+  let mut spec = particle_spec(args.types, args.seed);
+  args.sim.apply_params(&mut spec);
+  let initial = Scene::Uniform.particles(n, args.types, WORLD, &mut rng(args.seed));
+  let offscreen = Offscreen {
+    size: TARGET,
+    quality: RenderQuality::default(),
+    app_colors: true,
+    real_time: false,
+  };
+  let Some(mut harness) = Harness::with_render(options, spec, initial, WORLD, Some(offscreen))
+  else {
+    return;
+  };
+  harness.set_max_candidates(args.max_candidates);
+  harness.set_substeps(args.substeps);
+  harness.set_stats(true);
+  let mut csv = std::fs::File::create(dir.join("stats.csv")).expect("cannot create stats.csv");
+  writeln!(
+    csv,
+    "step,nan_count,max_speed,kinetic_energy,candidates_mean"
+  )
+  .unwrap();
+  let (cx, cy) = (TARGET.x / 2, TARGET.y / 2);
+  // Bufory GPU powstają w pierwszych klatkach.
+  for _ in 0..6 {
+    harness.update();
+  }
+  let mut step = 0u64;
+  loop {
+    // Stan do liczenia gęstości; przy kroku 0 także statystyki (GPU liczy je dopiero po kroku).
+    let particles = harness.run(0);
+    let stats = if step == 0 {
+      let finite =
+        |p: &&partikl::gpu::GpuParticle| p.pos.iter().chain(&p.vel).all(|v| v.is_finite());
+      let ok: Vec<_> = particles.iter().filter(finite).collect();
+      let speed =
+        |p: &&partikl::gpu::GpuParticle| (p.vel[0] * p.vel[0] + p.vel[1] * p.vel[1]).sqrt();
+      (
+        (particles.len() - ok.len()) as u32,
+        ok.iter().map(speed).fold(0.0f32, f32::max),
+        ok.iter()
+          .map(|p| 0.5 * (speed(p) as f64).powi(2))
+          .sum::<f64>() as f32,
+      )
+    } else {
+      let s = harness.take_stats().expect("statystyki GPU");
+      (s.nan_count, s.max_speed, s.kinetic_energy)
+    };
+    let candidates = candidates_mean(&particles, WORLD);
+    writeln!(
+      csv,
+      "{step},{},{},{},{candidates}",
+      stats.0, stats.1, stats.2
+    )
+    .unwrap();
+    csv.flush().unwrap();
+    for _ in 0..6 {
+      harness.update();
+    }
+    let pixels = harness.target_pixels();
+    let (full, w, h) = downscale(&pixels, 2);
+    save_png(&dir.join(format!("step_{step:05}_full.png")), w, h, full);
+    let crop = panel(&pixels, cx - 450, cy - 350, 900, 700, 1);
+    save_png(
+      &dir.join(format!("step_{step:05}_crop.png")),
+      900,
+      700,
+      crop,
+    );
+    println!(
+      "krok {step:>6}: NaN {}, max |v| {:.1}, energia {:.3e}, kandydaci {candidates:.1}",
+      stats.0, stats.1, stats.2
+    );
+    if stats.0 > 0 {
+      println!("NaN w stanie: przerywam w kroku {step}");
+      break;
+    }
+    if step >= args.gallery_steps {
+      break;
+    }
+    let next = args.snapshot_every.min(args.gallery_steps - step);
+    harness.step(next);
+    step += next;
+  }
+  println!("wyniki: {}", dir.display());
+}
+
 fn main() {
   let args = Args::parse();
+  if let Some(dir) = &args.snapshots {
+    snapshots(&args, dir);
+    return;
+  }
   if let Some(dir) = &args.gallery {
     gallery(&args, dir);
     return;
@@ -296,7 +430,7 @@ fn main() {
     measured,
     schema.clone(),
   );
-  let options = SimOptions::default();
+  let options = args.sim.sim_options();
   println!(
     "{:>9} {:<9} {:<26} {:>9} {:>10} {:>8}",
     "n", "scene", "variant", "kandydaci", "klatka ms", "symul."
@@ -307,7 +441,8 @@ fn main() {
         for (&hdr, &tonemapping, &analytic_aa) in iproduct(&args.hdr, &args.tonemap, &args.aa) {
           let state = scene.particles(n, args.types, WORLD, &mut rng(args.seed));
           let candidates = candidates_mean(&state, WORLD);
-          let spec = particle_spec(args.types, args.seed);
+          let mut spec = particle_spec(args.types, args.seed);
+          args.sim.apply_params(&mut spec);
           let quality = RenderQuality {
             msaa: msaa(samples),
             hdr,
@@ -363,7 +498,7 @@ fn main() {
               } else {
                 String::new()
               },
-            );
+            ) + &args.sim.label();
             if let (Some(dir), "draw") = (&args.screenshots, mode.as_str()) {
               save_screenshot(
                 &mut harness,
