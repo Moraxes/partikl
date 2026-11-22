@@ -22,6 +22,11 @@ links:
   at: 2026-11-22T02:09:08
   rev: 13de01d
   note: baseline HEAD, loop 500k/1M
+- kind: data
+  target: .artifacts/bench/render-2026-11-22-02-06-53.parquet
+  at: 2026-11-22T02:09:08
+  rev: 13de01d
+  note: baseline HEAD
 ---
 Model: sonnet (przekazanie ułamka taktu do świata renderowania, matematyka w vertex shaderze, ocena wyglądu).
 
