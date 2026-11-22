@@ -10,7 +10,7 @@ blocked_by:
 - opt-002
 created: 2026-11-22T01:12:30
 worked: 2026-11-22T01:58:51
-edited: 2026-11-22T01:58:50
+edited: 2026-11-22T01:58:56
 links:
 - kind: commit
   target: 6a4abbb
@@ -87,13 +87,13 @@ Zrobione w 6a4abbb. `Substeps(u32)` (domyślnie 1, `MAX_SUBSTEPS` = 8, `Substeps
 
 Mapowanie liczników (decyzja):
 - `GpuParams::step_count` liczy takty stałego kroku (`DELTA_TIME`); `count_step`, `StepBudget` (limit, taken/wanted, `SIM_SPEED` w HUD) i `MAX_STEPS_PER_FRAME` zostają w taktach bez zmian, więc prędkość symulacji w HUD jest poprawna.
-- GPU wykonuje `takty × K` podkroków. `GpuProgress` liczy podkroki GPU (`Harness::step(n)` czeka na n·K); `step_index` rośnie co podkrok (`Plan::gpu_steps`), więc próbkowanie dekoryluje się w każdym podkroku.
+- GPU wykonuje `takty × K` podkroków. `GpuProgress` liczy podkroki GPU (`Harness::step(n)` czeka na n·K); `step_index` rośnie co podkrok (`Plan::gpu_steps`), więc próbkowanie dekoreluje się w każdym podkroku.
 - `RuleParams.dt` na GPU = `spec.params.dt / K` (`buffers::gpu_params`, zapis w `create` i w `upload_spec`, które teraz wyzwala też zmiana `Substeps`, nie tylko `ParticleSpec`). `ParticleSpec` zostaje nietknięty.
 - Przeskalowanie Verleta: przebieg `rescale` (`grid_build.wesl`, `When::Rescale`, pierwszy w `GRID_PASSES`) liczy `last = pos − (pos − last)·dt_ratio`. `dt_ratio` (nowe pole `EngineUniforms`, układ nadal 56 B) jest ustawiane tylko w pierwszym kroku planu; `Plan` kumuluje `K_stare/K_nowe`, gdy K zmieni się kilka razy, zanim krok się wykona (pauza, kompilacja pipeline'u). Stan startowy zakłada dt = `DELTA_TIME` (K = 1); podmiana stanu (`set_state`) nie skaluje, bo stan z zewnątrz ma prędkości dla `DELTA_TIME`... ale przy K > 1 jego prędkości wyjdą K razy za duże: wywołujący musi je przeskalować (nie dotyczy UI, bo stan startuje przy K = 1).
 - `When::runs` ma trzeci argument (`rescale`); nowy wpis w `timing_entries()`, więc benchowy parquet ma kolumnę `gpu_rescale_ns` (0 poza krokiem po zmianie K) i kolumnę `substeps`.
 - Parametry „na krok" działają na podkrok, bez kompensacji: `crowding_smoothing` (wygładzanie rośnie K razy szybciej w czasie), połowa poprawki w RESOLVE (K razy częściej), tarcie `d/(1 + c·|d|)` jest nieliniowe w przemieszczeniu na podkrok, więc przy tej samej prędkości daje słabsze tłumienie na jednostkę czasu niż przy K = 1 (dla małych `c·|d|` praktycznie bez różnicy).
 
-Testy (src/gpu/tests/engine.rs): K = 2 po 40 taktach: brak NaN, id 0..n, liczba cząstek zachowana, stosunek średnich prędkości K=2/K=1 w (0,5; 2); zmiana K = 4 w locie i powrót do 1 nie zmieniają średniej prędkości poza (0,5; 2) (bez `rescale` wyszłoby ok. 4×); `GpuProgress` = takty × K. `cargo test`: 73 przechodzą. `cargo clippy --all-targets`: bez nowych ostrzeżeń (9 lib, 10 lib test, tyle samo co przed zmianą).
+Testy (src/gpu/tests/engine.rs): K = 2 po 40 taktach: brak NaN, id 0..n, liczba cząstek zachowana, stosunek średnich prędkości K=2/K=1 w (0,5; 2); zmiana K = 4 w locie i powrót do 1 trzymają średnią prędkość w (0,5; 2) względem startu (bez `rescale` wyszłoby ok. 4×); `GpuProgress` = takty × K. `cargo test`: 73 przechodzą. `cargo clippy --all-targets`: bez nowych ostrzeżeń (9 lib, 10 lib test, tyle samo co przed zmianą).
 
 ## Pomiar (M5, headless)
 
