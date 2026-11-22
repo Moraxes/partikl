@@ -105,7 +105,8 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
 }
 }
 
-// Poprawka pozycji (rozsuwanie), tarcie kwadratowe i krok Verleta. Zawijanie robi silnik.
+// Poprawka pozycji (rozsuwanie), tarcie kwadratowe i krok półjawnego Eulera (v, potem pos).
+// Zawijanie robi silnik.
 fn integrate_particle(self_p: Particle, m: ptr<function, Model>, accum: RuleAccum) -> Particle {
   let u = rule_params;
   var p = self_p;

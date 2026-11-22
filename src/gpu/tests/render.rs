@@ -198,7 +198,7 @@ fn render_quality_switches_at_runtime() {
 }
 
 /// Środek ciężkości zapalonych pikseli (współrzędna x świata) jednej cząstki ruchomej o `pos = (10, 0)`,
-/// `last = (6, 0)`, gdy ułamek taktu wynosi `alpha`.
+/// `vel = (400, 0)` (4 jednostki na takt), gdy ułamek taktu wynosi `alpha`.
 fn interpolated_centroid_x(alpha: f64, substeps: u32) -> Option<f32> {
   use crate::gpu::headless::Offscreen;
   use std::time::Duration;

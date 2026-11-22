@@ -68,8 +68,8 @@ fn vertex(v: Vertex) -> VertexOutput {
   // Z wygładzaniem quad jest większy od okręgu o obrzeże na przejście krycia (poza okręgiem).
   let pad = select(1.0, AA_PAD, params.analytic_aa > 0.5);
   let local = corner * pad * axes;
-  // Interpolacja: pozycja sprzed `w` podkroków (dla K = 1 to mix(last, pos, α)). Zawinięcie na torusie
-  // przesuwa też `last`, więc `pos − last` jest ciągłe i cząstka nie rysuje pasa przez świat.
+  // Interpolacja: pozycja sprzed `lag` sekund (cofnięcie wzdłuż prędkości). Prędkość nie zawija się na
+  // torusie, więc tuż po zawinięciu cząstka jest rysowana poza światem, a nie pasem przez świat.
   let center = p.pos - params.lag * p.vel;
   let world = center + vec2<f32>(
     rot.x * local.x - rot.y * local.y,

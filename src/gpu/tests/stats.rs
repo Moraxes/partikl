@@ -4,7 +4,7 @@
 use super::*;
 
 /// `(nan, maks. prędkość, energia)` liczone na CPU z tego samego stanu, tak jak przebieg
-/// `reduce_stats`: różnica pozycji zawinięta o świat, cząstki niefinite pomijane w max i energii.
+/// `reduce_stats`: cząstki niefinite pomijane w max i energii.
 fn cpu_stats(state: &[GpuParticle]) -> (u32, f32, f32) {
   let mut nan = 0;
   let mut max_speed = 0f32;

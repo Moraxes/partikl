@@ -1,7 +1,7 @@
 // Reguły diagnostyczne do testów silnika siatki (bez fizyki). Nic nie poruszają: dla każdej cząstki
 // sumują (z wagą próbkowania) po sąsiadach w zasięgu oddziaływania liczbę sąsiadów, wektor `delta`
 // i współczynnik `coeff`, a wynik zapisują w cząstce i jej modelu, skąd czyta go test:
-// `last` = suma wag · delta, model: `count` = suma wag, `coeff` = suma wag · coeff.
+// `vel` = suma wag · delta, model: `count` = suma wag, `coeff` = suma wag · coeff.
 // Ten sam kontrakt co `default_rules.wesl`; macierz sił czyta tak samo jak one (`matrix.wesl`).
 
 import super::super::engine::types::Particle;

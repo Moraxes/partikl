@@ -298,7 +298,7 @@ fn brute_force_neighbourhoods(
     .collect()
 }
 
-/// Jeden krok z regułami diagnostycznymi: wynik w `last` cząstki i w jej modelu (patrz
+/// Jeden krok z regułami diagnostycznymi: wynik w `vel` cząstki i w jej modelu (patrz
 /// `diagnostic_rules.wesl`).
 fn diagnostic_step(
   spec: ParticleSpec,

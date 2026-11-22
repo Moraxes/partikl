@@ -7,7 +7,7 @@
 //! `map_async` po wysłaniu klatki, a wynik w `GpuStats::latest` w następnej klatce. Nowy przebieg
 //! startuje dopiero, gdy poprzednia próbka odczytana; pipeline kompiluje się przy pierwszym włączeniu.
 //!
-//! Układ bufora `stats` (słowa u32): `[0]` liczba cząstek z nieskończonym lub NaN w `pos`/`last`,
+//! Układ bufora `stats` (słowa u32): `[0]` liczba cząstek z nieskończonym lub NaN w `pos`/`vel`,
 //! `[1]` maksymalna prędkość jako bity f32, `[2 + g]` suma 0.5·|v|² grupy `g` (bity f32).
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,11 +34,11 @@ pub struct GpuStats {
 pub struct SimStats {
   /// Liczba cząstek.
   pub particles: u32,
-  /// Cząstki z nieskończonym albo NaN w `pos` lub `last`.
+  /// Cząstki z nieskończonym albo NaN w `pos` lub `vel`.
   pub nan_count: u32,
-  /// Największa `|pos − last| / dt` po cząstkach skończonych (zawinięcie o świat).
+  /// Największa `|vel|` po cząstkach skończonych.
   pub max_speed: f32,
-  /// Suma `0.5·|v|²` po cząstkach skończonych (masa 1, `v = (pos − last) / dt`).
+  /// Suma `0.5·|vel|²` po cząstkach skończonych (masa 1).
   pub kinetic_energy: f32,
 }
 

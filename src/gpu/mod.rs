@@ -211,7 +211,7 @@ pub const SUBSTEP_CYCLE: [u32; 3] = [1, 2, 4];
 
 /// Podkroki GPU na takt stałego kroku (`DELTA_TIME`): K podkroków po `dt / K`, więcej pracy GPU
 /// na takt za cenę mniejszego kroku czasu (sztywność, stabilność trybu RESOLVE). Zmiana działa od
-/// następnego taktu: zapisuje `RuleParams::dt` i przeskalowuje prędkości Verleta (`rescale`).
+/// następnego taktu: zapisuje `RuleParams::dt` (prędkość cząstki jest w j/s, więc się nie zmienia).
 ///
 /// `GpuParams::step_count` liczy takty, `GpuProgress` podkroki GPU (takty × K).
 #[derive(Resource, Clone, Copy, Debug, ExtractResource)]
@@ -328,8 +328,8 @@ impl Default for RenderInterpolation {
   }
 }
 
-/// Cofnięcie rysowanej pozycji w podkrokach: `(1 − α)·dt`, gdzie `α` to ułamek taktu od ostatniego
-/// kroku, a `dt` - tick symulacji. Gdy takt przepadł (`dropped`), GPU jest za zegarem i ułamek
+/// Cofnięcie rysowanej pozycji w sekundach: `(1 − α)·DELTA_TIME`, gdzie `α` to ułamek taktu od
+/// ostatniego kroku (nie zależy od liczby podkroków). Gdy takt przepadł (`dropped`), GPU jest za zegarem i ułamek
 /// taktu nie dotyczy jego ostatniego kroku: 0 (rysunek ostatniego stanu bez opóźnienia).
 pub fn interpolation_lag(alpha: f32, dropped: bool) -> f32 {
   if dropped {

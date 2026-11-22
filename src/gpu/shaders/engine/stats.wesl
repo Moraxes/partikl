@@ -1,7 +1,7 @@
 // Statystyki stanu po kroku (opcja, `GpuStats`): jeden przebieg na klatkę po siłach. Każda grupa
 // (64 cząstki) redukuje wartości w pamięci grupy i zapisuje po jednym słowie na statystykę:
-// - `stats[0]`: liczba cząstek z nieskończonym albo NaN w `pos` lub `last` (atomicAdd),
-// - `stats[1]`: maksymalna prędkość |pos − last| / dt po cząstkach skończonych (atomicMax na bitach
+// - `stats[0]`: liczba cząstek z nieskończonym albo NaN w `pos` lub `vel` (atomicAdd),
+// - `stats[1]`: maksymalna prędkość |vel| po cząstkach skończonych (atomicMax na bitach
 //   f32; prędkość jest nieujemna, więc kolejność bitów to kolejność wartości),
 // - `stats[2 + g]`: suma 0.5·|v|² grupy `g` (bity f32, jedno miejsce na grupę). Sumę po grupach liczy
 //   CPU w f64: WGSL nie ma atomowej sumy f32, a stałoprzecinkowa suma u32 przepełniałaby się.

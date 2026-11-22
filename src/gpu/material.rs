@@ -15,18 +15,23 @@ pub struct ParticleMaterial {
   pub colors: Handle<ShaderBuffer>,
   #[uniform(2)]
   pub params: RenderParams,
-  /// Jak `params.z`; wybiera tryb mieszania materiału.
+  /// Jak `params.analytic_aa`; wybiera tryb mieszania materiału.
   pub analytic_aa: bool,
 }
 
+/// Parametry rysowania cząstek (`RenderParams` w `render.wesl`).
 #[derive(Debug, Clone, Copy, ShaderType)]
 pub struct RenderParams {
+  /// Promień cząstki.
   pub radius: f32,
+  /// Próg `|vel|²` (j²/s²): wolniejsze cząstki są okręgami, szybsze elipsami wzdłuż prędkości.
   pub velocity_threshold: f32,
+  /// 1: krawędź wygładzona w fragment shaderze (alpha blending), 0: ostra (`discard`).
   pub analytic_aa: f32,
-  // Cofnięcie rysowanej pozycji w sekundach: (1 − α)·DELTA_TIME
+  /// Cofnięcie rysowanej pozycji w sekundach, `(1 − α)·DELTA_TIME` (patrz `interpolation_lag`).
   pub lag: f32,
-  // DELTA_TIME
+  /// Długość taktu (`DELTA_TIME`): `vel·tick` to przemieszczenie na takt, z którego liczony jest
+  /// kształt elipsy.
   pub tick: f32,
 }
 
