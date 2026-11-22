@@ -10,7 +10,7 @@ relates:
 - 66
 created: 2026-11-22T01:12:30
 worked: 2026-11-22T12:51:30
-edited: 2026-11-22T01:49:56
+edited: 2026-11-22T12:51:30
 links:
 - kind: commit
   target: b734c6d
@@ -93,3 +93,5 @@ Galeria (LDR/HDR i AA, 1M, seed 1, 800 kroków rozbiegu), do oceny wizualnej prz
 Dane: `.artifacts/bench/gpu-2026-11-22-01-48-05..33.parquet` (A/B), `…-01-48-47.parquet` (512), `…-01-48-56.parquet` (256), zapisane w gałęzi `artifacts` (commit b734c6d), podpięte `tq link -k data`.
 
 Domyślny próg pozostaje 512. Zmiana domyślnego tylko po akceptacji wizualnej użytkownika.
+
+Domyślny próg zmieniony na 256 po akceptacji wyglądu użytkownika (commit 2876bb3).
