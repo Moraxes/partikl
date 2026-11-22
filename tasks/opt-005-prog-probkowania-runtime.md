@@ -30,6 +30,9 @@ links:
 - kind: data
   target: .artifacts/bench/gpu-2026-11-22-01-48-28.parquet
   at: 2026-11-22T01:49:39
+- kind: data
+  target: .artifacts/bench/gpu-2026-11-22-01-48-33.parquet
+  at: 2026-11-22T01:49:39
 ---
 Model: haiku (zasób + klawisz + flaga + HUD według istniejącego wzorca; brak zmian w shaderach).
 
