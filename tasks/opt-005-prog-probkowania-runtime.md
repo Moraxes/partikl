@@ -15,6 +15,9 @@ links:
   target: b734c6d
   at: 2026-11-22T01:49:39
   note: 'chore: opt-005 bench runs (sampling cap) and galleries'
+- kind: data
+  target: .artifacts/bench/gpu-2026-11-22-01-48-05.parquet
+  at: 2026-11-22T01:49:39
 ---
 Model: haiku (zasób + klawisz + flaga + HUD według istniejącego wzorca; brak zmian w shaderach).
 
