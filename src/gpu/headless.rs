@@ -257,7 +257,7 @@ impl Harness {
   /// Osobno od `step`, żeby czekanie na odczyt nie wchodziło do czasu kroku.
   pub fn take_gpu_times(&mut self) -> Option<PassTimes> {
     let latest = self.world().resource::<GpuTimings>().latest.clone();
-    for _ in 0..4 {
+    for _ in 0..8 {
       if let Some(times) = latest.lock().unwrap().take() {
         return Some(times);
       }

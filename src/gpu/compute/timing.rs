@@ -8,9 +8,12 @@
 //! (`GpuTimings::enabled`); aplikacja liczy krok jednym przebiegiem.
 //!
 //! Cykl jednej próbki (świat renderowania):
-//! 1. `step::run`: przebiegi ze znacznikami, `resolve_query_set` i kopia do bufora do odczytu,
-//! 2. [`map`] (po wysłaniu klatki): `map_async` bufora,
-//! 3. [`collect`] (w następnej klatce, gdy mapowanie skończone): czasy do `GpuTimings::latest`.
+//! 1. `step::run`: przebiegi ze znacznikami,
+//! 2. `step::run` w następnej klatce: `resolve_query_set` i kopia do bufora do odczytu (w tej
+//!    samej klatce Metal nie zdąży domknąć znaczników ostatnich przebiegów: tick zerowy albo
+//!    z poprzedniej próbki, więc czasy `forces` wychodziły ~6–9x za małe),
+//! 3. [`map`] (po wysłaniu klatki): `map_async` bufora,
+//! 4. [`collect`] (w następnej klatce, gdy mapowanie skończone): czasy do `GpuTimings::latest`.
 //!
 //! Bez `TIMESTAMP_QUERY` na urządzeniu pomiar jest niedostępny (`Timer` nie powstaje). Próbka
 //! z zerowym znacznikiem (na M5 w pierwszej klatce z pomiarem) przepada.
@@ -75,7 +78,12 @@ pub struct Timer {
 
 enum State {
   Idle,
-  /// Znaczniki zakodowane w tej klatce: entry point każdego dispatchu.
+  /// Znaczniki zapisane w tej klatce (entry point każdego dispatchu), jeszcze nie odczytane
+  /// do bufora: `resolve_query_set` dopiero w następnej klatce, bo Metal domyka znaczniki
+  /// ostatnich przebiegów już po `resolve` w tej samej klatce (tick zerowy albo z poprzedniej
+  /// próbki, koniec ostatniego przebiegu za późno).
+  Sampled { steps: u32, dispatches: Vec<&'static str> },
+  /// Wyniki skopiowane do bufora do odczytu (zakodowane w tej klatce).
   Encoded { steps: u32, dispatches: Vec<&'static str> },
   Mapping { steps: u32, dispatches: Vec<&'static str>, ready: Arc<AtomicBool> },
 }
@@ -95,8 +103,17 @@ impl Timer {
     }
   }
 
-  /// Po dispatchach klatki: wyniki do bufora do odczytu.
-  pub fn finish_frame(&mut self, encoder: &mut wgpu::CommandEncoder, steps: u32, dispatches: Vec<&'static str>) {
+  /// Po dispatchach klatki: znaczniki zapisane, odczyt w następnej klatce ([`Timer::resolve`]).
+  pub fn finish_frame(&mut self, steps: u32, dispatches: Vec<&'static str>) {
+    self.state = State::Sampled { steps, dispatches };
+  }
+
+  /// Na początku następnej klatki: wyniki zapisanych znaczników do bufora do odczytu.
+  pub fn resolve(&mut self, encoder: &mut wgpu::CommandEncoder) {
+    if !matches!(self.state, State::Sampled { .. }) {
+      return;
+    }
+    let State::Sampled { steps, dispatches } = std::mem::replace(&mut self.state, State::Idle) else { unreachable!() };
     let queries = 2 * dispatches.len() as u32;
     encoder.resolve_query_set(&self.query_set, 0..queries, &self.resolve, 0);
     encoder.copy_buffer_to_buffer(&self.resolve, 0, &self.read, 0, Some(queries as u64 * 8));
@@ -127,7 +144,10 @@ pub fn init(mut commands: Commands, device: Res<RenderDevice>, queue: Res<Render
 /// Po wysłaniu klatki: mapowanie bufora z wynikami.
 pub fn map(timer: Option<ResMut<Timer>>) {
   let Some(mut timer) = timer else { return };
-  let State::Encoded { steps, dispatches } = std::mem::replace(&mut timer.state, State::Idle) else { return };
+  if !matches!(timer.state, State::Encoded { .. }) {
+    return;
+  }
+  let State::Encoded { steps, dispatches } = std::mem::replace(&mut timer.state, State::Idle) else { unreachable!() };
   let ready = Arc::new(AtomicBool::new(false));
   let flag = ready.clone();
   let bytes = 2 * dispatches.len() as u64 * 8;
@@ -149,9 +169,9 @@ pub fn collect(timer: Option<ResMut<Timer>>, timings: Option<Res<GpuTimings>>) {
     bytemuck::cast_slice(&view).to_vec()
   };
   timer.read.unmap();
-  // Na M5 w pierwszej klatce z pomiarem znaczniki ostatniego przebiegu bywają zerowe
-  // (przyczyna nieustalona); takiej próbki nie zgłaszamy.
-  if ticks.contains(&0) {
+  // Zabezpieczenie: znacznik zerowy albo cofający się czas oznacza niedomknięty odczyt;
+  // takiej próbki nie zgłaszamy.
+  if ticks.contains(&0) || ticks.windows(2).any(|w| w[1] < w[0]) {
     return;
   }
   let mut per_step_ns: Vec<(&'static str, f64)> = entries().map(|e| (e, 0.0)).collect();

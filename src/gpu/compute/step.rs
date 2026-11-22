@@ -152,8 +152,11 @@ pub fn run(
   pipelines: Res<Pipelines>,
   cache: Res<PipelineCache>,
   timings: Option<Res<GpuTimings>>,
-  timer: Option<ResMut<Timer>>,
+  mut timer: Option<ResMut<Timer>>,
 ) {
+  if let Some(timer) = timer.as_mut() {
+    timer.resolve(context.command_encoder());
+  }
   let (Some(sim), Some(buffers)) = (sim, buffers) else { return };
   let Some(bind_group) = &plan.bind_group else { return };
   // Ponowne sprawdzenie: hot reload może unieważnić pipeline między `plan` a `run`.
@@ -219,7 +222,7 @@ pub fn run(
           }
         }
       }
-      timer.finish_frame(encoder, 1, entries);
+      timer.finish_frame(1, entries);
     }
   }
   progress.0.fetch_add(plan.count as u64, Ordering::SeqCst);
