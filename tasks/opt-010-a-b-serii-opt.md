@@ -14,6 +14,12 @@ blocked_by:
 - opt-007
 - opt-008
 created: 2026-11-22T01:12:31
+worked: 2026-11-22T13:05:09
+links:
+- kind: commit
+  target: 5a19c34
+  at: 2026-11-22T13:05:09
+  note: 'chore(bench): e99ea18 with 074 steady-state warm-up (A/B baseline only)'
 ---
 Model: haiku (uruchomienie skryptów i zapis liczb; bez zmian w kodzie).
 
