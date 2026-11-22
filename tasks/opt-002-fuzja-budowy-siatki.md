@@ -2,12 +2,12 @@
 id: opt-002
 title: Fuzja budowy siatki
 summary: Fuzja budowy siatki w przebiegu sił (sonnet)
-status: doing
+status: done
 priority: soon
 branch: main
 part_of: opt-001
 created: 2026-11-22T01:12:30
-worked: 2026-11-22T01:36:17
+worked: 2026-11-22T01:36:49
 edited: 2026-11-22T01:36:31
 links:
 - kind: commit
