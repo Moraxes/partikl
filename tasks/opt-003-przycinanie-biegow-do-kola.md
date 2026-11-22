@@ -19,6 +19,9 @@ links:
 - kind: data
   target: .artifacts/bench/gpu-2026-11-22-01-42-45.parquet
   at: 2026-11-22T01:43:34
+- kind: data
+  target: .artifacts/bench/gpu-2026-11-22-01-43-05.parquet
+  at: 2026-11-22T01:43:35
 ---
 Model: sonnet (matematyka zakresów komórek i szew torusa w shaderze, wpływ na próbkowanie).
 
