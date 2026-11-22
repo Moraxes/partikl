@@ -9,6 +9,12 @@ part_of: opt-001
 blocked_by:
 - opt-003
 created: 2026-11-22T01:12:30
+worked: 2026-11-22T13:04:09
+links:
+- kind: commit
+  target: 800810f
+  at: 2026-11-22T13:04:09
+  note: 'data(bench): opt-004 tiled cell index A/B (quick x3, 500k/1M)'
 ---
 Model: sonnet (indeksowanie komórek i dzielenie biegów, ocena wyniku pomiaru).
 
