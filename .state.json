@@ -1,7 +1,7 @@
 {
   "last_id": 73,
   "last_ids": {
-    "opt": 5
+    "opt": 6
   },
   "version": "0.2.0",
   "hashes": {
@@ -68,6 +68,7 @@
     "opt-2": "3eead06f2eb233a5",
     "opt-3": "6a7d16e8bd9b5ee1",
     "opt-4": "10566320f8fd9987",
-    "opt-5": "139326116d463cab"
+    "opt-5": "139326116d463cab",
+    "opt-6": "cfddae9e03b87c06"
   }
 }
