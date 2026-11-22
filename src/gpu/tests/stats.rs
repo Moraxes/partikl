@@ -5,17 +5,16 @@ use super::*;
 
 /// `(nan, maks. prędkość, energia)` liczone na CPU z tego samego stanu, tak jak przebieg
 /// `reduce_stats`: różnica pozycji zawinięta o świat, cząstki niefinite pomijane w max i energii.
-fn cpu_stats(state: &[GpuParticle], dt: f32) -> (u32, f32, f32) {
+fn cpu_stats(state: &[GpuParticle]) -> (u32, f32, f32) {
   let mut nan = 0;
   let mut max_speed = 0f32;
   let mut energy = 0f64;
   for p in state {
-    if !p.pos.iter().chain(&p.last).all(|v| v.is_finite()) {
+    if !p.pos.iter().chain(&p.vel).all(|v| v.is_finite()) {
       nan += 1;
       continue;
     }
-    let d = Vec2::from(p.pos) - Vec2::from(p.last);
-    let v = (d - WORLD * (d / WORLD).round()) / dt;
+    let v = Vec2::from(p.vel);
     max_speed = max_speed.max(v.length());
     energy += 0.5 * v.length_squared() as f64;
   }
@@ -41,7 +40,7 @@ fn stats_match_cpu_on_normal_state() {
   let stats = harness.take_stats().expect("statystyki po kroku");
   // Stan po ostatnim kroku (bez dalszych kroków).
   let state = harness.run(0);
-  let (nan, max_speed, energy) = cpu_stats(&state, crate::config::DELTA_TIME as f32);
+  let (nan, max_speed, energy) = cpu_stats(&state);
   assert_eq!(stats.particles, 5_000);
   assert_eq!(stats.nan_count, 0);
   assert_eq!(nan, 0);

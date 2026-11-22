@@ -54,7 +54,7 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
 
 fn integrate_particle(self_p: Particle, m: ptr<function, Model>, accum: RuleAccum) -> Particle {
   var p = self_p;
-  p.last = accum.delta;
+  p.vel = accum.delta;
   (*m).count = accum.count;
   (*m).coeff = accum.coeff;
   return p;

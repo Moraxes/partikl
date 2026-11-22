@@ -118,22 +118,23 @@ fn integrate_particle(self_p: Particle, m: ptr<function, Model>, accum: RuleAccu
 @if(OVERLAP_RESOLVE) {
   // Poprawka tylko w pozycji, więc staje się prędkością `poprawka / dt`.
   if accum.overlap_count > 0.0 {
-    p.pos += accum.overlap_corr / accum.overlap_count;
+    let corr = accum.overlap_corr / accum.overlap_count;
+    p.pos += corr;
+    p.vel += corr / u.dt;
   }
 }
 @if(OVERLAP_ADAPTIVE) {
   (*m).crowding += u.crowding_smoothing * (accum.count - (*m).crowding);
 }
   let dt = u.dt;
-  var displacement = p.pos - p.last;
-  let velocity = displacement / dt;
-  if dot(velocity, velocity) < u.velocity_threshold {
-    displacement = vec2<f32>(0.0);
+  var v = p.vel;
+  if dot(p.vel, p.vel) < u.velocity_threshold {
+    v = vec2<f32>(0.0);
   }
+  let v_free = v + force * dt;
   // Tarcie kwadratowe: dokładne rozwiązanie `v' = -c|v|v` na kroku.
-  let free = displacement + force * dt * dt;
-  let damped = free / (1.0 + u.friction * length(free));
-  p.last = p.pos;
-  p.pos = p.pos + damped;
+  let v_damped = v_free / (1.0 + u.friction * length(v_free) * dt);
+  p.vel = v_damped;
+  p.pos += v_damped * dt;
   return p;
 }

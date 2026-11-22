@@ -55,8 +55,6 @@ pub struct EngineUniforms {
   pub step_index: u32,
   pub max_candidates: u32,
   pub interaction_radius: f32,
-  /// `dt_nowe / dt_stare` dla przebiegu `rescale` (1,0 w pozostałych krokach).
-  pub dt_ratio: f32,
 }
 
 impl EngineUniforms {
@@ -74,7 +72,6 @@ impl EngineUniforms {
       step_index,
       max_candidates,
       interaction_radius: INTERACTION_RADIUS,
-      dt_ratio: 1.0,
     }
   }
 }

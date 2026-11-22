@@ -52,33 +52,47 @@ fn reference_step(spec: &ParticleSpec, state: &State, options: Mode, world: Vec2
         fy *= scale;
       }
       let (mut x, mut y) = (px, py);
+      let (mut velx, mut vely) = (me.vel[0] as f64, me.vel[1] as f64);
       if cn > 0.0 {
         x += cx / cn;
         y += cy / cn;
+        velx += cx / cn / dt;
+        vely += cy / cn / dt;
       }
       let mut crowding = state.crowding[i] as f64;
       if options.overlap == Overlap::AdaptiveRange {
         crowding += u.crowding_smoothing as f64 * (count - crowding);
       }
-      let (mut dispx, mut dispy) = (x - me.last[0] as f64, y - me.last[1] as f64);
-      if (dispx * dispx + dispy * dispy) / (dt * dt) < u.velocity_threshold as f64 {
-        dispx = 0.0;
-        dispy = 0.0;
+      if (velx * velx + vely * vely) < u.velocity_threshold as f64 {
+        velx = 0.0;
+        vely = 0.0;
       }
-      let (freex, freey) = (dispx + fx * dt * dt, dispy + fy * dt * dt);
-      let damping = 1.0 + u.friction as f64 * (freex * freex + freey * freey).sqrt();
-      let (mut nx, mut ny) = (x + freex / damping, y + freey / damping);
-      let (mut lx, mut ly) = (x, y);
-      for (n, l, size) in [(&mut nx, &mut lx, world.x as f64), (&mut ny, &mut ly, world.y as f64)] {
+      let (freex, freey) = (velx + fx * dt, vely + fy * dt);
+      let damping = 1.0 + dt * u.friction as f64 * (freex * freex + freey * freey).sqrt();
+      let (mut nx, mut ny) = (x + freex / damping * dt, y + freey / damping * dt);
+      for (n, size) in [(&mut nx, world.x as f64), (&mut ny, world.y as f64)] {
         if *n > size / 2.0 {
           *n -= size;
-          *l -= size;
         } else if *n < -size / 2.0 {
           *n += size;
-          *l += size;
         }
       }
-      (GpuParticle { pos: [nx as f32, ny as f32], last: [lx as f32, ly as f32], species: me.species, id: me.id }, crowding as f32)
+ 
+      (
+        GpuParticle {
+          pos: [
+            nx as f32,
+            ny as f32,
+          ],
+          vel: [
+            (freex / damping) as f32,
+            (freey / damping) as f32,
+          ],
+          species: me.species,
+          id: me.id
+        },
+        crowding as f32
+      )
     })
     .unzip();
   State { particles: next, crowding: next_crowding }
@@ -120,7 +134,7 @@ fn large_world_matches_reference() {
   let mut particles = initial_particles(3000, 3, world, &mut rng);
   for p in particles.iter_mut().take(2000) {
     p.pos[1] *= 0.02;
-    p.last[1] = p.pos[1];
+    p.vel[1] = 0.0;
   }
   let state = State::new(particles);
   let expected = reference_step(&spec, &state, options, world);

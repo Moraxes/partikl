@@ -4,8 +4,8 @@
 // osobnych buforach deklarowanych przez reguły (`Model`, patrz `rules/default_rules.wesl`).
 struct Particle {
   pos: vec2<f32>,
-  // Pozycja z poprzedniego kroku (całkowanie Verleta).
-  last: vec2<f32>,
+  // Prędkość w obecnym kroku (j/s)
+  vel: vec2<f32>,
   species: u32,
   // Stały identyfikator cząstki (stan jest w kolejności siatki, nie w kolejności id).
   id: u32,
@@ -23,8 +23,6 @@ struct EngineUniforms {
   step_index: u32,
   max_candidates: u32,
   interaction_radius: f32,
-  // dt_nowe / dt_stare (przebieg `rescale`), poza nim 1.0.
-  dt_ratio: f32,
 }
 
 // Komórka siatki cząstki; pozycje poza światem (np. NaN) trafiają do skrajnych komórek.

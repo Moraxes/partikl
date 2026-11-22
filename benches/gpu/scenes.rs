@@ -59,7 +59,6 @@ fn blobs(blobs: &Blobs, n: usize, types: usize, world: Vec2, rng: &mut impl Rng)
   let area = std::f32::consts::PI * blobs.radius * blobs.radius;
   let count = ((blobs.coverage * world.x * world.y / area).round() as usize).max(1);
   let centers: Vec<Vec2> = (0..count).map(|_| (Vec2::new(rng.random(), rng.random()) - 0.5) * world).collect();
-  let dt = partikl::config::DELTA_TIME as f32;
   (0..n)
     .map(|id| {
       // Punkt jednostajnie w kole: promień ~ √u.
@@ -69,7 +68,7 @@ fn blobs(blobs: &Blobs, n: usize, types: usize, world: Vec2, rng: &mut impl Rng)
       let velocity = (Vec2::new(rng.random(), rng.random()) * 2.0 - 1.0) * BLOB_SPEED;
       GpuParticle {
         pos: pos.to_array(),
-        last: (pos - dt * velocity).to_array(),
+        vel: velocity.to_array(),
         species: rng.random_range(0..types) as u32,
         id: id as u32,
       }

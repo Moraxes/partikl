@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy::reflect::TypePath;
-use bevy::render::render_resource::AsBindGroup;
+use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::render::storage::ShaderBuffer;
 use bevy::shader::ShaderRef;
 
@@ -13,13 +13,21 @@ pub struct ParticleMaterial {
   pub particles: Handle<ShaderBuffer>,
   #[storage(1, read_only)]
   pub colors: Handle<ShaderBuffer>,
-  /// x: promień cząstki, y: próg kwadratu prędkości dla kształtu, z: 1 = krawędź wygładzona w
-  /// fragment shaderze (alpha blending), 0 = ostra krawędź (`discard`), w: cofnięcie pozycji w
-  /// podkrokach (`(1 − α)·K`, patrz `interpolation_lag`): rysowana pozycja to `pos − w·(pos − last)`.
   #[uniform(2)]
-  pub params: Vec4,
+  pub params: RenderParams,
   /// Jak `params.z`; wybiera tryb mieszania materiału.
   pub analytic_aa: bool,
+}
+
+#[derive(Debug, Clone, Copy, ShaderType)]
+pub struct RenderParams {
+  pub radius: f32,
+  pub velocity_threshold: f32,
+  pub analytic_aa: f32,
+  // Cofnięcie rysowanej pozycji w sekundach: (1 − α)·DELTA_TIME
+  pub lag: f32,
+  // DELTA_TIME
+  pub tick: f32,
 }
 
 impl Material for ParticleMaterial {

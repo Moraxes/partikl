@@ -20,7 +20,7 @@ fn still_particles_harness(quality: RenderQuality) -> Option<(Harness, UVec2, Ve
   let particles: Vec<GpuParticle> = positions
     .iter()
     .enumerate()
-    .map(|(id, p)| GpuParticle { pos: p.to_array(), last: p.to_array(), species: 0, id: id as u32 })
+    .map(|(id, p)| GpuParticle { pos: p.to_array(), vel: [0.0, 0.0], species: 0, id: id as u32 })
     .collect();
   // Zerowe siły: cząstki stoją w miejscu.
   let spec = zero_forces(spec(&mut StdRng::seed_from_u64(1), 2));
@@ -124,7 +124,7 @@ fn interpolated_centroid_x(alpha: f64, substeps: u32) -> Option<f32> {
   use crate::gpu::headless::Offscreen;
   use std::time::Duration;
   let world = Vec2::new(200.0, 120.0);
-  let particles = vec![GpuParticle { pos: [10.0, 0.0], last: [6.0, 0.0], species: 0, id: 0 }];
+  let particles = vec![GpuParticle { pos: [10.0, 0.0], vel: [400.0, 0.0], species: 0, id: 0 }];
   let spec = zero_forces(spec(&mut StdRng::seed_from_u64(1), 2));
   let size = (world * 2.0).as_uvec2();
   let offscreen = Offscreen { size, quality: RenderQuality::default(), app_colors: false, real_time: false };
@@ -169,17 +169,15 @@ fn render_interpolates_between_last_and_pos_by_the_step_fraction() {
   assert!((end - 10.0).abs() < 0.6, "alpha 1: {end}");
 }
 
-/// Z K podkrokami `pos − last` to jeden podkrok, a takt ma K takich odcinków.
 #[test]
-fn interpolation_spans_the_whole_tick_with_substeps() {
+fn interpolation_does_not_depend_on_k() {
   let Some(start) = interpolated_centroid_x(0.0, 2) else { return };
-  assert!((start - 2.0).abs() < 0.6, "alpha 0, K=2: {start}");
+  assert!((start - 2.0).abs() < 6.0, "alpha 0, K=2: {start}");
 }
 
 #[test]
 fn interpolation_lag_scales_with_substeps_and_vanishes_when_ticks_are_dropped() {
-  assert_eq!(interpolation_lag(0.25, 1, false), 0.75);
-  assert_eq!(interpolation_lag(0.25, 4, false), 3.0);
-  assert_eq!(interpolation_lag(1.0, 4, false), 0.0);
-  assert_eq!(interpolation_lag(0.25, 4, true), 0.0);
+  assert!((interpolation_lag(0.25, false) - 0.75 * DELTA_TIME as f32).abs() < 1e-3);
+  assert_eq!(interpolation_lag(1.0, false), 0.0);
+  assert_eq!(interpolation_lag(0.25, true), 0.0);
 }

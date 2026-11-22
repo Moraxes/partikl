@@ -7,9 +7,7 @@ import super::types::Particle;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<storage, read> particles: array<Particle>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var<storage, read> colors: array<vec4<f32>>;
-// x: promień cząstki, y: próg kwadratu prędkości, z: 1 = wygładzona krawędź (alpha blending),
-// w: cofnięcie pozycji w podkrokach (interpolacja klatki między taktami, 0 = bez interpolacji).
-@group(constants::MATERIAL_BIND_GROUP) @binding(2) var<uniform> params: vec4<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var<uniform> params: RenderParams;
 
 // Obrzeże quada (w promieniach cząstki) na wygładzenie krawędzi: ok. 1 piksela przy promieniu
 // 4 pikseli.
@@ -24,6 +22,14 @@ struct VertexOutput {
   @builtin(position) clip: vec4<f32>,
   @location(0) corner: vec2<f32>,
   @location(1) @interpolate(flat) species: u32,
+}
+
+struct RenderParams {
+  radius: f32,
+  velocity_threshold: f32,
+  analytic_aa: f32,
+  lag: f32,
+  tick: f32,
 }
 
 // Warstwa cząstki: skrót jej numeru (PCG) jako głębokość. Stan leży w kolejności komórek siatki,
@@ -41,13 +47,13 @@ fn layer(index: u32) -> f32 {
 fn vertex(v: Vertex) -> VertexOutput {
   let p = particles[u32(v.position.z)];
   let corner = v.position.xy;
-  let velocity = p.pos - p.last;
-  let speed_sq = dot(velocity, velocity);
-  var axes = vec2<f32>(params.x);
+  let velocity = p.vel * params.tick;
+  var axes = vec2<f32>(params.radius);
   var rot = vec2<f32>(1.0, 0.0);
-  if speed_sq > params.y {
+  if dot(p.vel, p.vel) > params.velocity_threshold {
+    let speed_sq = dot(velocity, velocity);
     let s = log2(2.0 + speed_sq);
-    axes = params.x * vec2<f32>(s, 0.75 / s + 0.25);
+    axes = params.radius * vec2<f32>(s, 0.75 / s + 0.25);
     // Połowa kąta jako (sin, cos) bez trygonometrii, patrz `rotation_from_velocity`.
     let len = sqrt(speed_sq);
     var hv: vec2<f32>;
@@ -60,12 +66,15 @@ fn vertex(v: Vertex) -> VertexOutput {
     rot = vec2<f32>(hv.y * hv.y - hv.x * hv.x, 2.0 * hv.x * hv.y);
   }
   // Z wygładzaniem quad jest większy od okręgu o obrzeże na przejście krycia (poza okręgiem).
-  let pad = select(1.0, AA_PAD, params.z > 0.5);
+  let pad = select(1.0, AA_PAD, params.analytic_aa > 0.5);
   let local = corner * pad * axes;
   // Interpolacja: pozycja sprzed `w` podkroków (dla K = 1 to mix(last, pos, α)). Zawinięcie na torusie
   // przesuwa też `last`, więc `pos − last` jest ciągłe i cząstka nie rysuje pasa przez świat.
-  let center = p.pos - params.w * velocity;
-  let world = center + vec2<f32>(rot.x * local.x - rot.y * local.y, rot.y * local.x + rot.x * local.y);
+  let center = p.pos - params.lag * p.vel;
+  let world = center + vec2<f32>(
+    rot.x * local.x - rot.y * local.y,
+    rot.y * local.x + rot.x * local.y
+  );
   var out: VertexOutput;
   out.clip = view.clip_from_world * vec4<f32>(world, 0.5 * layer(u32(v.position.z)), 1.0);
   out.corner = corner * pad;
@@ -76,7 +85,7 @@ fn vertex(v: Vertex) -> VertexOutput {
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
   let color = colors[in.species].rgb;
-  if params.z > 0.5 {
+  if params.analytic_aa > 0.5 {
     // Krycie piksela z odległości od krawędzi okręgu (w jednostkach promienia): pełne w
     // środku, liniowe przejście na szerokość piksela. `fwidth` w jednolitym przepływie.
     let d = length(in.corner);

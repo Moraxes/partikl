@@ -66,7 +66,6 @@ fn wrap(p: Particle) -> Particle {
   if q.pos.x > half.x { adjust.x = -uniforms.world.x; } else if q.pos.x < -half.x { adjust.x = uniforms.world.x; }
   if q.pos.y > half.y { adjust.y = -uniforms.world.y; } else if q.pos.y < -half.y { adjust.y = uniforms.world.y; }
   q.pos += adjust;
-  q.last += adjust;
   return q;
 }
 

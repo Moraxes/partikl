@@ -31,6 +31,7 @@ pub use rules::{RuleFlags, RuleSource};
 
 use crate::args::ProgramArgs;
 use crate::config::*;
+use crate::gpu::material::RenderParams;
 use crate::options::{RuleSchema, SimOptions, SimState};
 use crate::screen::ScreenSize;
 use crate::spec::ParticleSpec;
@@ -47,8 +48,8 @@ pub const MAX_STEPS_PER_FRAME: u32 = 16;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct GpuParticle {
   pub pos: [f32; 2],
-  /// Pozycja z poprzedniego kroku (całkowanie Verleta).
-  pub last: [f32; 2],
+  /// Prędkość w obecnym kroku (j/s)
+  pub vel: [f32; 2],
   pub species: u32,
   /// Stały identyfikator cząstki; bufor stanu jest w kolejności siatki, nie id.
   pub id: u32,
@@ -93,14 +94,13 @@ impl Geometry {
 /// Stan startowy: pozycje jednostajne w świecie,
 /// prędkości z ±125, losowe typy.
 pub fn initial_particles(n: usize, types: usize, world: Vec2, rng: &mut impl Rng) -> Vec<GpuParticle> {
-  let dt = DELTA_TIME as f32;
   (0..n)
     .map(|id| {
       let pos = Vec2::new(rng.random::<f32>() * world.x - world.x / 2.0, rng.random::<f32>() * world.y - world.y / 2.0);
       let velocity = Vec2::new(rng.random::<f32>() * 250.0 - 125.0, rng.random::<f32>() * 250.0 - 125.0);
       GpuParticle {
         pos: pos.to_array(),
-        last: (pos - dt * velocity).to_array(),
+        vel: velocity.to_array(),
         species: rng.random_range(0..types) as u32,
         id: id as u32,
       }
@@ -290,27 +290,27 @@ impl Default for RenderInterpolation {
   }
 }
 
-/// Cofnięcie rysowanej pozycji w podkrokach: `(1 − α)·K`, gdzie `α` to ułamek taktu od ostatniego
-/// kroku, a `K` liczba podkroków na takt (`pos − last` to jeden podkrok). Gdy takt przepadł
-/// (`dropped`), GPU jest za zegarem i ułamek taktu nie dotyczy jego ostatniego kroku: 0 (rysunek
-/// ostatniego stanu bez opóźnienia).
-pub fn interpolation_lag(alpha: f32, substeps: u32, dropped: bool) -> f32 {
-  if dropped { 0.0 } else { (1.0 - alpha.clamp(0.0, 1.0)) * substeps as f32 }
+/// Cofnięcie rysowanej pozycji w podkrokach: `(1 − α)·dt`, gdzie `α` to ułamek taktu od ostatniego
+/// kroku, a `dt` - tick symulacji. Gdy takt przepadł (`dropped`), GPU jest za zegarem i ułamek
+/// taktu nie dotyczy jego ostatniego kroku: 0 (rysunek ostatniego stanu bez opóźnienia).
+pub fn interpolation_lag(alpha: f32, dropped: bool) -> f32 {
+  if dropped {
+    0.0
+  } else {
+    (1.0 - alpha.clamp(0.0, 1.0)) * DELTA_TIME as f32
+  }
 }
 
 /// Co klatkę przekazuje materiałowi cofnięcie pozycji (`params.w`).
 fn update_interpolation(
   enabled: Res<RenderInterpolation>,
   fixed: Res<Time<Fixed>>,
-  substeps: Res<Substeps>,
   budget: Res<StepBudget>,
   mut materials: ResMut<Assets<ParticleMaterial>>,
 ) {
-  let lag = if enabled.0 { interpolation_lag(fixed.overstep_fraction(), substeps.get(), budget.dropped()) } else { 0.0 };
+  let lag = if enabled.0 { interpolation_lag(fixed.overstep_fraction(), budget.dropped()) } else { 0.0 };
   for (_, material) in materials.iter_mut() {
-    if material.params.w != lag {
-      material.params.w = lag;
-    }
+    material.params.lag = lag;
   }
 }
 
@@ -338,7 +338,11 @@ fn apply_render_quality(
   }
   for (_, material) in materials.iter_mut() {
     material.analytic_aa = quality.analytic_aa;
-    material.params.z = if quality.analytic_aa { 1.0 } else { 0.0 };
+    material.params.analytic_aa = if quality.analytic_aa {
+      1.0
+    } else {
+      0.0
+    };
   }
 }
 
@@ -449,7 +453,13 @@ pub fn spawn_sim(
   let material = materials.add(ParticleMaterial {
     particles: state.clone(),
     colors,
-    params: Vec4::new(look.size, VELOCITY_THRESHOLD, if look.analytic_aa { 1.0 } else { 0.0 }, 0.0),
+    params: RenderParams {
+      radius: look.size,
+      velocity_threshold: VELOCITY_THRESHOLD,
+      analytic_aa: if look.analytic_aa { 1.0 } else { 0.0 },
+      lag: 0.0,
+      tick: DELTA_TIME as f32,
+    },
     analytic_aa: look.analytic_aa,
   });
   commands.spawn((Mesh3d(meshes.add(mesh)), MeshMaterial3d(material), NoFrustumCulling));

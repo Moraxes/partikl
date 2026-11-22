@@ -36,7 +36,7 @@ fn rules_from_a_file_match_the_builtin_ones() {
 #[test]
 fn saving_the_rules_file_reloads_the_module() {
   let builtin = include_str!("../shaders/rules/default_rules.wesl");
-  let frozen = builtin.replace("p.pos = p.pos + damped;", "p.pos = p.pos;");
+  let frozen = builtin.replace("p.pos += v_damped * dt;", "");
   assert_ne!(frozen, builtin, "podmiana w źródle reguł nie zadziałała");
   let (spec, particles) = setup();
   let path = temp_rules("watched", &frozen);

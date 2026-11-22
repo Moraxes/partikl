@@ -6,20 +6,6 @@ import super::types::{Particle, cell_index};
 import super::uniforms::uniforms;
 import super::bindings::{state, model, sorted_state, sorted_model, cell_counts, cell_offsets, next_counts, cell_ranks, store_neighbour};
 
-// Verlet trzyma prędkość jako `pos − last`, więc zmiana kroku czasu (`Substeps`) wymaga
-// przeskalowania: `last = pos − (pos − last) · dt_nowe / dt_stare`. Tylko w pierwszym kroku po
-// zmianie; pozycje się nie zmieniają, więc histogram zostaje ważny.
-@compute @workgroup_size(64)
-fn rescale(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let i = gid.x;
-  if i >= uniforms.num_particles {
-    return;
-  }
-  var p = state[i];
-  p.last = p.pos - (p.pos - p.last) * uniforms.dt_ratio;
-  state[i] = p;
-}
-
 @compute @workgroup_size(64)
 fn clear(@builtin(global_invocation_id) gid: vec3<u32>) {
   let c = gid.x;

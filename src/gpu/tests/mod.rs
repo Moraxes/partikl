@@ -109,7 +109,7 @@ fn assert_close(actual: &State, expected: &State, context: &str) {
     assert_eq!(a.species, e.species);
     for k in 0..2 {
       assert!((a.pos[k] - e.pos[k]).abs() < 1e-3, "{context} cząstka {i}: pos {:?} vs {:?}", a.pos, e.pos);
-      assert!((a.last[k] - e.last[k]).abs() < 1e-3, "{context} cząstka {i}: last {:?} vs {:?}", a.last, e.last);
+      assert!((a.vel[k] - e.vel[k]).abs() < 1e-3, "{context} cząstka {i}: vel {:?} vs {:?}", a.vel, e.vel);
     }
     let (ac, ec) = (actual.crowding[i], expected.crowding[i]);
     assert!((ac - ec).abs() < 1e-3, "{context} cząstka {i}: crowding {ac} vs {ec}");
@@ -129,7 +129,7 @@ fn zero_forces(mut spec: ParticleSpec) -> ParticleSpec {
 fn assert_invariants(state: &[GpuParticle], world: Vec2, context: &str) {
   let mut seen = vec![false; state.len()];
   for p in state {
-    assert!(p.pos.iter().chain(&p.last).all(|v| v.is_finite()), "{context}: NaN/Inf w {p:?}");
+    assert!(p.pos.iter().chain(&p.vel).all(|v| v.is_finite()), "{context}: NaN/Inf w {p:?}");
     assert!(p.pos[0].abs() <= world.x / 2.0 + 1.0 && p.pos[1].abs() <= world.y / 2.0 + 1.0, "{context}: poza światem: {p:?}");
     assert!(!seen[p.id as usize], "{context}: powtórzone id {}", p.id);
     seen[p.id as usize] = true;

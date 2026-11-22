@@ -9,7 +9,6 @@
 import super::types::Particle;
 import super::uniforms::uniforms;
 import super::bindings::{state, stats};
-import super::super::rules::bindings::rule_params;
 
 var<workgroup> red_nan: array<u32, 64>;
 var<workgroup> red_speed: array<f32, 64>;
@@ -38,11 +37,8 @@ fn reduce_stats(
   // Wątki poza zakresem zostają z zerami, żeby redukcja miała stałą liczbę kroków.
   if i < uniforms.num_particles {
     let p = state[i];
-    if finite2(p.pos) && finite2(p.last) {
-      // Torus: różnicę zawijamy o rozmiar świata, tak jak `wrap` w `step_driver.wesl`.
-      let d = p.pos - p.last;
-      let dw = d - uniforms.world * round(d / uniforms.world);
-      let v = dw / rule_params.dt;
+    if finite2(p.pos) && finite2(p.vel) {
+      let v = p.vel;
       let s = length(v);
       let e = 0.5 * dot(v, v);
       // Prędkość lub energia mogą przepełnić f32 (nieskończoność): taka cząstka nie wchodzi do max i sumy.

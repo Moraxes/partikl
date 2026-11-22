@@ -63,9 +63,9 @@ fn real_time_loop_runs_the_fixed_step_clock() {
   assert!(speed > 0.5, "prędkość {speed}");
 }
 
-/// Średnia prędkość `|pos − last| / dt` (Verlet trzyma prędkość jako różnicę pozycji).
-fn mean_speed(particles: &[GpuParticle], dt: f32) -> f32 {
-  let sum: f32 = particles.iter().map(|p| (Vec2::from(p.pos) - Vec2::from(p.last)).length() / dt).sum();
+/// Średnia prędkość `|v| / dt`
+fn mean_speed(particles: &[GpuParticle]) -> f32 {
+  let sum: f32 = particles.iter().map(|p| Vec2::from(p.vel).length()).sum();
   sum / particles.len() as f32
 }
 
@@ -73,7 +73,6 @@ fn mean_speed(particles: &[GpuParticle], dt: f32) -> f32 {
 /// K = 1 (progi bezpieczeństwa, nie wartości analogowe).
 #[test]
 fn substeps_keep_particles_finite_and_speed_in_range() {
-  let dt = crate::config::DELTA_TIME as f32;
   let run = |substeps: u32| {
     let mut rng = StdRng::seed_from_u64(41);
     let spec = spec(&mut rng, 3);
@@ -86,27 +85,25 @@ fn substeps_keep_particles_finite_and_speed_in_range() {
   assert_eq!(double.len(), 5_000);
   let ids: Vec<u32> = double.iter().map(|p| p.id).collect();
   assert_eq!(ids, (0..5_000).collect::<Vec<u32>>());
-  assert!(double.iter().all(|p| p.pos.iter().chain(&p.last).all(|v| v.is_finite())), "NaN albo nieskończoność");
-  let ratio = mean_speed(&double, dt / 2.0) / mean_speed(&single, dt);
+  assert!(double.iter().all(|p| p.pos.iter().chain(&p.vel).all(|v| v.is_finite())), "NaN albo nieskończoność");
+  let ratio = mean_speed(&double) / mean_speed(&single);
   assert!((0.5..2.0).contains(&ratio), "stosunek prędkości K=2 do K=1: {ratio}");
 }
 
-/// Zmiana K w trakcie przeskalowuje `last`: bez `rescale` prędkość po zmianie K = 4 wyszłaby
-/// ok. 4 razy większa (ta sama różnica pozycji, mniejszy dt).
+/// Zmiana K nie zmienia prędkości
 #[test]
-fn changing_substeps_rescales_verlet_velocity() {
-  let dt = crate::config::DELTA_TIME as f32;
+fn changing_substeps_keeps_velocity() {
   let mut rng = StdRng::seed_from_u64(43);
   let spec = spec(&mut rng, 3);
   let particles = random_particles(&mut rng, 5_000, 3);
-  let before = mean_speed(&particles, dt);
+  let before = mean_speed(&particles);
   let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
   harness.set_substeps(4);
-  let after = mean_speed(&harness.run(1), dt / 4.0);
+  let after = mean_speed(&harness.run(1));
   assert!((0.5..2.0).contains(&(after / before)), "prędkość po zmianie K: {before} -> {after}");
-  // Powrót do K = 1 też przeskalowuje.
+  // Powrót do K = 1 nie przeskalowuje prędkości.
   harness.set_substeps(1);
-  let back = mean_speed(&harness.run(1), dt);
+  let back = mean_speed(&harness.run(1));
   assert!((0.5..2.0).contains(&(back / before)), "prędkość po powrocie do K = 1: {before} -> {back}");
 }
 
@@ -223,7 +220,7 @@ fn diagnostic_step(spec: ParticleSpec, particles: Vec<GpuParticle>, world: Vec2)
     particles
       .iter()
       .zip(&model)
-      .map(|(p, m)| Neighbourhood { count: m.count as f64, delta: [p.last[0] as f64, p.last[1] as f64], coeff: m.coeff as f64 })
+      .map(|(p, m)| Neighbourhood { count: m.count as f64, delta: [p.vel[0] as f64, p.vel[1] as f64], coeff: m.coeff as f64 })
       .collect(),
   )
 }
@@ -283,10 +280,10 @@ fn engine_finds_neighbours_across_the_world_seam() {
   let mut particles: Vec<GpuParticle> = corners
     .iter()
     .enumerate()
-    .map(|(id, p)| GpuParticle { pos: p.to_array(), last: p.to_array(), species: 0, id: id as u32 })
+    .map(|(id, p)| GpuParticle { pos: p.to_array(), vel: [0.0, 0.0], species: 0, id: id as u32 })
     .collect();
   // Samotna cząstka w środku, bez sąsiadów.
-  particles.push(GpuParticle { pos: [0.0, 0.0], last: [0.0, 0.0], species: 0, id: 4 });
+  particles.push(GpuParticle { pos: [0.0, 0.0], vel: [0.0, 0.0], species: 0, id: 4 });
   let spec = spec(&mut StdRng::seed_from_u64(1), 2);
   let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
   let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
@@ -309,7 +306,6 @@ fn engine_counts_the_same_with_bigger_cells_in_a_large_world() {
   let mut particles = initial_particles(3000, 3, world, &mut rng);
   for p in particles.iter_mut().take(2000) {
     p.pos[1] *= 0.02;
-    p.last[1] = p.pos[1];
   }
   let expected = brute_force_neighbourhoods(&spec, &particles, world);
   let Some(actual) = diagnostic_step(spec, particles, world) else { return };
@@ -350,7 +346,7 @@ fn sampling_cap_keeps_every_particle_finite_and_present() {
     let state = harness.run(0);
     assert_eq!(state.len(), ids.len(), "próg {cap}");
     assert!(
-      state.iter().all(|p| p.pos.iter().chain(&p.last).all(|v| v.is_finite())),
+      state.iter().all(|p| p.pos.iter().chain(&p.vel).all(|v| v.is_finite())),
       "próg {cap}: nieskończone położenie"
     );
     let mut got: Vec<u32> = state.iter().map(|p| p.id).collect();
