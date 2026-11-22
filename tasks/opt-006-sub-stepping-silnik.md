@@ -16,6 +16,9 @@ links:
   target: 6a4abbb
   at: 2026-11-22T01:58:23
   note: 'feat(gpu): sub-stepping engine with dt/K and Verlet rescale'
+- kind: data
+  target: .artifacts/bench/gpu-2026-11-22-01-54-55.parquet
+  at: 2026-11-22T01:58:50
 ---
 Model: sonnet (plan kroków, dt w RuleParams, przeskalowanie Verleta, warunkowy przebieg; subtelne zależności).
 
