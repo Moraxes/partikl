@@ -1,7 +1,7 @@
 ---
 id: 76
 title: Statystyki GPU i nan_count
-status: doing
+status: done
 priority: soon
 branch: main
 part_of: 28
