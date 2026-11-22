@@ -20,6 +20,9 @@ links:
   target: 32ca34f
   at: 2026-11-22T02:02:26
   note: 'chore: opt-007 bench runs (substeps key)'
+- kind: data
+  target: .artifacts/bench/gpu-2026-11-22-02-01-51.parquet
+  at: 2026-11-22T02:03:45
 ---
 Model: haiku (klawisz + flaga + HUD według istniejącego wzorca).
 
