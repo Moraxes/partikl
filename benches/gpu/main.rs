@@ -66,6 +66,9 @@ struct Args {
   /// Próg próbkowania sąsiadów (klawisz C w aplikacji); zapisany w kolumnie `max_candidates`.
   #[arg(long, default_value_t = DEFAULT_MAX_CANDIDATES, value_parser = clap::value_parser!(u32).range(1..))]
   max_candidates: u32,
+  /// Podkroki GPU na takt (`Substeps`); `step_ns` to czas taktu, czyli K podkroków. Kolumna `substeps`.
+  #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..=partikl::gpu::MAX_SUBSTEPS as i64))]
+  substeps: u32,
   /// Liczba typów cząstek.
   #[arg(long, default_value_t = 3)]
   types: usize,
@@ -102,6 +105,7 @@ fn main() {
     Field::new("step_offset", DataType::UInt32, false),
     Field::new("candidates_mean", DataType::Float32, false),
     Field::new("max_candidates", DataType::UInt32, false),
+    Field::new("substeps", DataType::UInt32, false),
     Field::new("rep", DataType::UInt16, false),
     Field::new("step_ns", DataType::UInt64, false),
     Field::new("gpu_step_ns", DataType::UInt64, true),
@@ -129,6 +133,7 @@ fn main() {
           break 'cases;
         };
         harness.set_max_candidates(args.max_candidates);
+        harness.set_substeps(args.substeps);
         let (step_offset, candidates) = if scene == Scene::Evolved {
           harness.step(args.steps);
           (args.steps, candidates_mean(&harness.run(0), WORLD))
@@ -163,6 +168,7 @@ fn main() {
             Arc::new(UInt32Array::from(vec![step_offset as u32; rows])),
             Arc::new(Float32Array::from(vec![candidates as f32; rows])),
             Arc::new(UInt32Array::from(vec![args.max_candidates; rows])),
+            Arc::new(UInt32Array::from(vec![args.substeps; rows])),
             Arc::new(UInt16Array::from((0..rows as u16).collect::<Vec<_>>())),
             Arc::new(UInt64Array::from(samples.to_vec())),
             Arc::new(UInt64Array::from(gpu.iter().map(|t| t.as_ref().map(|t| t.total_ns() as u64)).collect::<Vec<_>>())),

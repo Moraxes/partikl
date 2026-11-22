@@ -162,6 +162,12 @@ impl Harness {
     self.world().resource_mut::<SamplingCap>().0 = max_candidates;
   }
 
+  /// Podkroki GPU na takt (`Substeps`); od następnego taktu. `step` liczy takty, więc wykonuje
+  /// K razy więcej podkroków GPU.
+  pub fn set_substeps(&mut self, substeps: u32) {
+    self.world().resource_mut::<Substeps>().0 = substeps;
+  }
+
   /// Tryb deterministyczny (sortowanie komórek po id).
   pub fn set_deterministic(&mut self, deterministic: bool) {
     self.world().resource_mut::<GpuParams>().deterministic = deterministic;
@@ -261,9 +267,11 @@ impl Harness {
 
   fn step_chunk(&mut self, steps: u64) {
     let before = self.world().resource::<GpuProgress>().0.load(Ordering::SeqCst);
+    // `GpuProgress` liczy podkroki GPU: takty × K.
+    let gpu_steps = steps * self.world().resource::<Substeps>().get() as u64;
     self.world().resource_mut::<GpuParams>().step_count += steps;
     let deadline = Instant::now() + Duration::from_secs(120);
-    while self.world().resource::<GpuProgress>().0.load(Ordering::SeqCst) < before + steps {
+    while self.world().resource::<GpuProgress>().0.load(Ordering::SeqCst) < before + gpu_steps {
       assert!(Instant::now() < deadline, "GPU nie wykonał kroków w 120 s (pipeline się nie skompilował?)");
       self.update();
     }

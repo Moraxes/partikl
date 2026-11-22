@@ -89,6 +89,9 @@ struct Args {
   /// Ziarno macierzy sił i rozmieszczenia.
   #[arg(long, default_value_t = 0)]
   seed: u64,
+  /// Podkroki GPU na takt (`Substeps`); dopisane do wariantu jako `kN`, gdy większe od 1.
+  #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..=partikl::gpu::MAX_SUBSTEPS as i64))]
+  substeps: u32,
   /// Liczba typów cząstek.
   #[arg(long, default_value_t = 3)]
   types: usize,
@@ -251,6 +254,7 @@ fn main() {
           let Some(mut harness) = Harness::with_render(options.clone(), spec, state, WORLD, Some(offscreen)) else {
             break 'cases;
           };
+          harness.set_substeps(args.substeps);
           harness.step(args.steps);
           for mode in &args.modes {
             // Prędkość symulacji na klatkę (tylko `loop`), reszta trybów: brak.
@@ -279,10 +283,11 @@ fn main() {
             };
             let samples_ns = &samples_ns[..];
             let variant = format!(
-              "msaa{samples} {} {} {} {mode}",
+              "msaa{samples} {} {} {} {mode}{}",
               if hdr { "hdr" } else { "ldr" },
               if tonemapping { "tm" } else { "raw" },
               if analytic_aa { "aa" } else { "noaa" },
+              if args.substeps > 1 { format!(" k{}", args.substeps) } else { String::new() },
             );
             if let (Some(dir), "draw") = (&args.screenshots, mode.as_str()) {
               save_screenshot(&mut harness, dir, &format!("{n}-{scene}-{}.png", variant.replace(' ', "_")));

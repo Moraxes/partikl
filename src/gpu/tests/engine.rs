@@ -63,6 +63,66 @@ fn real_time_loop_runs_the_fixed_step_clock() {
   assert!(speed > 0.5, "prędkość {speed}");
 }
 
+/// Średnia prędkość `|pos − last| / dt` (Verlet trzyma prędkość jako różnicę pozycji).
+fn mean_speed(particles: &[GpuParticle], dt: f32) -> f32 {
+  let sum: f32 = particles.iter().map(|p| (Vec2::from(p.pos) - Vec2::from(p.last)).length() / dt).sum();
+  sum / particles.len() as f32
+}
+
+/// Podkroki (K = 2): bez NaN, te same id i liczba cząstek, a prędkość w granicach szumu względem
+/// K = 1 (progi bezpieczeństwa, nie wartości analogowe).
+#[test]
+fn substeps_keep_particles_finite_and_speed_in_range() {
+  let dt = crate::config::DELTA_TIME as f32;
+  let run = |substeps: u32| {
+    let mut rng = StdRng::seed_from_u64(41);
+    let spec = spec(&mut rng, 3);
+    let particles = random_particles(&mut rng, 5_000, 3);
+    let mut harness = Harness::new(SimOptions::default(), spec, particles, WORLD)?;
+    harness.set_substeps(substeps);
+    Some(harness.run(40))
+  };
+  let (Some(single), Some(double)) = (run(1), run(2)) else { return };
+  assert_eq!(double.len(), 5_000);
+  let ids: Vec<u32> = double.iter().map(|p| p.id).collect();
+  assert_eq!(ids, (0..5_000).collect::<Vec<u32>>());
+  assert!(double.iter().all(|p| p.pos.iter().chain(&p.last).all(|v| v.is_finite())), "NaN albo nieskończoność");
+  let ratio = mean_speed(&double, dt / 2.0) / mean_speed(&single, dt);
+  assert!((0.5..2.0).contains(&ratio), "stosunek prędkości K=2 do K=1: {ratio}");
+}
+
+/// Zmiana K w trakcie przeskalowuje `last`: bez `rescale` prędkość po zmianie K = 4 wyszłaby
+/// ok. 4 razy większa (ta sama różnica pozycji, mniejszy dt).
+#[test]
+fn changing_substeps_rescales_verlet_velocity() {
+  let dt = crate::config::DELTA_TIME as f32;
+  let mut rng = StdRng::seed_from_u64(43);
+  let spec = spec(&mut rng, 3);
+  let particles = random_particles(&mut rng, 5_000, 3);
+  let before = mean_speed(&particles, dt);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  harness.set_substeps(4);
+  let after = mean_speed(&harness.run(1), dt / 4.0);
+  assert!((0.5..2.0).contains(&(after / before)), "prędkość po zmianie K: {before} -> {after}");
+  // Powrót do K = 1 też przeskalowuje.
+  harness.set_substeps(1);
+  let back = mean_speed(&harness.run(1), dt);
+  assert!((0.5..2.0).contains(&(back / before)), "prędkość po powrocie do K = 1: {before} -> {back}");
+}
+
+/// `GpuProgress` liczy podkroki GPU (takty × K), a `GpuParams::step_count` takty.
+#[test]
+fn progress_counts_gpu_substeps() {
+  let mut rng = StdRng::seed_from_u64(47);
+  let spec = spec(&mut rng, 3);
+  let particles = random_particles(&mut rng, 1_000, 3);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  harness.set_substeps(3);
+  harness.step(5);
+  assert_eq!(harness.world().resource::<GpuParams>().step_count, 5);
+  assert_eq!(harness.world().resource::<GpuProgress>().0.load(std::sync::atomic::Ordering::SeqCst), 15);
+}
+
 #[test]
 fn set_state_replaces_particles_on_gpu() {
   let mut rng = StdRng::seed_from_u64(9);
@@ -94,8 +154,8 @@ fn timed_step_reports_every_pass() {
   assert_eq!(times.steps, 1);
   for (entry, ns) in &times.per_step_ns {
     // `sort_cells` działa tylko w trybie deterministycznym, a `count` tylko w pierwszym kroku po
-    // wgraniu stanu (potem histogram liczą siły).
-    if matches!(*entry, "sort_cells" | "count") {
+    // wgraniu stanu (potem histogram liczą siły), `rescale` tylko po zmianie `Substeps`.
+    if matches!(*entry, "sort_cells" | "count" | "rescale") {
       assert_eq!(*ns, 0.0);
     } else {
       assert!(*ns > 0.0, "{entry}: {ns}");

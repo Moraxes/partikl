@@ -23,6 +23,8 @@ struct EngineUniforms {
   step_index: u32,
   max_candidates: u32,
   interaction_radius: f32,
+  // dt_nowe / dt_stare (przebieg `rescale`), poza nim 1.0.
+  dt_ratio: f32,
 }
 
 // Komórka siatki cząstki; pozycje poza światem (np. NaN) trafiają do skrajnych komórek.

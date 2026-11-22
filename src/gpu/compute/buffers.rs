@@ -5,8 +5,8 @@ use bevy::render::render_resource::encase;
 use bevy::render::render_resource::*;
 use bevy::render::renderer::{RenderDevice, RenderQueue};
 
-use super::SCAN_BLOCK;
-use crate::gpu::{GpuParticle, GpuSim, MAX_CELLS};
+use super::{RuleParams, SCAN_BLOCK};
+use crate::gpu::{GpuParticle, GpuSim, MAX_CELLS, Substeps};
 use crate::spec::ParticleSpec;
 
 /// Bufory pomocnicze kroku; opis zawartości w `engine/bindings.wesl`.
@@ -23,7 +23,13 @@ pub struct Buffers {
   pub rule_params: Buffer,
 }
 
-pub fn create(mut commands: Commands, sim: Res<GpuSim>, spec: Res<ParticleSpec>, device: Res<RenderDevice>, queue: Res<RenderQueue>) {
+/// Parametry reguł na GPU: `dt` dzielony przez liczbę podkroków.
+fn gpu_params(spec: &ParticleSpec, substeps: Substeps) -> RuleParams {
+  RuleParams { dt: spec.params.dt / substeps.get() as f32, ..spec.params }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn create(mut commands: Commands, sim: Res<GpuSim>, spec: Res<ParticleSpec>, substeps: Res<Substeps>, device: Res<RenderDevice>, queue: Res<RenderQueue>) {
   let n = sim.num_particles as u64;
   let cells = sim.geometry.num_cells() as u64;
   let storage = |label: &str, size: u64| {
@@ -50,7 +56,7 @@ pub fn create(mut commands: Commands, sim: Res<GpuSim>, spec: Res<ParticleSpec>,
       usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
     }),
     rule_params: {
-      let mut contents = UniformBuffer::from(spec.params);
+      let mut contents = UniformBuffer::from(gpu_params(&spec, *substeps));
       contents.add_usages(BufferUsages::COPY_DST);
       contents.write_buffer(&device, &queue);
       contents.buffer().expect("just written").clone()
@@ -58,11 +64,13 @@ pub fn create(mut commands: Commands, sim: Res<GpuSim>, spec: Res<ParticleSpec>,
   });
 }
 
-/// Zapisuje macierz sił i parametry reguł z `ParticleSpec` do buforów, gdy zasób się zmienił
+/// Zapisuje macierz sił i parametry reguł z `ParticleSpec` do buforów, gdy zmienił się zasób
+/// albo `Substeps` (`dt = DELTA_TIME / K`)
 /// (bez rekompilacji shaderów). Liczba typów jest stała od startu: spec o innym rozmiarze macierzy
 /// jest pomijany.
 pub fn upload_spec(
   spec: Res<ParticleSpec>,
+  substeps: Res<Substeps>,
   sim: Res<GpuSim>,
   buffers: Res<Buffers>,
   queue: Res<RenderQueue>,
@@ -74,6 +82,6 @@ pub fn upload_spec(
   }
   queue.write_buffer(&buffers.force_matrix, 0, bytemuck::cast_slice(&matrix));
   let mut bytes = encase::UniformBuffer::new(Vec::new());
-  bytes.write(&spec.params).expect("RuleParams fits a Vec");
+  bytes.write(&gpu_params(&spec, *substeps)).expect("RuleParams fits a Vec");
   queue.write_buffer(&buffers.rule_params, 0, bytes.as_ref());
 }

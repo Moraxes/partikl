@@ -29,7 +29,7 @@ use bevy::render::extract_resource::ExtractResourcePlugin;
 use bevy::render::renderer::{RenderGraph, RenderGraphSystems};
 use bevy::render::{Render, RenderApp, RenderStartup, RenderSystems};
 
-use super::GpuSim;
+use super::{GpuSim, Substeps};
 use crate::spec::ParticleSpec;
 use crate::config::*;
 
@@ -40,7 +40,7 @@ const WORKGROUP: u32 = 64;
 const SCAN_BLOCK: u32 = 256;
 
 /// Stałe i geometria kroku (silnik siatki); układ jak `EngineUniforms` w `engine/types.wesl`.
-/// Różni się między krokami klatki tylko `step_index`.
+/// Różni się między krokami klatki tylko `step_index` (i `dt_ratio` w pierwszym kroku po zmianie `Substeps`).
 #[derive(ShaderType, Clone, Copy, Debug)]
 pub struct EngineUniforms {
   pub world: Vec2,
@@ -53,6 +53,8 @@ pub struct EngineUniforms {
   pub step_index: u32,
   pub max_candidates: u32,
   pub interaction_radius: f32,
+  /// `dt_nowe / dt_stare` dla przebiegu `rescale` (1,0 w pozostałych krokach).
+  pub dt_ratio: f32,
 }
 
 impl EngineUniforms {
@@ -70,6 +72,7 @@ impl EngineUniforms {
       step_index,
       max_candidates,
       interaction_radius: INTERACTION_RADIUS,
+      dt_ratio: 1.0,
     }
   }
 }
@@ -80,6 +83,7 @@ impl EngineUniforms {
 ///
 /// Pliki `.ron` ustawiają je w polu `params` (brakujące pola: wartości z `config.rs`). `dt` i
 /// `velocity_threshold` zostają stałe: krok czasowy i próg ruchu dzielą z silnikiem i renderem.
+/// Na GPU `dt` to `dt / Substeps` (zapis w `buffers`).
 #[derive(ShaderType, Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RuleParams {
@@ -147,6 +151,11 @@ impl Default for RuleParams {
   }
 }
 
+/// Zapis do buforów reguł: zmiana `ParticleSpec` albo `Substeps` (`dt = DELTA_TIME / K`).
+fn spec_or_substeps_changed(spec: Res<ParticleSpec>, substeps: Res<Substeps>) -> bool {
+  spec.is_changed() || substeps.is_changed()
+}
+
 pub struct GpuComputePlugin;
 
 impl Plugin for GpuComputePlugin {
@@ -168,7 +177,7 @@ impl Plugin for GpuComputePlugin {
             .in_set(RenderSystems::PrepareResources),
           buffers::upload_spec
             .run_if(resource_exists::<buffers::Buffers>)
-            .run_if(resource_changed::<ParticleSpec>)
+            .run_if(spec_or_substeps_changed)
             .in_set(RenderSystems::PrepareResources)
             .after(buffers::create),
           pipelines::queue_forces.in_set(RenderSystems::PrepareResources),

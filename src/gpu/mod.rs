@@ -36,7 +36,7 @@ use crate::spec::ParticleSpec;
 use crate::ui::MainCamera;
 use material::ParticleMaterial;
 
-/// Największa liczba kroków fizyki na klatkę obrazu; nadwyżkę (zacięcie) pomijamy. Poniżej
+/// Największa liczba taktów fizyki na klatkę obrazu (podkroków GPU jest K razy więcej); nadwyżkę (zacięcie) pomijamy. Poniżej
 /// tego limitu zakres kroków w klatce wyznacza `StepBudget` (symulacja zwalnia przy przeciążeniu).
 pub const MAX_STEPS_PER_FRAME: u32 = 16;
 
@@ -145,6 +145,7 @@ pub struct GpuSim {
 pub struct GpuParams {
   /// Kolejność cząstek w komórce po id: trajektorie takie same co do bitu (wolniej).
   pub deterministic: bool,
+  /// Takty stałego kroku zlecone silnikowi; GPU wykonuje `step_count × Substeps` podkroków.
   pub step_count: u64,
 }
 
@@ -175,7 +176,32 @@ impl SamplingCap {
   }
 }
 
-/// Liczba kroków wykonanych na GPU; `Arc` jest wspólny dla świata głównego i renderowania
+/// Największa liczba podkroków na takt (`Substeps`).
+pub const MAX_SUBSTEPS: u32 = 8;
+
+/// Podkroki GPU na takt stałego kroku (`DELTA_TIME`): K podkroków po `dt / K`, więcej pracy GPU
+/// na takt za cenę mniejszego kroku czasu (sztywność, stabilność trybu RESOLVE). Zmiana działa od
+/// następnego taktu: zapisuje `RuleParams::dt` i przeskalowuje prędkości Verleta (`rescale`).
+///
+/// `GpuParams::step_count` liczy takty, `GpuProgress` podkroki GPU (takty × K).
+#[derive(Resource, Clone, Copy, Debug, ExtractResource)]
+#[extract_app(RenderApp)]
+pub struct Substeps(pub u32);
+
+impl Default for Substeps {
+  fn default() -> Self {
+    Substeps(1)
+  }
+}
+
+impl Substeps {
+  /// K ograniczone do `1..=MAX_SUBSTEPS`.
+  pub fn get(self) -> u32 {
+    self.0.clamp(1, MAX_SUBSTEPS)
+  }
+}
+
+/// Liczba podkroków wykonanych na GPU (takty × `Substeps`); `Arc` jest wspólny dla świata głównego i renderowania
 /// (do wiadomości testów i metryk, bez readbacku).
 #[derive(Resource, Clone, Default, ExtractResource)]
 #[extract_app(RenderApp)]
@@ -217,6 +243,7 @@ impl Plugin for GpuPlugin {
       .init_resource::<GpuParams>()
       .init_resource::<GpuProgress>()
       .init_resource::<SamplingCap>()
+      .init_resource::<Substeps>()
       .init_resource::<RenderQuality>()
       .add_plugins((
         MaterialPlugin::<ParticleMaterial>::default(),
@@ -226,6 +253,7 @@ impl Plugin for GpuPlugin {
         ExtractResourcePlugin::<GpuParams>::default(),
         ExtractResourcePlugin::<GpuProgress>::default(),
         ExtractResourcePlugin::<SamplingCap>::default(),
+        ExtractResourcePlugin::<Substeps>::default(),
         rules::RulesPlugin,
         compute::GpuComputePlugin,
       ))

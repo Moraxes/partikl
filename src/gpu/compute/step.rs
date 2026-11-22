@@ -13,17 +13,25 @@ use super::bindings;
 use super::buffers::Buffers;
 use super::pipelines::{FORCES, ForcesVariant, GRID_PASSES, Pipelines};
 use super::timing::{GpuTimings, Timer};
-use crate::gpu::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME, SamplingCap};
+use crate::gpu::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME, SamplingCap, Substeps};
 use crate::gpu::rules::RuleFlags;
 
-/// Kroki tej klatki. Świat główny tylko zwiększa `GpuParams::step_count`; tu wykonujemy
-/// różnicę od ostatniej klatki.
-#[derive(Resource, Default)]
+/// Podkroki tej klatki. Świat główny tylko zwiększa `GpuParams::step_count` (takty); tu wykonujemy
+/// różnicę od ostatniej klatki, każdy takt jako `Substeps` podkroków GPU.
+#[derive(Resource)]
 pub struct Plan {
-  /// Kroki już zlecone GPU.
+  /// Takty już zlecone GPU.
   done: u64,
-  /// Kroki do wykonania w tej klatce (0: nic).
+  /// Podkroki GPU już zlecone (numeruje `step_index`: dekorelacja próbkowania w każdym podkroku).
+  gpu_steps: u64,
+  /// Podkroki do wykonania w tej klatce (0: nic).
   count: u32,
+  /// K, dla którego liczono ostatnio; stan startowy ma prędkości dla `DELTA_TIME`, czyli K = 1.
+  substeps: u32,
+  /// Iloczyn `dt_nowe / dt_stare` od ostatniego wykonanego kroku; różny od 1 uruchamia `rescale`.
+  dt_ratio: f32,
+  /// Pierwszy krok tej klatki przeskalowuje prędkości (`When::Rescale`).
+  rescale_first: bool,
   variant: ForcesVariant,
   deterministic: bool,
   /// Pierwszy krok tej klatki liczy histogram od zera (`When::Recount`).
@@ -38,12 +46,34 @@ pub struct Plan {
   bind_group: Option<BindGroup>,
 }
 
+impl Default for Plan {
+  fn default() -> Self {
+    Plan {
+      done: 0,
+      gpu_steps: 0,
+      count: 0,
+      substeps: 1,
+      dt_ratio: 1.0,
+      rescale_first: false,
+      variant: default(),
+      deterministic: false,
+      recount: false,
+      recount_first: false,
+      state: None,
+      uniforms: default(),
+      offsets: default(),
+      bind_group: None,
+    }
+  }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn plan(
   sim: Option<Res<GpuSim>>,
   params: Res<GpuParams>,
   flags: Res<RuleFlags>,
   cap: Res<SamplingCap>,
+  substeps: Res<Substeps>,
   mut plan: ResMut<Plan>,
   pipelines: Res<Pipelines>,
   buffers: Option<Res<Buffers>>,
@@ -66,6 +96,14 @@ pub fn plan(
     plan.state = Some((state.buffer.id(), sim.state_epoch));
   }
 
+  // Zmiana K zmienia dt, a Verlet trzyma prędkość jako `pos − last`: skala `dt_nowe / dt_stare`
+  // czeka na krok, który faktycznie się wykona (jak `recount`).
+  let k = substeps.get();
+  if k != plan.substeps {
+    plan.dt_ratio *= plan.substeps as f32 / k as f32;
+    plan.substeps = k;
+  }
+
   // Gdy pipeline się kompiluje (start, hot reload, nowy wariant), kroki czekają.
   if !pipelines.ready(&cache, &plan.variant) {
     return;
@@ -76,15 +114,23 @@ pub fn plan(
   if pending == 0 {
     return;
   }
-  plan.count = pending as u32;
+  let steps = pending as u32 * k;
+  plan.count = steps;
   plan.recount_first = std::mem::take(&mut plan.recount);
+  let ratio = std::mem::replace(&mut plan.dt_ratio, 1.0);
+  plan.rescale_first = ratio != 1.0;
 
-  let first_step = params.step_count - pending;
+  let first_step = plan.gpu_steps;
+  plan.gpu_steps += steps as u64;
   let plan = &mut *plan;
   plan.uniforms.clear();
   plan.offsets.clear();
-  for k in 0..pending {
-    plan.offsets.push(plan.uniforms.push(&EngineUniforms::new(&sim, (first_step + k) as u32, cap.0)));
+  for i in 0..steps {
+    let mut engine = EngineUniforms::new(&sim, (first_step + i as u64) as u32, cap.0);
+    if i == 0 {
+      engine.dt_ratio = ratio;
+    }
+    plan.offsets.push(plan.uniforms.push(&engine));
   }
   plan.uniforms.write_buffer(&device, &queue);
   let Some(uniforms) = plan.uniforms.binding() else { return };
@@ -117,18 +163,19 @@ pub fn run(
   let get = |id| cache.get_compute_pipeline(id).unwrap();
   let forces = pipelines.forces[&plan.variant];
   // Dispatche kroku w kolejności: (entry point, pipeline, liczba grup).
-  let dispatches_for = |recount: bool| {
+  let dispatches_for = |recount: bool, rescale: bool| {
     let mut dispatches = Vec::new();
     for (def, &id) in GRID_PASSES.iter().zip(&pipelines.grid) {
-      if def.when.runs(plan.deterministic, recount) {
+      if def.when.runs(plan.deterministic, recount, rescale) {
         dispatches.push((def.entry, get(id), def.dispatch.groups(&sim)));
       }
     }
     dispatches.push((FORCES.entry, get(forces), FORCES.dispatch.groups(&sim)));
     dispatches
   };
-  let first_dispatches = dispatches_for(plan.recount_first);
-  let rest_dispatches = if plan.recount_first { dispatches_for(false) } else { first_dispatches.clone() };
+  let first_dispatches = dispatches_for(plan.recount_first, plan.rescale_first);
+  let rest_dispatches =
+    if plan.recount_first || plan.rescale_first { dispatches_for(false, false) } else { first_dispatches.clone() };
   if plan.recount_first {
     // `count` dolicza do `next_counts`, który po podmianie stanu zawiera stary histogram.
     context.command_encoder().clear_buffer(&buffers.next_counts, 0, None);

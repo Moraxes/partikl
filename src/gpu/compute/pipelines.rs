@@ -75,14 +75,17 @@ pub enum When {
   /// Tylko w pierwszym kroku po wgraniu stanu (nowe bufory, podmiana stanu): histogram i rangi
   /// liczy wtedy `count`, bo przebieg sił nie miał jeszcze poprzedniego kroku.
   Recount,
+  /// Tylko w pierwszym kroku po zmianie `Substeps`: przeskalowanie prędkości Verleta.
+  Rescale,
 }
 
 impl When {
-  pub fn runs(self, deterministic: bool, recount: bool) -> bool {
+  pub fn runs(self, deterministic: bool, recount: bool, rescale: bool) -> bool {
     match self {
       When::Always => true,
       When::Deterministic => deterministic,
       When::Recount => recount,
+      When::Rescale => rescale,
     }
   }
 }
@@ -93,7 +96,9 @@ const fn pass(entry: &'static str, file: ShaderFile, dispatch: Dispatch) -> Pass
 
 /// Budowa siatki w kolejności wykonania: po niej cząstki są w `sorted_*` w kolejności
 /// komórek, a `cell_offsets[c]` wskazuje początek komórki `c`.
-pub const GRID_PASSES: [Pass; 7] = [
+pub const GRID_PASSES: [Pass; 8] = [
+  // last = pos − (pos − last)·dt_ratio (po zmianie `Substeps`)
+  Pass { when: When::Rescale, ..pass("rescale", ShaderFile::Grid, Dispatch::Particles) },
   // next_counts[c] = liczba cząstek w komórce c, cell_ranks[i] = ranga (histogram z `state`)
   Pass { when: When::Recount, ..pass("count", ShaderFile::Grid, Dispatch::Particles) },
   // cell_counts = next_counts, next_counts = 0 (w zwykłym kroku histogram liczą siły poprzedniego kroku)
