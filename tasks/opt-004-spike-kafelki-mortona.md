@@ -15,6 +15,9 @@ links:
   target: 800810f
   at: 2026-11-22T13:04:09
   note: 'data(bench): opt-004 tiled cell index A/B (quick x3, 500k/1M)'
+- kind: data
+  target: bench/gpu-2026-11-22-13-03-44.parquet
+  at: 2026-11-22T13:04:09
 ---
 Model: sonnet (indeksowanie komórek i dzielenie biegów, ocena wyniku pomiaru).
 
