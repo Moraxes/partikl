@@ -2,14 +2,14 @@
 id: opt-006
 title: Sub-stepping silnik
 summary: 'Sub-stepping: silnik i dt/K (sonnet)'
-status: doing
+status: done
 priority: soon
 branch: main
 part_of: opt-001
 blocked_by:
 - opt-002
 created: 2026-11-22T01:12:30
-worked: 2026-11-22T01:58:23
+worked: 2026-11-22T01:58:51
 edited: 2026-11-22T01:58:50
 links:
 - kind: commit
