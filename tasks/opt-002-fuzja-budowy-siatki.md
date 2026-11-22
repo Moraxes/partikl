@@ -23,6 +23,9 @@ links:
 - kind: data
   target: .artifacts/bench/gpu-2026-11-22-01-35-51.parquet
   at: 2026-11-22T01:36:31
+- kind: data
+  target: .artifacts/bench/gpu-2026-11-22-01-36-01.parquet
+  at: 2026-11-22T01:36:31
 ---
 Model: sonnet (zmiana układu buforów i przebiegów compute, ryzyko hazardów pamięci).
 
