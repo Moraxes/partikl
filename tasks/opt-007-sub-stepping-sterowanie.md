@@ -26,6 +26,9 @@ links:
 - kind: data
   target: .artifacts/bench/gpu-2026-11-22-02-01-56.parquet
   at: 2026-11-22T02:03:45
+- kind: data
+  target: .artifacts/bench/gpu-2026-11-22-02-02-03.parquet
+  at: 2026-11-22T02:03:46
 ---
 Model: haiku (klawisz + flaga + HUD według istniejącego wzorca).
 
