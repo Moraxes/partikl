@@ -2,11 +2,12 @@
 id: opt-003
 title: Przycinanie biegów do koła
 summary: Przycinanie biegów sąsiedztwa do koła (sonnet)
-status: todo
+status: doing
 priority: soon
 branch: main
 part_of: opt-001
 created: 2026-11-22T01:12:30
+worked: 2026-11-22T01:36:59
 ---
 Model: sonnet (matematyka zakresów komórek i szew torusa w shaderze, wpływ na próbkowanie).
 
