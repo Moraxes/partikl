@@ -20,6 +20,17 @@ fn options_are_repeatable_and_checked_against_the_rules() {
 }
 
 #[test]
+fn substeps_flag_accepts_only_one_two_or_four() {
+  assert_eq!(parse(&[]).unwrap().substeps, 1);
+  for k in ["1", "2", "4"] {
+    assert_eq!(parse(&["--substeps", k]).unwrap().substeps, k.parse::<u32>().unwrap());
+  }
+  for bad in ["0", "3", "8", "x"] {
+    assert!(parse(&["--substeps", bad]).is_err(), "{bad} powinno być odrzucone");
+  }
+}
+
+#[test]
 fn no_options_means_the_rules_defaults() {
   assert_eq!(parse(&[]).unwrap().options, Vec::<String>::new());
 }

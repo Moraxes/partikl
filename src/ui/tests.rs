@@ -1,5 +1,5 @@
 use super::*;
-use crate::gpu::DEFAULT_MAX_CANDIDATES;
+use crate::gpu::{DEFAULT_MAX_CANDIDATES, Substeps};
 use crate::ui::test_util::*;
 use bevy::camera::{OrthographicProjection, Projection};
 use bevy::input::mouse::MouseScrollUnit;
@@ -159,18 +159,51 @@ fn hud_text_shows_fps_and_options() {
   let schema = builtin_schema();
   let options = SimOptions::default().with("average_forces", "on").with("overlap", "adaptive_range");
   let quality = RenderQuality { hdr: true, ..RenderQuality::default() };
-  let text = hud_text(Some(59.6), Some(100.0), &schema, &options, &quality, 256);
+  let text = hud_text(Some(59.6), Some(100.0), &schema, &options, &quality, 256, 1);
   assert!(text.contains("60 fps"), "{text}");
   assert!(text.contains("average forces on  N"), "{text}");
   assert!(text.contains("overlap adaptive range  O"), "{text}");
   assert!(text.contains("candidates 256  C"), "{text}");
   assert!(text.contains("hdr on"), "{text}");
   assert!(text.contains("antialiasing off"), "{text}");
-  assert!(hud_text(None, None, &schema, &SimOptions::default(), &RenderQuality::default(), 512).contains("– fps"));
+  assert!(hud_text(None, None, &schema, &SimOptions::default(), &RenderQuality::default(), 512, 1).contains("– fps"));
   // Prędkość symulacji widać tylko, gdy zwalnia.
   assert!(!text.contains("speed"), "{text}");
-  let slow = hud_text(Some(55.0), Some(54.6), &schema, &options, &quality, 512);
+  let slow = hud_text(Some(55.0), Some(54.6), &schema, &options, &quality, 512, 1);
   assert!(slow.contains("sim speed 55%"), "{slow}");
+}
+
+/// Linia podkroków jest w HUD tylko dla K > 1.
+#[test]
+fn hud_shows_substeps_only_above_one() {
+  let schema = builtin_schema();
+  let hud = |k: u32| hud_text(Some(60.0), None, &schema, &SimOptions::default(), &RenderQuality::default(), 512, k);
+  assert!(!hud(1).contains("substeps"), "{}", hud(1));
+  assert!(hud(2).contains("substeps 2  S"), "{}", hud(2));
+  assert!(hud(4).contains("substeps 4  S"), "{}", hud(4));
+}
+
+#[test]
+fn s_cycles_the_substeps() {
+  let mut app = input_app();
+  app.add_systems(Update, handle_keyboard_input);
+  let substeps = |app: &App| app.world().resource::<Substeps>().0;
+  assert_eq!(substeps(&app), 1);
+  let mut seen = vec![substeps(&app)];
+  for _ in 0..3 {
+    tap_key(&mut app, KeyCode::KeyS);
+    seen.push(substeps(&app));
+  }
+  assert_eq!(seen, [1, 2, 4, 1]);
+}
+
+#[test]
+fn substeps_next_handles_values_off_the_cycle() {
+  assert_eq!(Substeps(1).next(), 2);
+  assert_eq!(Substeps(4).next(), 1);
+  // Wartość spoza cyklu przechodzi do najbliższej większej.
+  assert_eq!(Substeps(3).next(), 4);
+  assert_eq!(Substeps(8).next(), 1);
 }
 
 #[test]

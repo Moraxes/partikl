@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowMode};
 
 use crate::args::ProgramArgs;
-use crate::gpu::{RenderQuality, SIM_SPEED, SamplingCap};
+use crate::gpu::{RenderQuality, SIM_SPEED, SamplingCap, Substeps};
 use crate::options::{RuleSchema, SimOptions, SimState};
 
 pub struct UiPlugin;
@@ -65,7 +65,8 @@ pub fn init_ui(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
 }
 
 /// Treść napisów: FPS (`None`, dopóki nie ma średniej), prędkość symulacji w procentach czasu
-/// rzeczywistego (tylko gdy zwalnia poniżej 97%), opcje z klawiszami i próg próbkowania `candidates`.
+/// rzeczywistego (tylko gdy zwalnia poniżej 97%), opcje z klawiszami, próg próbkowania `candidates`
+/// i podkroki `substeps` (tylko gdy K > 1).
 pub fn hud_text(
   fps: Option<f64>,
   speed: Option<f64>,
@@ -73,9 +74,11 @@ pub fn hud_text(
   options: &SimOptions,
   quality: &RenderQuality,
   candidates: u32,
+  substeps: u32,
 ) -> String {
   let fps = fps.map_or("–".to_string(), |fps| format!("{fps:.0}"));
   let speed = speed.filter(|speed| *speed < 97.0).map_or(String::new(), |speed| format!("sim speed {speed:.0}%\n"));
+  let substeps = if substeps > 1 { format!("substeps {substeps}  S\n") } else { String::new() };
   let on_off = |on: bool| if on { "on" } else { "off" };
   // Opcje reguł z klawiszami zadeklarowanymi przez moduł reguł.
   let rule_options: String = schema
@@ -87,25 +90,27 @@ pub fn hud_text(
     })
     .collect();
   format!(
-    "{fps} fps\n{speed}{rule_options}candidates {candidates}  C\nhdr {}  B\nantialiasing {}  A\nhide  H",
+    "{fps} fps\n{speed}{rule_options}{substeps}candidates {candidates}  C\nhdr {}  B\nantialiasing {}  A\nhide  H",
     on_off(quality.hdr),
     on_off(quality.analytic_aa),
   )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn update_text(
   diagnostics: Res<DiagnosticsStore>,
   schema: Res<RuleSchema>,
   options: Res<SimOptions>,
   quality: Res<RenderQuality>,
   cap: Res<SamplingCap>,
+  substeps: Res<Substeps>,
   query: Query<Entity, With<Hud>>,
   mut writer: TextUiWriter,
 ) {
   let Ok(entity) = query.single() else { return };
   let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS).and_then(|fps| fps.average());
   let speed = diagnostics.get(&SIM_SPEED).and_then(|speed| speed.value());
-  let text = hud_text(fps, speed, &schema, &options, &quality, cap.0);
+  let text = hud_text(fps, speed, &schema, &options, &quality, cap.0, substeps.get());
   let mut current = writer.text(entity, 0);
   // Bez zapisu, gdy bez zmian: zapis oznacza tekst do ponownego układu.
   if *current != text {
@@ -150,6 +155,7 @@ pub fn handle_keyboard_input(
   mut options: ResMut<SimOptions>,
   mut quality: ResMut<RenderQuality>,
   mut cap: ResMut<SamplingCap>,
+  mut substeps: ResMut<Substeps>,
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
   mut hud: Query<&mut Visibility, With<Hud>>,
 ) {
@@ -174,6 +180,9 @@ pub fn handle_keyboard_input(
   }
   if keyboard.just_pressed(KeyCode::KeyC) {
     cap.0 = cap.next();
+  }
+  if keyboard.just_pressed(KeyCode::KeyS) {
+    substeps.0 = substeps.next();
   }
   if keyboard.just_pressed(KeyCode::KeyH) {
     for mut visibility in hud.iter_mut() {

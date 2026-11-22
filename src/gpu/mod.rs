@@ -179,6 +179,9 @@ impl SamplingCap {
 /// Największa liczba podkroków na takt (`Substeps`).
 pub const MAX_SUBSTEPS: u32 = 8;
 
+/// Wartości klawisza S i flagi `--substeps`, w kolejności cyklu.
+pub const SUBSTEP_CYCLE: [u32; 3] = [1, 2, 4];
+
 /// Podkroki GPU na takt stałego kroku (`DELTA_TIME`): K podkroków po `dt / K`, więcej pracy GPU
 /// na takt za cenę mniejszego kroku czasu (sztywność, stabilność trybu RESOLVE). Zmiana działa od
 /// następnego taktu: zapisuje `RuleParams::dt` i przeskalowuje prędkości Verleta (`rescale`).
@@ -198,6 +201,12 @@ impl Substeps {
   /// K ograniczone do `1..=MAX_SUBSTEPS`.
   pub fn get(self) -> u32 {
     self.0.clamp(1, MAX_SUBSTEPS)
+  }
+
+  /// Następna wartość z `SUBSTEP_CYCLE`; po największej wraca do najmniejszej, a wartość spoza
+  /// cyklu przechodzi do najbliższej większej.
+  pub fn next(self) -> u32 {
+    SUBSTEP_CYCLE.into_iter().find(|&k| k > self.0).unwrap_or(SUBSTEP_CYCLE[0])
   }
 }
 
@@ -302,12 +311,14 @@ fn init_gpu(
   screen: ScreenSize,
   mut params: ResMut<GpuParams>,
   mut cap: ResMut<SamplingCap>,
+  mut substeps: ResMut<Substeps>,
   buffers: ResMut<Assets<ShaderBuffer>>,
   meshes: ResMut<Assets<Mesh>>,
   materials: ResMut<Assets<ParticleMaterial>>,
 ) {
   params.deterministic = args.gpu_deterministic;
   cap.0 = args.max_candidates;
+  substeps.0 = args.substeps;
   let mut rng = rand::rng();
   let world = screen.get();
   info!("świat symulacji {world} (ekran)");

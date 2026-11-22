@@ -1,6 +1,6 @@
 use bevy::prelude::Resource;
 
-use crate::gpu::{DEFAULT_MAX_CANDIDATES, RuleSource};
+use crate::gpu::{DEFAULT_MAX_CANDIDATES, RuleSource, SUBSTEP_CYCLE};
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -88,6 +88,19 @@ pub struct ProgramArgs {
   /// (each sampled one weighted by the stride). Cycles through 128, 256, 512, 1024 with C.
   #[arg(long, value_name = "N", default_value_t = DEFAULT_MAX_CANDIDATES, value_parser = clap::value_parser!(u32).range(1..))]
   pub max_candidates: u32,
+
+  /// GPU sub-steps per simulation tick: each tick is split into K steps of dt/K. Cycles through
+  /// 1, 2, 4 with S. Only 1, 2 or 4 are accepted.
+  #[arg(long, value_name = "K", default_value_t = 1, value_parser = parse_substeps)]
+  pub substeps: u32,
+}
+
+/// Dozwolone wartości `--substeps` (te same co w cyklu klawisza S).
+fn parse_substeps(value: &str) -> Result<u32, String> {
+  match value.parse::<u32>() {
+    Ok(k) if SUBSTEP_CYCLE.contains(&k) => Ok(k),
+    _ => Err(format!("`{value}`: dozwolone wartości to {SUBSTEP_CYCLE:?}")),
+  }
 }
 
 impl ProgramArgs {
