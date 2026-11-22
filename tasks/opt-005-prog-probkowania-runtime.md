@@ -9,7 +9,7 @@ part_of: opt-001
 relates:
 - 66
 created: 2026-11-22T01:12:30
-worked: 2026-11-22T01:50:00
+worked: 2026-11-22T12:51:30
 edited: 2026-11-22T01:49:56
 links:
 - kind: commit
@@ -50,6 +50,10 @@ links:
   target: 2a8e0a5
   at: 2026-11-22T01:50:00
   note: 'feat(gpu): runtime sampling cap with key C and --max-candidates'
+- kind: commit
+  target: 2876bb3
+  at: 2026-11-22T12:51:30
+  note: 'feat(gpu): default sampling cap 256'
 ---
 Model: haiku (zasób + klawisz + flaga + HUD według istniejącego wzorca; brak zmian w shaderach).
 
