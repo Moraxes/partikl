@@ -9,7 +9,12 @@ part_of: opt-001
 blocked_by:
 - opt-006
 created: 2026-11-22T01:12:31
-worked: 2026-11-22T01:59:34
+worked: 2026-11-22T02:02:23
+links:
+- kind: commit
+  target: dea7273
+  at: 2026-11-22T02:02:23
+  note: 'feat(gpu): substeps key S and --substeps flag'
 ---
 Model: haiku (klawisz + flaga + HUD według istniejącego wzorca).
 
