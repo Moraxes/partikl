@@ -37,6 +37,11 @@ links:
   at: 2026-11-22T02:09:08
   rev: 13de01d
   note: after opt-008
+- kind: data
+  target: .artifacts/bench/render-2026-11-22-02-06-26.parquet
+  at: 2026-11-22T02:09:08
+  rev: 13de01d
+  note: after opt-008
 ---
 Model: sonnet (przekazanie ułamka taktu do świata renderowania, matematyka w vertex shaderze, ocena wyglądu).
 
