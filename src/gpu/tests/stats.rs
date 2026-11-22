@@ -31,7 +31,9 @@ fn stats_match_cpu_on_normal_state() {
   let mut rng = StdRng::seed_from_u64(61);
   let spec = spec(&mut rng, 3);
   let particles = random_particles(&mut rng, 5_000, 3);
-  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
+    return;
+  };
   harness.set_stats(true);
   // Pierwszy przebieg kompiluje pipeline, więc jego wynik może się nie pojawić.
   harness.step(1);
@@ -44,8 +46,16 @@ fn stats_match_cpu_on_normal_state() {
   assert_eq!(stats.particles, 5_000);
   assert_eq!(stats.nan_count, 0);
   assert_eq!(nan, 0);
-  assert!(close(stats.max_speed, max_speed), "maks. prędkość: GPU {} CPU {max_speed}", stats.max_speed);
-  assert!(close(stats.kinetic_energy, energy), "energia: GPU {} CPU {energy}", stats.kinetic_energy);
+  assert!(
+    close(stats.max_speed, max_speed),
+    "maks. prędkość: GPU {} CPU {max_speed}",
+    stats.max_speed
+  );
+  assert!(
+    close(stats.kinetic_energy, energy),
+    "energia: GPU {} CPU {energy}",
+    stats.kinetic_energy
+  );
 }
 
 /// Wstrzyknięty NaN w `pos` jednej cząstki: dokładnie jedna cząstka w liczniku.
@@ -56,7 +66,9 @@ fn injected_nan_is_counted() {
   let particles = random_particles(&mut rng, 5_000, 3);
   let mut broken = particles.clone();
   broken[0].pos[0] = f32::NAN;
-  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
+    return;
+  };
   harness.set_stats(true);
   harness.step(1);
   harness.take_stats();
@@ -65,8 +77,16 @@ fn injected_nan_is_counted() {
   harness.step(1);
   let stats = harness.take_stats().expect("statystyki po kroku z NaN");
   assert_eq!(stats.nan_count, 1);
-  assert!(stats.max_speed.is_finite(), "maks. prędkość: {}", stats.max_speed);
-  assert!(stats.kinetic_energy.is_finite(), "energia: {}", stats.kinetic_energy);
+  assert!(
+    stats.max_speed.is_finite(),
+    "maks. prędkość: {}",
+    stats.max_speed
+  );
+  assert!(
+    stats.kinetic_energy.is_finite(),
+    "energia: {}",
+    stats.kinetic_energy
+  );
 }
 
 /// Przy wyłączonych statystykach (domyślnie) nie ma wyniku.
@@ -75,7 +95,9 @@ fn disabled_stats_give_nothing() {
   let mut rng = StdRng::seed_from_u64(71);
   let spec = spec(&mut rng, 3);
   let particles = random_particles(&mut rng, 2_000, 3);
-  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
+    return;
+  };
   harness.step(3);
   assert_eq!(harness.take_stats(), None);
 }

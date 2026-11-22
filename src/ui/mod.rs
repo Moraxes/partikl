@@ -77,8 +77,14 @@ pub fn hud_text(
   substeps: u32,
 ) -> String {
   let fps = fps.map_or("–".to_string(), |fps| format!("{fps:.0}"));
-  let speed = speed.filter(|speed| *speed < 97.0).map_or(String::new(), |speed| format!("sim speed {speed:.0}%\n"));
-  let substeps = if substeps > 1 { format!("substeps {substeps}  S\n") } else { String::new() };
+  let speed = speed
+    .filter(|speed| *speed < 97.0)
+    .map_or(String::new(), |speed| format!("sim speed {speed:.0}%\n"));
+  let substeps = if substeps > 1 {
+    format!("substeps {substeps}  S\n")
+  } else {
+    String::new()
+  };
   let on_off = |on: bool| if on { "on" } else { "off" };
   // Opcje reguł z klawiszami zadeklarowanymi przez moduł reguł.
   let rule_options: String = schema
@@ -86,7 +92,11 @@ pub fn hud_text(
     .iter()
     .map(|decl| {
       let value = options.choice(decl).label.replace('_', " ");
-      format!("{} {value}  {}\n", decl.title(), decl.key.map_or(String::new(), String::from))
+      format!(
+        "{} {value}  {}\n",
+        decl.title(),
+        decl.key.map_or(String::new(), String::from)
+      )
     })
     .collect();
   format!(
@@ -108,9 +118,19 @@ pub fn update_text(
   mut writer: TextUiWriter,
 ) {
   let Ok(entity) = query.single() else { return };
-  let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS).and_then(|fps| fps.average());
+  let fps = diagnostics
+    .get(&FrameTimeDiagnosticsPlugin::FPS)
+    .and_then(|fps| fps.average());
   let speed = diagnostics.get(&SIM_SPEED).and_then(|speed| speed.value());
-  let text = hud_text(fps, speed, &schema, &options, &quality, cap.0, substeps.get());
+  let text = hud_text(
+    fps,
+    speed,
+    &schema,
+    &options,
+    &quality,
+    cap.0,
+    substeps.get(),
+  );
   let mut current = writer.text(entity, 0);
   // Bez zapisu, gdy bez zmian: zapis oznacza tekst do ponownego układu.
   if *current != text {
@@ -139,10 +159,10 @@ pub fn exit_after_time(
   time: Res<Time>,
   mut app_exit_events: MessageWriter<AppExit>,
 ) {
-  if let Some(time_limit) = args.exit_after {
-    if time.elapsed_secs_f64() >= time_limit {
-      app_exit_events.write(AppExit::Success);
-    }
+  if let Some(time_limit) = args.exit_after
+    && time.elapsed_secs_f64() >= time_limit
+  {
+    app_exit_events.write(AppExit::Success);
   }
 }
 

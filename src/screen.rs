@@ -17,7 +17,8 @@ pub struct ScreenSize<'w, 's> {
 impl ScreenSize<'_, '_> {
   pub fn get(&self) -> Vec2 {
     if let Ok(monitor) = self.monitors.single() {
-      return UVec2::new(monitor.physical_width, monitor.physical_height).as_vec2() / monitor.scale_factor as f32;
+      return UVec2::new(monitor.physical_width, monitor.physical_height).as_vec2()
+        / monitor.scale_factor as f32;
     }
     let window = self.windows.single().expect("no primary window");
     Vec2::new(window.width(), window.height())

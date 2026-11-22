@@ -20,12 +20,19 @@ pub struct ParticleSpec {
 impl ParticleSpec {
   /// Macierz sił z domyślnymi parametrami reguł.
   pub fn new(interactions: Vec<Interaction>) -> Self {
-    ParticleSpec { interactions, params: RuleParams::default() }
+    ParticleSpec {
+      interactions,
+      params: RuleParams::default(),
+    }
   }
 
   /// Macierz sił spłaszczona jako `m[a * T + b]` (siła typu `a` na typ `b`).
   pub fn flat_matrix(&self) -> Vec<f32> {
-    self.interactions.iter().flat_map(|row| row.force_coeffs.iter().copied()).collect()
+    self
+      .interactions
+      .iter()
+      .flat_map(|row| row.force_coeffs.iter().copied())
+      .collect()
   }
 }
 

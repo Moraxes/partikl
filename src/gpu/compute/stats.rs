@@ -14,9 +14,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
+use bevy::render::RenderApp;
 use bevy::render::extract_resource::ExtractResource;
 use bevy::render::render_resource::*;
-use bevy::render::RenderApp;
 
 use super::WORKGROUP;
 use super::buffers::Buffers;
@@ -64,7 +64,10 @@ enum State {
   Idle,
   /// Wynik skopiowany do bufora do odczytu w tej klatce.
   Encoded { particles: u32 },
-  Mapping { particles: u32, ready: Arc<AtomicBool> },
+  Mapping {
+    particles: u32,
+    ready: Arc<AtomicBool>,
+  },
 }
 
 impl Reader {
@@ -75,36 +78,66 @@ impl Reader {
 
   /// Po przebiegu tej klatki: kopia wyniku do bufora do odczytu.
   pub fn encode(&mut self, encoder: &mut wgpu::CommandEncoder, buffers: &Buffers, particles: u32) {
-    encoder.copy_buffer_to_buffer(&buffers.stats, 0, &buffers.stats_read, 0, Some(words(particles) * 4));
+    encoder.copy_buffer_to_buffer(
+      &buffers.stats,
+      0,
+      &buffers.stats_read,
+      0,
+      Some(words(particles) * 4),
+    );
     self.state = State::Encoded { particles };
   }
 }
 
 /// Po wysłaniu klatki: mapowanie bufora z wynikiem.
 pub fn map(reader: Option<ResMut<Reader>>, buffers: Option<Res<Buffers>>) {
-  let (Some(mut reader), Some(buffers)) = (reader, buffers) else { return };
-  let State::Encoded { particles } = reader.state else { return };
+  let (Some(mut reader), Some(buffers)) = (reader, buffers) else {
+    return;
+  };
+  let State::Encoded { particles } = reader.state else {
+    return;
+  };
   let ready = Arc::new(AtomicBool::new(false));
   let flag = ready.clone();
-  buffers.stats_read.slice(..words(particles) * 4).map_async(MapMode::Read, move |result| flag.store(result.is_ok(), Ordering::Release));
+  buffers
+    .stats_read
+    .slice(..words(particles) * 4)
+    .map_async(MapMode::Read, move |result| {
+      flag.store(result.is_ok(), Ordering::Release)
+    });
   reader.state = State::Mapping { particles, ready };
 }
 
 /// Gdy mapowanie skończone: statystyki do `GpuStats::latest`.
-pub fn collect(reader: Option<ResMut<Reader>>, buffers: Option<Res<Buffers>>, gpu_stats: Option<Res<GpuStats>>) {
-  let (Some(mut reader), Some(buffers), Some(gpu_stats)) = (reader, buffers, gpu_stats) else { return };
-  let State::Mapping { particles, ready } = &reader.state else { return };
+pub fn collect(
+  reader: Option<ResMut<Reader>>,
+  buffers: Option<Res<Buffers>>,
+  gpu_stats: Option<Res<GpuStats>>,
+) {
+  let (Some(mut reader), Some(buffers), Some(gpu_stats)) = (reader, buffers, gpu_stats) else {
+    return;
+  };
+  let State::Mapping { particles, ready } = &reader.state else {
+    return;
+  };
   if !ready.load(Ordering::Acquire) {
     return;
   }
   let particles = *particles;
   let data: Vec<u32> = {
-    let view = buffers.stats_read.slice(..words(particles) * 4).get_mapped_range().expect("bufor statystyk zmapowany");
+    let view = buffers
+      .stats_read
+      .slice(..words(particles) * 4)
+      .get_mapped_range()
+      .expect("bufor statystyk zmapowany");
     bytemuck::cast_slice(&view).to_vec()
   };
   buffers.stats_read.unmap();
   reader.state = State::Idle;
-  let kinetic: f64 = data[2..].iter().map(|&bits| f32::from_bits(bits) as f64).sum();
+  let kinetic: f64 = data[2..]
+    .iter()
+    .map(|&bits| f32::from_bits(bits) as f64)
+    .sum();
   *gpu_stats.latest.lock().unwrap() = Some(SimStats {
     particles,
     nan_count: data[0],

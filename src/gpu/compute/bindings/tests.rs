@@ -17,7 +17,11 @@ fn declared() -> Vec<(u32, bool, String)> {
       let (number, rest) = rest.split_once(") var<")?;
       let (address_space, rest) = rest.split_once("> ")?;
       let (name, _) = rest.split_once(':')?;
-      Some((number.parse().unwrap(), address_space == "uniform", name.to_string()))
+      Some((
+        number.parse().unwrap(),
+        address_space == "uniform",
+        name.to_string(),
+      ))
     })
     .collect();
   found.sort_by_key(|(number, _, _)| *number);
@@ -26,7 +30,10 @@ fn declared() -> Vec<(u32, bool, String)> {
 
 #[test]
 fn bindings_match_the_wesl_declarations() {
-  let rust: Vec<_> = Binding::ALL.iter().map(|b| (*b as u32, b.is_uniform(), b.wesl_name().to_string())).collect();
+  let rust: Vec<_> = Binding::ALL
+    .iter()
+    .map(|b| (*b as u32, b.is_uniform(), b.wesl_name().to_string()))
+    .collect();
   assert_eq!(rust, declared());
 }
 

@@ -6,12 +6,12 @@
 //! brute force), `default_rules` (wyrocznia f64 dla fizyki `rules/default_rules.wesl`), `render`
 //! (rysowanie do obrazu), `rules` (źródło modułu reguł: plik, przeładowanie). Wspólne pomocnicze są tutaj.
 
-use bevy::render::render_resource::ShaderType;
 use super::compute::{EngineUniforms, RuleParams};
 use super::headless::Harness;
 use super::*;
 use crate::options::SimOptions;
 use crate::spec::Interaction;
+use bevy::render::render_resource::ShaderType;
 
 mod default_rules;
 mod engine;
@@ -42,7 +42,12 @@ impl Mode {
       Overlap::Resolve => "resolve",
       Overlap::AdaptiveRange => "adaptive_range",
     };
-    SimOptions::default().with("average_forces", if self.average_forces { "on" } else { "off" }).with("overlap", overlap)
+    SimOptions::default()
+      .with(
+        "average_forces",
+        if self.average_forces { "on" } else { "off" },
+      )
+      .with("overlap", overlap)
   }
 }
 
@@ -51,7 +56,11 @@ const WORLD: Vec2 = Vec2::new(500.0, 330.0);
 fn spec(rng: &mut StdRng, types: usize) -> ParticleSpec {
   ParticleSpec::new(
     (0..types)
-      .map(|_| Interaction { force_coeffs: (0..types).map(|_| rng.random_range(-500.0..500.0)).collect() })
+      .map(|_| Interaction {
+        force_coeffs: (0..types)
+          .map(|_| rng.random_range(-500.0..500.0))
+          .collect(),
+      })
       .collect(),
   )
 }
@@ -72,17 +81,28 @@ impl State {
   /// Z zerowym `crowding`, jak na starcie aplikacji.
   fn new(particles: Vec<GpuParticle>) -> State {
     let crowding = vec![0.0; particles.len()];
-    State { particles, crowding }
+    State {
+      particles,
+      crowding,
+    }
   }
 
   fn with_random_crowding(mut self, rng: &mut StdRng) -> State {
-    self.crowding.iter_mut().for_each(|c| *c = rng.random_range(0.0..120.0));
+    self
+      .crowding
+      .iter_mut()
+      .for_each(|c| *c = rng.random_range(0.0..120.0));
     self
   }
 }
 
 /// Harness z wbudowanymi regułami i zadanym stanem startowym (z modelem).
-fn harness_for(options: SimOptions, spec: ParticleSpec, state: &State, world: Vec2) -> Option<Harness> {
+fn harness_for(
+  options: SimOptions,
+  spec: ParticleSpec,
+  state: &State,
+  world: Vec2,
+) -> Option<Harness> {
   let mut harness = Harness::new(options, spec, state.particles.clone(), world)?;
   if state.crowding.iter().any(|&c| c != 0.0) {
     harness.set_model(state.crowding.clone());
@@ -99,7 +119,10 @@ fn reset(harness: &mut Harness, state: &State) {
 /// Wykonuje kroki i zwraca stan z modelem.
 fn run_state(harness: &mut Harness, steps: u64) -> State {
   let (particles, crowding) = harness.run_with_model::<f32>(steps);
-  State { particles, crowding }
+  State {
+    particles,
+    crowding,
+  }
 }
 
 fn assert_close(actual: &State, expected: &State, context: &str) {
@@ -108,11 +131,24 @@ fn assert_close(actual: &State, expected: &State, context: &str) {
     assert_eq!(a.id, i as u32, "{context}");
     assert_eq!(a.species, e.species);
     for k in 0..2 {
-      assert!((a.pos[k] - e.pos[k]).abs() < 1e-3, "{context} cząstka {i}: pos {:?} vs {:?}", a.pos, e.pos);
-      assert!((a.vel[k] - e.vel[k]).abs() < 1e-3, "{context} cząstka {i}: vel {:?} vs {:?}", a.vel, e.vel);
+      assert!(
+        (a.pos[k] - e.pos[k]).abs() < 1e-3,
+        "{context} cząstka {i}: pos {:?} vs {:?}",
+        a.pos,
+        e.pos
+      );
+      assert!(
+        (a.vel[k] - e.vel[k]).abs() < 1e-3,
+        "{context} cząstka {i}: vel {:?} vs {:?}",
+        a.vel,
+        e.vel
+      );
     }
     let (ac, ec) = (actual.crowding[i], expected.crowding[i]);
-    assert!((ac - ec).abs() < 1e-3, "{context} cząstka {i}: crowding {ac} vs {ec}");
+    assert!(
+      (ac - ec).abs() < 1e-3,
+      "{context} cząstka {i}: crowding {ac} vs {ec}"
+    );
   }
 }
 
@@ -129,8 +165,14 @@ fn zero_forces(mut spec: ParticleSpec) -> ParticleSpec {
 fn assert_invariants(state: &[GpuParticle], world: Vec2, context: &str) {
   let mut seen = vec![false; state.len()];
   for p in state {
-    assert!(p.pos.iter().chain(&p.vel).all(|v| v.is_finite()), "{context}: NaN/Inf w {p:?}");
-    assert!(p.pos[0].abs() <= world.x / 2.0 + 1.0 && p.pos[1].abs() <= world.y / 2.0 + 1.0, "{context}: poza światem: {p:?}");
+    assert!(
+      p.pos.iter().chain(&p.vel).all(|v| v.is_finite()),
+      "{context}: NaN/Inf w {p:?}"
+    );
+    assert!(
+      p.pos[0].abs() <= world.x / 2.0 + 1.0 && p.pos[1].abs() <= world.y / 2.0 + 1.0,
+      "{context}: poza światem: {p:?}"
+    );
     assert!(!seen[p.id as usize], "{context}: powtórzone id {}", p.id);
     seen[p.id as usize] = true;
   }

@@ -62,7 +62,12 @@ impl RuleSource {
       RuleSource::Builtin => (BUILTIN.into(), "wbudowane reguły".into()),
       RuleSource::Diagnostic => (DIAGNOSTIC.into(), "reguły diagnostyczne".into()),
       RuleSource::File(path) => (
-        std::fs::read_to_string(path).map_err(|source| LoadError::Io { path: path.clone(), source })?.into(),
+        std::fs::read_to_string(path)
+          .map_err(|source| LoadError::Io {
+            path: path.clone(),
+            source,
+          })?
+          .into(),
         path.clone(),
       ),
     };
@@ -101,12 +106,26 @@ impl Plugin for RulesPlugin {
     // Moduł musi być w zasobach shaderów, zanim ruszy kompilacja `step_driver`, więc powstaje
     // od razu, a nie w systemie.
     let source = app.world().resource::<RuleSource>().clone();
-    let Loaded { code, schema } = source.read().unwrap_or_else(|error| panic!("reguły: {error}"));
+    let Loaded { code, schema } = source
+      .read()
+      .unwrap_or_else(|error| panic!("reguły: {error}"));
     let flags = RuleFlags(schema.flags(app.world().resource::<SimOptions>()));
     app.insert_resource(schema).insert_resource(flags);
-    let handle = app.world_mut().resource_mut::<Assets<Shader>>().add(Shader::from_wesl(code, MODULE_PATH));
-    let modified = if let RuleSource::File(path) = &source { modified(path) } else { None };
-    app.insert_resource(RulesModule { handle, applied: source, modified, poll: Timer::new(POLL, TimerMode::Repeating) });
+    let handle = app
+      .world_mut()
+      .resource_mut::<Assets<Shader>>()
+      .add(Shader::from_wesl(code, MODULE_PATH));
+    let modified = if let RuleSource::File(path) = &source {
+      modified(path)
+    } else {
+      None
+    };
+    app.insert_resource(RulesModule {
+      handle,
+      applied: source,
+      modified,
+      poll: Timer::new(POLL, TimerMode::Repeating),
+    });
     app.add_systems(Update, (reload_rules, resolve_flags).chain());
   }
 }
@@ -121,23 +140,34 @@ fn reload_rules(
 ) {
   let changed_source = *source != module.applied;
   let mut changed_file = false;
-  if let RuleSource::File(path) = &*source {
-    if module.poll.tick(time.delta()).just_finished() {
-      let now = modified(path);
-      changed_file = now.is_some() && now != module.modified;
-    }
+  if let RuleSource::File(path) = &*source
+    && module.poll.tick(time.delta()).just_finished()
+  {
+    let now = modified(path);
+    changed_file = now.is_some() && now != module.modified;
   }
   if !changed_source && !changed_file {
     return;
   }
   module.applied = source.clone();
-  module.modified = if let RuleSource::File(path) = &*source { modified(path) } else { None };
+  module.modified = if let RuleSource::File(path) = &*source {
+    modified(path)
+  } else {
+    None
+  };
   match source.read() {
     // Bufory modelu mają rozmiar z pól na starcie, więc przy zmianie pól potrzebny jest restart.
-    Ok(Loaded { schema: declared, .. }) if declared.fields != schema.fields => {
-      error!("reguły: {source:?} zmienia pola modelu (`//@field`); to wymaga restartu, zostaje poprzedni moduł");
+    Ok(Loaded {
+      schema: declared, ..
+    }) if declared.fields != schema.fields => {
+      error!(
+        "reguły: {source:?} zmienia pola modelu (`//@field`); to wymaga restartu, zostaje poprzedni moduł"
+      );
     }
-    Ok(Loaded { code, schema: declared }) => {
+    Ok(Loaded {
+      code,
+      schema: declared,
+    }) => {
       info!("reguły: wczytano {source:?}");
       if *schema != declared {
         *schema = declared;

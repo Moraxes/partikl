@@ -25,15 +25,15 @@ pub mod timing;
 
 use bevy::core_pipeline::schedule::camera_driver;
 use bevy::prelude::*;
-use bevy::render::render_resource::ShaderType;
-use serde::{Deserialize, Serialize};
 use bevy::render::extract_resource::ExtractResourcePlugin;
+use bevy::render::render_resource::ShaderType;
 use bevy::render::renderer::{RenderGraph, RenderGraphSystems};
 use bevy::render::{Render, RenderApp, RenderStartup, RenderSystems};
+use serde::{Deserialize, Serialize};
 
 use super::{GpuSim, Substeps};
-use crate::spec::ParticleSpec;
 use crate::config::*;
+use crate::spec::ParticleSpec;
 
 /// Rozmiar grupy przebiegów po cząstkach i komórkach; musi zgadzać się z
 /// `@workgroup_size` w `grid_build.wesl` i `step_driver.wesl`.
@@ -119,8 +119,11 @@ impl RuleParams {
     if finite.iter().any(|v| !v.is_finite()) {
       return Err("parametry reguł muszą być skończone".into());
     }
-    if self.kernel_width <= 0.0 || self.adaptive_neighbours <= 0.0 || self.average_neighbours <= 0.0 {
-      return Err("kernel_width, average_neighbours i adaptive_neighbours muszą być dodatnie".into());
+    if self.kernel_width <= 0.0 || self.adaptive_neighbours <= 0.0 || self.average_neighbours <= 0.0
+    {
+      return Err(
+        "kernel_width, average_neighbours i adaptive_neighbours muszą być dodatnie".into(),
+      );
     }
     let reach = self.kernel_middle + self.kernel_width;
     if reach > INTERACTION_RADIUS {
@@ -159,12 +162,17 @@ pub struct GpuComputePlugin;
 
 impl Plugin for GpuComputePlugin {
   fn build(&self, app: &mut App) {
-    app.init_resource::<timing::GpuTimings>().init_resource::<stats::GpuStats>().add_plugins((
-      ExtractResourcePlugin::<timing::GpuTimings>::default(),
-      ExtractResourcePlugin::<stats::GpuStats>::default(),
-      ExtractResourcePlugin::<ShaderLibrary>::default(),
-    ));
-    let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
+    app
+      .init_resource::<timing::GpuTimings>()
+      .init_resource::<stats::GpuStats>()
+      .add_plugins((
+        ExtractResourcePlugin::<timing::GpuTimings>::default(),
+        ExtractResourcePlugin::<stats::GpuStats>::default(),
+        ExtractResourcePlugin::<ShaderLibrary>::default(),
+      ));
+    let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
+      return;
+    };
     render_app
       .init_resource::<step::Plan>()
       .init_resource::<stats::Reader>()

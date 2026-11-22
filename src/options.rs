@@ -35,13 +35,32 @@ pub struct OptionDecl {
 impl OptionDecl {
   pub fn keycode(&self) -> Option<KeyCode> {
     Some(match self.key? {
-      'A' => KeyCode::KeyA, 'B' => KeyCode::KeyB, 'C' => KeyCode::KeyC, 'D' => KeyCode::KeyD,
-      'E' => KeyCode::KeyE, 'F' => KeyCode::KeyF, 'G' => KeyCode::KeyG, 'H' => KeyCode::KeyH,
-      'I' => KeyCode::KeyI, 'J' => KeyCode::KeyJ, 'K' => KeyCode::KeyK, 'L' => KeyCode::KeyL,
-      'M' => KeyCode::KeyM, 'N' => KeyCode::KeyN, 'O' => KeyCode::KeyO, 'P' => KeyCode::KeyP,
-      'Q' => KeyCode::KeyQ, 'R' => KeyCode::KeyR, 'S' => KeyCode::KeyS, 'T' => KeyCode::KeyT,
-      'U' => KeyCode::KeyU, 'V' => KeyCode::KeyV, 'W' => KeyCode::KeyW, 'X' => KeyCode::KeyX,
-      'Y' => KeyCode::KeyY, 'Z' => KeyCode::KeyZ,
+      'A' => KeyCode::KeyA,
+      'B' => KeyCode::KeyB,
+      'C' => KeyCode::KeyC,
+      'D' => KeyCode::KeyD,
+      'E' => KeyCode::KeyE,
+      'F' => KeyCode::KeyF,
+      'G' => KeyCode::KeyG,
+      'H' => KeyCode::KeyH,
+      'I' => KeyCode::KeyI,
+      'J' => KeyCode::KeyJ,
+      'K' => KeyCode::KeyK,
+      'L' => KeyCode::KeyL,
+      'M' => KeyCode::KeyM,
+      'N' => KeyCode::KeyN,
+      'O' => KeyCode::KeyO,
+      'P' => KeyCode::KeyP,
+      'Q' => KeyCode::KeyQ,
+      'R' => KeyCode::KeyR,
+      'S' => KeyCode::KeyS,
+      'T' => KeyCode::KeyT,
+      'U' => KeyCode::KeyU,
+      'V' => KeyCode::KeyV,
+      'W' => KeyCode::KeyW,
+      'X' => KeyCode::KeyX,
+      'Y' => KeyCode::KeyY,
+      'Z' => KeyCode::KeyZ,
       _ => return None,
     })
   }
@@ -101,7 +120,9 @@ pub struct RuleSchema {
 }
 
 fn is_identifier(text: &str) -> bool {
-  !text.is_empty() && text.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && !text.starts_with(|c: char| c.is_ascii_digit())
+  !text.is_empty()
+    && text.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    && !text.starts_with(|c: char| c.is_ascii_digit())
 }
 
 impl RuleSchema {
@@ -109,15 +130,25 @@ impl RuleSchema {
   pub fn parse(source: &str) -> Result<RuleSchema, String> {
     let mut options: Vec<OptionDecl> = Vec::new();
     let mut fields: Vec<ModelField> = Vec::new();
-    for line in source.lines().map(str::trim).filter_map(|line| line.strip_prefix(FIELD_DIRECTIVE)) {
-      let field = Self::parse_field(line).map_err(|reason| format!("{FIELD_DIRECTIVE}{line}: {reason}"))?;
+    for line in source
+      .lines()
+      .map(str::trim)
+      .filter_map(|line| line.strip_prefix(FIELD_DIRECTIVE))
+    {
+      let field =
+        Self::parse_field(line).map_err(|reason| format!("{FIELD_DIRECTIVE}{line}: {reason}"))?;
       if fields.iter().any(|other| other.name == field.name) {
         return Err(format!("pole `{}` zadeklarowane dwa razy", field.name));
       }
       fields.push(field);
     }
-    for line in source.lines().map(str::trim).filter_map(|line| line.strip_prefix(DIRECTIVE)) {
-      let option = Self::parse_option(line).map_err(|reason| format!("{DIRECTIVE}{line}: {reason}"))?;
+    for line in source
+      .lines()
+      .map(str::trim)
+      .filter_map(|line| line.strip_prefix(DIRECTIVE))
+    {
+      let option =
+        Self::parse_option(line).map_err(|reason| format!("{DIRECTIVE}{line}: {reason}"))?;
       if options.iter().any(|other| other.name == option.name) {
         return Err(format!("opcja `{}` zadeklarowana dwa razy", option.name));
       }
@@ -127,7 +158,14 @@ impl RuleSchema {
         return Err(format!("klawisz {key} jest już opcji `{}`", other.name));
       }
       for flag in option.choices.iter().filter_map(|c| c.flag.as_ref()) {
-        if options.iter().flat_map(|o| &o.choices).chain(&option.choices).filter(|c| c.flag.as_ref() == Some(flag)).count() > 1 {
+        if options
+          .iter()
+          .flat_map(|o| &o.choices)
+          .chain(&option.choices)
+          .filter(|c| c.flag.as_ref() == Some(flag))
+          .count()
+          > 1
+        {
           return Err(format!("flaga {flag} użyta dwa razy"));
         }
       }
@@ -144,7 +182,10 @@ impl RuleSchema {
       return Err(format!("zła nazwa pola `{name}`"));
     }
     let mut words = rest.split_whitespace();
-    let ty = words.next().and_then(FieldType::parse).ok_or("typ pola: f32, u32, i32 albo vec2f")?;
+    let ty = words
+      .next()
+      .and_then(FieldType::parse)
+      .ok_or("typ pola: f32, u32, i32 albo vec2f")?;
     let shared = match words.next() {
       None => false,
       Some("shared") => true,
@@ -153,7 +194,11 @@ impl RuleSchema {
     if words.next().is_some() {
       return Err("za dużo słów".into());
     }
-    Ok(ModelField { name: name.to_string(), ty, shared })
+    Ok(ModelField {
+      name: name.to_string(),
+      ty,
+      shared,
+    })
   }
 
   /// Rozmiar struktury modelu cząstki w bajtach (układ WGSL: pola po kolei, wyrównane, rozmiar
@@ -170,14 +215,21 @@ impl RuleSchema {
 
   /// Bajty pól `shared`.
   pub fn shared_bytes(&self) -> u32 {
-    self.fields.iter().filter(|f| f.shared).map(|f| f.ty.size()).sum()
+    self
+      .fields
+      .iter()
+      .filter(|f| f.shared)
+      .map(|f| f.ty.size())
+      .sum()
   }
 
   /// Czy pola modelu da się zaalokować i skopiować silnikiem: co najmniej jedno pole (pusta struktura
   /// jest w WGSL błędem) i `shared` w granicy [`MAX_SHARED_BYTES`].
   pub fn validate_model(&self) -> Result<(), String> {
     if self.fields.is_empty() {
-      return Err(format!("reguły muszą zadeklarować co najmniej jedno pole modelu (`{FIELD_DIRECTIVE} nazwa: f32`)"));
+      return Err(format!(
+        "reguły muszą zadeklarować co najmniej jedno pole modelu (`{FIELD_DIRECTIVE} nazwa: f32`)"
+      ));
     }
     if self.shared_bytes() > MAX_SHARED_BYTES {
       return Err(format!(
@@ -191,14 +243,24 @@ impl RuleSchema {
   fn parse_option(line: &str) -> Result<OptionDecl, String> {
     let (head, choices) = line.split_once(':').ok_or("brak `:` przed wyborami")?;
     let mut words = head.split_whitespace();
-    let name = words.next().filter(|name| is_identifier(name)).ok_or("brak nazwy opcji")?.to_string();
+    let name = words
+      .next()
+      .filter(|name| is_identifier(name))
+      .ok_or("brak nazwy opcji")?
+      .to_string();
     let mut key = None;
     for word in words {
-      let letter = word.strip_prefix("key=").ok_or_else(|| format!("nieznane pole `{word}`"))?;
+      let letter = word
+        .strip_prefix("key=")
+        .ok_or_else(|| format!("nieznane pole `{word}`"))?;
       let mut chars = letter.chars();
       match (chars.next(), chars.next()) {
         (Some(c), None) if c.is_ascii_uppercase() && !RESERVED_KEYS.contains(&c) => key = Some(c),
-        _ => return Err(format!("klawisz `{letter}`: wielka litera poza {RESERVED_KEYS:?}")),
+        _ => {
+          return Err(format!(
+            "klawisz `{letter}`: wielka litera poza {RESERVED_KEYS:?}"
+          ));
+        }
       }
     }
     let choices = choices
@@ -214,7 +276,10 @@ impl RuleSchema {
         if flag.is_some_and(|flag| !is_identifier(flag)) {
           return Err(format!("zła flaga `{}`", flag.unwrap()));
         }
-        Ok(Choice { label: label.to_string(), flag: flag.map(str::to_string) })
+        Ok(Choice {
+          label: label.to_string(),
+          flag: flag.map(str::to_string),
+        })
       })
       .collect::<Result<Vec<_>, _>>()?;
     if choices.len() < 2 {
@@ -234,19 +299,30 @@ impl RuleSchema {
       .iter()
       .flat_map(|decl| {
         let chosen = options.choice(decl);
-        decl.choices.iter().filter_map(move |choice| choice.flag.clone().map(|flag| (flag, choice == chosen)))
+        decl
+          .choices
+          .iter()
+          .filter_map(move |choice| choice.flag.clone().map(|flag| (flag, choice == chosen)))
       })
       .collect()
   }
 
   /// Wszystkie kombinacje wyborów (do benchmarków wariantów).
   pub fn combinations(&self) -> Vec<SimOptions> {
-    self.options.iter().fold(vec![SimOptions::default()], |partial, decl| {
-      partial
-        .iter()
-        .flat_map(|options| decl.choices.iter().map(move |choice| options.clone().with(&decl.name, &choice.label)))
-        .collect()
-    })
+    self
+      .options
+      .iter()
+      .fold(vec![SimOptions::default()], |partial, decl| {
+        partial
+          .iter()
+          .flat_map(|options| {
+            decl
+              .choices
+              .iter()
+              .map(move |choice| options.clone().with(&decl.name, &choice.label))
+          })
+          .collect()
+      })
   }
 }
 
@@ -266,14 +342,22 @@ impl SimOptions {
   pub fn from_overrides(schema: &RuleSchema, overrides: &[String]) -> Result<SimOptions, String> {
     let mut options = SimOptions::default();
     for text in overrides {
-      let (name, choice) = text.split_once('=').ok_or_else(|| format!("`{text}`: oczekiwano nazwa=wybór"))?;
+      let (name, choice) = text
+        .split_once('=')
+        .ok_or_else(|| format!("`{text}`: oczekiwano nazwa=wybór"))?;
       let decl = schema.option(name).ok_or_else(|| {
         let known: Vec<_> = schema.options.iter().map(|o| o.name.as_str()).collect();
-        format!("reguły nie mają opcji `{name}` (mają: {})", known.join(", "))
+        format!(
+          "reguły nie mają opcji `{name}` (mają: {})",
+          known.join(", ")
+        )
       })?;
       if !decl.choices.iter().any(|c| c.label == choice) {
         let known: Vec<_> = decl.choices.iter().map(|c| c.label.as_str()).collect();
-        return Err(format!("opcja `{name}` nie ma wyboru `{choice}` (ma: {})", known.join(", ")));
+        return Err(format!(
+          "opcja `{name}` nie ma wyboru `{choice}` (ma: {})",
+          known.join(", ")
+        ));
       }
       options = options.with(name, choice);
     }
@@ -287,12 +371,19 @@ impl SimOptions {
 
   /// Aktualny wybór opcji.
   pub fn choice<'a>(&self, decl: &'a OptionDecl) -> &'a Choice {
-    self.value(&decl.name).and_then(|label| decl.choices.iter().find(|c| c.label == label)).unwrap_or(&decl.choices[0])
+    self
+      .value(&decl.name)
+      .and_then(|label| decl.choices.iter().find(|c| c.label == label))
+      .unwrap_or(&decl.choices[0])
   }
 
   /// Następny wybór opcji (cyklicznie), dla klawisza przełączającego.
   pub fn cycle(&mut self, decl: &OptionDecl) {
-    let current = decl.choices.iter().position(|c| c == self.choice(decl)).unwrap_or(0);
+    let current = decl
+      .choices
+      .iter()
+      .position(|c| c == self.choice(decl))
+      .unwrap_or(0);
     let next = &decl.choices[(current + 1) % decl.choices.len()];
     self.0.insert(decl.name.clone(), next.label.clone());
   }

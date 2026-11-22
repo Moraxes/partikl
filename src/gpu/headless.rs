@@ -55,7 +55,12 @@ pub struct Harness {
 }
 
 impl Harness {
-  pub fn new(options: SimOptions, spec: ParticleSpec, particles: Vec<GpuParticle>, world: Vec2) -> Option<Harness> {
+  pub fn new(
+    options: SimOptions,
+    spec: ParticleSpec,
+    particles: Vec<GpuParticle>,
+    world: Vec2,
+  ) -> Option<Harness> {
     Self::with_render(options, spec, particles, world, None)
   }
 
@@ -68,7 +73,14 @@ impl Harness {
     world: Vec2,
     offscreen: Option<Offscreen>,
   ) -> Option<Harness> {
-    Self::create(RuleSource::Builtin, options, spec, particles, world, offscreen)
+    Self::create(
+      RuleSource::Builtin,
+      options,
+      spec,
+      particles,
+      world,
+      offscreen,
+    )
   }
 
   /// Jak `new`, ale z innym źródłem reguł od startu. Pola modelu (a więc rozmiar buforów) zależą od
@@ -95,25 +107,42 @@ impl Harness {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
       let mut app = App::new();
       let plugins = DefaultPlugins
-        .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
-        .set(RenderPlugin { synchronous_pipeline_compilation: true, ..default() })
+        .set(WindowPlugin {
+          primary_window: None,
+          exit_condition: ExitCondition::DontExit,
+          ..default()
+        })
+        .set(RenderPlugin {
+          synchronous_pipeline_compilation: true,
+          ..default()
+        })
         .disable::<WinitPlugin>();
       // Render w tym samym wywołaniu `update` co świat główny: po `update` i `poll(Wait)` praca
       // kroków jest już wysłana i skończona (pomiar czasu w benchu tego wymaga). Tylko pętla
       // `real_time` zostawia potokowanie jak w aplikacji.
-      let plugins = if offscreen.is_some_and(|o| o.real_time) { plugins } else { plugins.disable::<PipelinedRenderingPlugin>() };
+      let plugins = if offscreen.is_some_and(|o| o.real_time) {
+        plugins
+      } else {
+        plugins.disable::<PipelinedRenderingPlugin>()
+      };
       app.add_plugins(plugins);
       // Jakość rysowania kamery offscreen jest też zasobem, który system `apply_render_quality`
       // stosuje co zmianę (bez tego domyślna nadpisałaby kamerę).
       app.insert_resource(offscreen.map(|o| o.quality).unwrap_or_default());
-      app.insert_resource(options).insert_resource(rules).insert_resource(spec).add_plugins(GpuPlugin);
+      app
+        .insert_resource(options)
+        .insert_resource(rules)
+        .insert_resource(spec)
+        .add_plugins(GpuPlugin);
       // Kroki liczy test, nie czas stały (chyba że `real_time`: zegar jak w aplikacji).
       if !offscreen.is_some_and(|o| o.real_time) {
         app.insert_resource(RenderInterpolation(false));
         app.insert_resource(Time::<Fixed>::from_seconds(1.0e9));
       }
       app.insert_resource(Initial(Some(particles), world, offscreen));
-      app.insert_resource(Request(None)).insert_resource(ImageRequest(None));
+      app
+        .insert_resource(Request(None))
+        .insert_resource(ImageRequest(None));
       app.add_systems(Startup, spawn_test_sim).add_systems(
         Update,
         (
@@ -123,7 +152,10 @@ impl Harness {
       );
       app.finish();
       app.cleanup();
-      Harness { apps: std::mem::take(app.sub_apps_mut()), _guard: guard }
+      Harness {
+        apps: std::mem::take(app.sub_apps_mut()),
+        _guard: guard,
+      }
     }));
     match result {
       Ok(harness) => Some(harness),
@@ -182,9 +214,17 @@ impl Harness {
       self.update();
     }
     let sim = self.world().resource::<GpuSim>().clone();
-    assert_eq!(particles.len(), sim.num_particles as usize, "inna liczba cząstek");
+    assert_eq!(
+      particles.len(),
+      sim.num_particles as usize,
+      "inna liczba cząstek"
+    );
     let buffer = ShaderBuffer::new(particles, bevy::asset::RenderAssetUsages::RENDER_WORLD);
-    self.world().resource_mut::<Assets<ShaderBuffer>>().insert(&sim.state, buffer).unwrap();
+    self
+      .world()
+      .resource_mut::<Assets<ShaderBuffer>>()
+      .insert(&sim.state, buffer)
+      .unwrap();
     self.world().resource_mut::<GpuSim>().state_epoch += 1;
     // Wysłanie nowego bufora (ekstrakcja i przygotowanie w świecie renderowania).
     self.update();
@@ -198,10 +238,22 @@ impl Harness {
       self.update();
     }
     let sim = self.world().resource::<GpuSim>().clone();
-    assert_eq!(size_of::<T>() * sim.num_particles as usize, sim.model_stride as usize * sim.num_particles as usize, "zły rozmiar modelu");
-    assert_eq!(model.len(), sim.num_particles as usize, "inna liczba cząstek");
+    assert_eq!(
+      size_of::<T>() * sim.num_particles as usize,
+      sim.model_stride as usize * sim.num_particles as usize,
+      "zły rozmiar modelu"
+    );
+    assert_eq!(
+      model.len(),
+      sim.num_particles as usize,
+      "inna liczba cząstek"
+    );
     let buffer = ShaderBuffer::new(model, bevy::asset::RenderAssetUsages::RENDER_WORLD);
-    self.world().resource_mut::<Assets<ShaderBuffer>>().insert(&sim.model, buffer).unwrap();
+    self
+      .world()
+      .resource_mut::<Assets<ShaderBuffer>>()
+      .insert(&sim.model, buffer)
+      .unwrap();
     self.update();
   }
 
@@ -231,7 +283,17 @@ impl Harness {
 
   pub fn update(&mut self) {
     self.apps.update();
-    self.apps.main.world().resource::<RenderDevice>().wgpu_device().poll(PollType::Wait { submission_index: None, timeout: None }).unwrap();
+    self
+      .apps
+      .main
+      .world()
+      .resource::<RenderDevice>()
+      .wgpu_device()
+      .poll(PollType::Wait {
+        submission_index: None,
+        timeout: None,
+      })
+      .unwrap();
   }
 
   /// Wykonuje `steps` kroków i czeka na ich zakończenie na GPU. Klatka wykonuje najwyżej
@@ -287,13 +349,26 @@ impl Harness {
   }
 
   fn step_chunk(&mut self, steps: u64) {
-    let before = self.world().resource::<GpuProgress>().0.load(Ordering::SeqCst);
+    let before = self
+      .world()
+      .resource::<GpuProgress>()
+      .0
+      .load(Ordering::SeqCst);
     // `GpuProgress` liczy podkroki GPU: takty × K.
     let gpu_steps = steps * self.world().resource::<Substeps>().get() as u64;
     self.world().resource_mut::<GpuParams>().step_count += steps;
     let deadline = Instant::now() + Duration::from_secs(120);
-    while self.world().resource::<GpuProgress>().0.load(Ordering::SeqCst) < before + gpu_steps {
-      assert!(Instant::now() < deadline, "GPU nie wykonał kroków w 120 s (pipeline się nie skompilował?)");
+    while self
+      .world()
+      .resource::<GpuProgress>()
+      .0
+      .load(Ordering::SeqCst)
+      < before + gpu_steps
+    {
+      assert!(
+        Instant::now() < deadline,
+        "GPU nie wykonał kroków w 120 s (pipeline się nie skompilował?)"
+      );
       self.update();
     }
   }
@@ -311,7 +386,10 @@ impl Harness {
     let state_bytes = self.read_buffer(|sim| sim.state.clone());
     let model_bytes = self.read_buffer(|sim| sim.model.clone());
     let state: Vec<GpuParticle> = bytemuck::cast_slice(&state_bytes).to_vec();
-    let model: Vec<T> = model_bytes.chunks_exact(size_of::<T>()).map(bytemuck::pod_read_unaligned).collect();
+    let model: Vec<T> = model_bytes
+      .chunks_exact(size_of::<T>())
+      .map(bytemuck::pod_read_unaligned)
+      .collect();
     assert_eq!(state.len(), model.len());
     // Model leży w tej samej kolejności co stan (siatki); do kolejności po id.
     let mut pairs: Vec<(GpuParticle, T)> = state.into_iter().zip(model).collect();
@@ -332,7 +410,9 @@ impl Harness {
     let deadline = Instant::now() + Duration::from_secs(120);
     let slot: Arc<Mutex<Option<Vec<u8>>>> = Arc::default();
     let handle = buffer(self.world().resource::<GpuSim>());
-    self.world().insert_resource(Request(Some((slot.clone(), handle))));
+    self
+      .world()
+      .insert_resource(Request(Some((slot.clone(), handle))));
     while slot.lock().unwrap().is_none() {
       assert!(Instant::now() < deadline, "brak odpowiedzi readbacku");
       self.update();
@@ -344,9 +424,14 @@ impl Harness {
   pub fn target_pixels(&mut self) -> Vec<u8> {
     let deadline = Instant::now() + Duration::from_secs(120);
     let slot: Arc<Mutex<Option<Vec<u8>>>> = Arc::default();
-    self.world().insert_resource(ImageRequest(Some(slot.clone())));
+    self
+      .world()
+      .insert_resource(ImageRequest(Some(slot.clone())));
     while slot.lock().unwrap().is_none() {
-      assert!(Instant::now() < deadline, "brak odpowiedzi readbacku obrazu");
+      assert!(
+        Instant::now() < deadline,
+        "brak odpowiedzi readbacku obrazu"
+      );
       self.update();
     }
     let bytes = slot.lock().unwrap().take().unwrap();
@@ -354,8 +439,16 @@ impl Harness {
     let size = self.world().resource::<OffscreenTarget>().1;
     let row = (size.x * 4) as usize;
     let stride = row.next_multiple_of(256);
-    assert_eq!(bytes.len(), stride * size.y as usize, "nieoczekiwany rozmiar odczytu obrazu");
-    bytes.chunks(stride).flat_map(|line| &line[..row]).copied().collect()
+    assert_eq!(
+      bytes.len(),
+      stride * size.y as usize,
+      "nieoczekiwany rozmiar odczytu obrazu"
+    );
+    bytes
+      .chunks(stride)
+      .flat_map(|line| &line[..row])
+      .copied()
+      .collect()
   }
 }
 
@@ -367,7 +460,11 @@ struct OffscreenTarget(Handle<Image>, UVec2);
 #[derive(Resource)]
 struct ImageRequest(Option<Arc<Mutex<Option<Vec<u8>>>>>);
 
-fn request_image(mut commands: Commands, mut request: ResMut<ImageRequest>, target: Res<OffscreenTarget>) {
+fn request_image(
+  mut commands: Commands,
+  mut request: ResMut<ImageRequest>,
+  target: Res<OffscreenTarget>,
+) {
   if let Some(sink) = request.0.take() {
     commands
       .spawn(ReadbackOnce::texture(target.0.clone()))
@@ -389,7 +486,10 @@ fn request_readback(mut commands: Commands, mut request: ResMut<Request>) {
 
 /// Panic z `bevy_render`, gdy nie ma adaptera (`GPU_NOT_FOUND_ERROR_MESSAGE`).
 fn is_missing_gpu(payload: &(dyn std::any::Any + Send)) -> bool {
-  let message = payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str));
+  let message = payload
+    .downcast_ref::<&str>()
+    .copied()
+    .or_else(|| payload.downcast_ref::<String>().map(String::as_str));
   message.is_some_and(|m| m.contains("Unable to find a GPU"))
 }
 
@@ -414,8 +514,22 @@ fn spawn_test_sim(
   };
   let world = initial.1;
   let analytic_aa = initial.2.is_some_and(|o| o.quality.analytic_aa);
-  let look = ParticleLook { size: 2.0, colors, analytic_aa };
-  spawn_sim(&mut commands, buffers, meshes, materials, initial.0.take().unwrap(), &spec, &schema, world, look);
+  let look = ParticleLook {
+    size: 2.0,
+    colors,
+    analytic_aa,
+  };
+  spawn_sim(
+    &mut commands,
+    buffers,
+    meshes,
+    materials,
+    initial.0.take().unwrap(),
+    &spec,
+    &schema,
+    world,
+    look,
+  );
   if let Some(Offscreen { size, quality, .. }) = initial.2 {
     let mut image = Image::new_target_texture(size.x, size.y, TextureFormat::Rgba8UnormSrgb, None);
     // Odczyt obrazu (`target_pixels`) kopiuje teksturę.
@@ -424,8 +538,14 @@ fn spawn_test_sim(
     commands.insert_resource(OffscreenTarget(target.clone(), size));
     // Cały świat na całym obrazie, więc cząstka ma ten sam rozmiar w pikselach co w aplikacji
     // na ekranie o tym rozmiarze (`size / world` pikseli na jednostkę).
-    spawn_camera(&mut commands, Some(target), ScalingMode::Fixed { width: world.x, height: world.y }, &quality);
+    spawn_camera(
+      &mut commands,
+      Some(target),
+      ScalingMode::Fixed {
+        width: world.x,
+        height: world.y,
+      },
+      &quality,
+    );
   }
 }
-
-

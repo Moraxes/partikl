@@ -29,11 +29,21 @@ pub struct Buffers {
 
 /// Parametry reguł na GPU: `dt` dzielony przez liczbę podkroków.
 fn gpu_params(spec: &ParticleSpec, substeps: Substeps) -> RuleParams {
-  RuleParams { dt: spec.params.dt / substeps.get() as f32, ..spec.params }
+  RuleParams {
+    dt: spec.params.dt / substeps.get() as f32,
+    ..spec.params
+  }
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn create(mut commands: Commands, sim: Res<GpuSim>, spec: Res<ParticleSpec>, substeps: Res<Substeps>, device: Res<RenderDevice>, queue: Res<RenderQueue>) {
+pub fn create(
+  mut commands: Commands,
+  sim: Res<GpuSim>,
+  spec: Res<ParticleSpec>,
+  substeps: Res<Substeps>,
+  device: Res<RenderDevice>,
+  queue: Res<RenderQueue>,
+) {
   let n = sim.num_particles as u64;
   let cells = sim.geometry.num_cells() as u64;
   let storage = |label: &str, size: u64| {
@@ -51,7 +61,10 @@ pub fn create(mut commands: Commands, sim: Res<GpuSim>, spec: Res<ParticleSpec>,
     sorted_model: storage("sorted_model", n * sim.model_stride as u64),
     cell_counts: storage("cell_counts", cells * 4),
     // Za komórkami sumy bloków sumy prefiksowej.
-    cell_offsets: storage("cell_offsets", (cells + (MAX_CELLS / SCAN_BLOCK) as u64) * 4),
+    cell_offsets: storage(
+      "cell_offsets",
+      (cells + (MAX_CELLS / SCAN_BLOCK) as u64) * 4,
+    ),
     next_counts: storage("next_counts", cells * 4),
     cell_ranks: storage("cell_ranks", n * 4),
     stats: storage("stats", stats::words(sim.num_particles) * 4),
@@ -88,11 +101,17 @@ pub fn upload_spec(
 ) {
   let matrix = spec.flat_matrix();
   if matrix.len() != (sim.num_types * sim.num_types) as usize {
-    error!("spec ma {} współczynników, symulacja {} typów: pomijam zapis", matrix.len(), sim.num_types);
+    error!(
+      "spec ma {} współczynników, symulacja {} typów: pomijam zapis",
+      matrix.len(),
+      sim.num_types
+    );
     return;
   }
   queue.write_buffer(&buffers.force_matrix, 0, bytemuck::cast_slice(&matrix));
   let mut bytes = encase::UniformBuffer::new(Vec::new());
-  bytes.write(&gpu_params(&spec, *substeps)).expect("RuleParams fits a Vec");
+  bytes
+    .write(&gpu_params(&spec, *substeps))
+    .expect("RuleParams fits a Vec");
   queue.write_buffer(&buffers.rule_params, 0, bytes.as_ref());
 }

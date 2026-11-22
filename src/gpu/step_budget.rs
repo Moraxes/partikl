@@ -39,7 +39,13 @@ pub struct StepBudget {
 
 impl Default for StepBudget {
   fn default() -> Self {
-    StepBudget { limit: MAX_STEPS_PER_FRAME, taken: 0, wanted: 0, taken_avg: 0.0, wanted_avg: 0.0 }
+    StepBudget {
+      limit: MAX_STEPS_PER_FRAME,
+      taken: 0,
+      wanted: 0,
+      taken_avg: 0.0,
+      wanted_avg: 0.0,
+    }
   }
 }
 
@@ -77,7 +83,11 @@ pub fn count_step(mut params: ResMut<GpuParams>, mut budget: ResMut<StepBudget>)
 }
 
 /// Koniec klatki: regulator limitu i wskaźnik prędkości symulacji.
-pub fn end_frame(time: Res<Time<Real>>, mut budget: ResMut<StepBudget>, mut diagnostics: Diagnostics) {
+pub fn end_frame(
+  time: Res<Time<Real>>,
+  mut budget: ResMut<StepBudget>,
+  mut diagnostics: Diagnostics,
+) {
   let dropped = budget.wanted > budget.taken;
   budget.limit = next_limit(budget.limit, time.delta_secs(), budget.taken, dropped);
   // Pauza (brak taktów) nie zmienia średnich, więc wskaźnik zostaje ostatnią wartością.

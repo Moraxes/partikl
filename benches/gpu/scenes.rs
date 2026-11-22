@@ -39,14 +39,26 @@ struct Blobs {
   coverage: f32,
 }
 
-const CLUSTER: Blobs = Blobs { radius: 100.0, coverage: 1.0 / 4.0 };
-const DENSE: Blobs = Blobs { radius: 60.0, coverage: 1.0 / 16.0 };
+const CLUSTER: Blobs = Blobs {
+  radius: 100.0,
+  coverage: 1.0 / 4.0,
+};
+const DENSE: Blobs = Blobs {
+  radius: 60.0,
+  coverage: 1.0 / 16.0,
+};
 /// Prędkości w plamach (na oś): małe, jak w osiadłym skupisku.
 const BLOB_SPEED: f32 = 10.0;
 
 impl Scene {
   /// Stan sceny (dla `Evolved`: stan startowy przed rozbiegiem).
-  pub fn particles(self, n: usize, types: usize, world: Vec2, rng: &mut impl Rng) -> Vec<GpuParticle> {
+  pub fn particles(
+    self,
+    n: usize,
+    types: usize,
+    world: Vec2,
+    rng: &mut impl Rng,
+  ) -> Vec<GpuParticle> {
     match self {
       Scene::Evolved | Scene::Uniform => initial_particles(n, types, world, rng),
       Scene::Clusters => blobs(&CLUSTER, n, types, world, rng),
@@ -55,10 +67,18 @@ impl Scene {
   }
 }
 
-fn blobs(blobs: &Blobs, n: usize, types: usize, world: Vec2, rng: &mut impl Rng) -> Vec<GpuParticle> {
+fn blobs(
+  blobs: &Blobs,
+  n: usize,
+  types: usize,
+  world: Vec2,
+  rng: &mut impl Rng,
+) -> Vec<GpuParticle> {
   let area = std::f32::consts::PI * blobs.radius * blobs.radius;
   let count = ((blobs.coverage * world.x * world.y / area).round() as usize).max(1);
-  let centers: Vec<Vec2> = (0..count).map(|_| (Vec2::new(rng.random(), rng.random()) - 0.5) * world).collect();
+  let centers: Vec<Vec2> = (0..count)
+    .map(|_| (Vec2::new(rng.random(), rng.random()) - 0.5) * world)
+    .collect();
   (0..n)
     .map(|id| {
       // Punkt jednostajnie w kole: promień ~ √u.
@@ -87,7 +107,9 @@ pub fn candidates_mean(particles: &[GpuParticle], world: Vec2) -> f64 {
   let g = Geometry::new(world);
   let (w, h) = (g.dims.x as i32, g.dims.y as i32);
   let cell = |p: &GpuParticle| {
-    let c = ((Vec2::from(p.pos) + world / 2.0) / g.cell_size).floor().as_ivec2();
+    let c = ((Vec2::from(p.pos) + world / 2.0) / g.cell_size)
+      .floor()
+      .as_ivec2();
     c.clamp(IVec2::ZERO, IVec2::new(w - 1, h - 1))
   };
   let mut counts = vec![0u64; (w * h) as usize];

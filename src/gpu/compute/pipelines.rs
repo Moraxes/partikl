@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::RenderApp;
 use bevy::render::extract_resource::ExtractResource;
-use bevy::shader::Shader;
 use bevy::render::render_resource::*;
+use bevy::shader::Shader;
 use bevy::shader::ShaderDefVal;
 
 use super::stats::GpuStats;
@@ -91,14 +91,22 @@ impl When {
 }
 
 const fn pass(entry: &'static str, file: ShaderFile, dispatch: Dispatch) -> Pass {
-  Pass { entry, file, dispatch, when: When::Always }
+  Pass {
+    entry,
+    file,
+    dispatch,
+    when: When::Always,
+  }
 }
 
 /// Budowa siatki w kolejności wykonania: po niej cząstki są w `sorted_*` w kolejności
 /// komórek, a `cell_offsets[c]` wskazuje początek komórki `c`.
 pub const GRID_PASSES: [Pass; 7] = [
   // next_counts[c] = liczba cząstek w komórce c, cell_ranks[i] = ranga (histogram z `state`)
-  Pass { when: When::Recount, ..pass("count", ShaderFile::Grid, Dispatch::Particles) },
+  Pass {
+    when: When::Recount,
+    ..pass("count", ShaderFile::Grid, Dispatch::Particles)
+  },
   // cell_counts = next_counts, next_counts = 0 (w zwykłym kroku histogram liczą siły poprzedniego kroku)
   pass("clear", ShaderFile::Grid, Dispatch::Cells),
   // cell_offsets = wykluczająca suma prefiksowa cell_counts (trzy przebiegi)
@@ -108,7 +116,10 @@ pub const GRID_PASSES: [Pass; 7] = [
   // sorted_hot, sorted_state w kolejności komórek (w komórce: kolejność rang)
   pass("scatter", ShaderFile::Grid, Dispatch::Particles),
   // w komórce: kolejność po id
-  Pass { when: When::Deterministic, ..pass("sort_cells", ShaderFile::Grid, Dispatch::Cells) },
+  Pass {
+    when: When::Deterministic,
+    ..pass("sort_cells", ShaderFile::Grid, Dispatch::Cells)
+  },
 ];
 
 /// Siły i całkowanie: zapisuje nowy stan cząstek. Wariant wg opcji (shader defs).
@@ -125,7 +136,10 @@ pub struct ShaderLibrary(pub Vec<Handle<Shader>>);
 
 impl ShaderLibrary {
   fn loaded(&self, assets: &AssetServer) -> bool {
-    self.0.iter().all(|handle| assets.is_loaded_with_dependencies(handle))
+    self
+      .0
+      .iter()
+      .all(|handle| assets.is_loaded_with_dependencies(handle))
   }
 }
 
@@ -142,7 +156,12 @@ pub struct Pipelines {
 }
 
 impl Pipelines {
-  fn queue(&self, cache: &PipelineCache, pass: &Pass, shader_defs: Vec<ShaderDefVal>) -> CachedComputePipelineId {
+  fn queue(
+    &self,
+    cache: &PipelineCache,
+    pass: &Pass,
+    shader_defs: Vec<ShaderDefVal>,
+  ) -> CachedComputePipelineId {
     cache.queue_compute_pipeline(ComputePipelineDescriptor {
       label: Some(Cow::Borrowed(pass.entry)),
       layout: vec![self.layout.clone()],
@@ -155,18 +174,36 @@ impl Pipelines {
 
   /// Wszystkie pipeline'y kroku z wariantem sił `variant` są skompilowane.
   pub fn ready(&self, cache: &PipelineCache, variant: &ForcesVariant) -> bool {
-    let Some(&forces) = self.forces.get(variant) else { return false };
-    !self.grid.is_empty() && self.grid.iter().copied().chain([forces]).all(|id| cache.get_compute_pipeline(id).is_some())
+    let Some(&forces) = self.forces.get(variant) else {
+      return false;
+    };
+    !self.grid.is_empty()
+      && self
+        .grid
+        .iter()
+        .copied()
+        .chain([forces])
+        .all(|id| cache.get_compute_pipeline(id).is_some())
   }
 }
 
 pub fn init(mut commands: Commands, asset_server: Res<AssetServer>) {
-  let shaders = [ShaderFile::Grid, ShaderFile::Scan, ShaderFile::Step, ShaderFile::Stats]
-    .into_iter()
-    .map(|file| (file.path(), asset_server.load(file.path())))
-    .collect();
-  let pipelines =
-    Pipelines { layout: bindings::layout(), grid: Vec::new(), forces: HashMap::new(), stats: None, shaders };
+  let shaders = [
+    ShaderFile::Grid,
+    ShaderFile::Scan,
+    ShaderFile::Step,
+    ShaderFile::Stats,
+  ]
+  .into_iter()
+  .map(|file| (file.path(), asset_server.load(file.path())))
+  .collect();
+  let pipelines = Pipelines {
+    layout: bindings::layout(),
+    grid: Vec::new(),
+    forces: HashMap::new(),
+    stats: None,
+    shaders,
+  };
   commands.insert_resource(pipelines);
 }
 
@@ -204,7 +241,10 @@ pub struct ForcesVariant {
 
 impl ForcesVariant {
   pub fn new(flags: &RuleFlags, num_types: u32) -> Self {
-    ForcesVariant { flags: flags.0.clone(), types: TypeClass::of(num_types) }
+    ForcesVariant {
+      flags: flags.0.clone(),
+      types: TypeClass::of(num_types),
+    }
   }
 }
 
@@ -223,7 +263,10 @@ pub fn queue_forces(
     return;
   }
   if pipelines.grid.is_empty() {
-    let grid = GRID_PASSES.iter().map(|pass| pipelines.queue(&cache, pass, vec![])).collect();
+    let grid = GRID_PASSES
+      .iter()
+      .map(|pass| pipelines.queue(&cache, pass, vec![]))
+      .collect();
     pipelines.grid = grid;
   }
   if gpu_stats.enabled && pipelines.stats.is_none() {
@@ -245,8 +288,14 @@ fn forces_defs(variant: &ForcesVariant) -> Vec<ShaderDefVal> {
     .iter()
     .map(|(flag, on)| ShaderDefVal::Bool(flag.clone().into(), *on))
     .chain([
-      ShaderDefVal::Bool("TYPES_AT_MOST_4".into(), variant.types == TypeClass::AtMost4),
-      ShaderDefVal::Bool("TYPES_AT_MOST_8".into(), variant.types == TypeClass::AtMost8),
+      ShaderDefVal::Bool(
+        "TYPES_AT_MOST_4".into(),
+        variant.types == TypeClass::AtMost4,
+      ),
+      ShaderDefVal::Bool(
+        "TYPES_AT_MOST_8".into(),
+        variant.types == TypeClass::AtMost8,
+      ),
     ])
     .collect()
 }

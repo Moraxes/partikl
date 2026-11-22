@@ -28,22 +28,19 @@ fn main() {
     .insert_resource(options)
     .insert_resource(rules)
     .insert_resource(program_args)
-    .add_plugins(
-      DefaultPlugins
-        .set(WindowPlugin {
-          primary_window: Some(Window {
-            position: WindowPosition::Automatic,
-            resize_constraints: Default::default(),
-            title: "partikl".to_string(),
-            resizable: false,
-            decorations: false,
-            mode: WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
-            transparent: false,
-            ..Default::default()
-          }),
-          ..Default::default()
-        }),
-    )
+    .add_plugins(DefaultPlugins.set(WindowPlugin {
+      primary_window: Some(Window {
+        position: WindowPosition::Automatic,
+        resize_constraints: Default::default(),
+        title: "partikl".to_string(),
+        resizable: false,
+        decorations: false,
+        mode: WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
+        transparent: false,
+        ..Default::default()
+      }),
+      ..Default::default()
+    }))
     .add_plugins((gpu::GpuPlugin, ui::UiPlugin));
   #[cfg(feature = "brp")]
   app.add_plugins(BrpExtrasPlugin::default());

@@ -18,19 +18,41 @@ use crate::spec::{Interaction, ParticleSpec};
 /// Błąd wczytania albo zapisu specyfikacji; komunikat zawiera ścieżkę pliku.
 #[derive(Debug)]
 pub enum LoadError {
-  Io { path: PathBuf, source: std::io::Error },
-  Parse { path: PathBuf, source: ron::error::SpannedError },
-  Write { path: PathBuf, source: ron::Error },
-  Malformed { path: PathBuf, reason: String },
+  Io {
+    path: PathBuf,
+    source: std::io::Error,
+  },
+  Parse {
+    path: PathBuf,
+    source: ron::error::SpannedError,
+  },
+  Write {
+    path: PathBuf,
+    source: ron::Error,
+  },
+  Malformed {
+    path: PathBuf,
+    reason: String,
+  },
 }
 
 impl Display for LoadError {
   fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
     match self {
       LoadError::Io { path, source } => write!(f, "{}: {source}", path.display()),
-      LoadError::Parse { path, source } => write!(f, "{}: nie da się wczytać specyfikacji: {source}", path.display()),
-      LoadError::Write { path, source } => write!(f, "{}: nie da się zapisać specyfikacji: {source}", path.display()),
-      LoadError::Malformed { path, reason } => write!(f, "{}: błędna specyfikacja: {reason}", path.display()),
+      LoadError::Parse { path, source } => write!(
+        f,
+        "{}: nie da się wczytać specyfikacji: {source}",
+        path.display()
+      ),
+      LoadError::Write { path, source } => write!(
+        f,
+        "{}: nie da się zapisać specyfikacji: {source}",
+        path.display()
+      ),
+      LoadError::Malformed { path, reason } => {
+        write!(f, "{}: błędna specyfikacja: {reason}", path.display())
+      }
     }
   }
 }
@@ -65,7 +87,9 @@ pub fn get_particle_spec(program_args: &args::ProgramArgs) -> Result<ParticleSpe
       // Ziarno u64 powtórzone na całą długość seeda (zachowuje dotychczasowe wyniki).
       let mut full_seed = [0u8; 32];
       full_seed
-        .chunks_exact_mut(8)
+        .as_chunks_mut::<8>()
+        .0
+        .iter_mut()
         .for_each(|chunk| chunk.copy_from_slice(&seed.to_le_bytes()));
       rand::rngs::SmallRng::from_seed(full_seed)
     } else {
@@ -83,24 +107,40 @@ pub fn get_particle_spec(program_args: &args::ProgramArgs) -> Result<ParticleSpe
 
 /// Wczytuje i sprawdza specyfikację z pliku `.ron`.
 pub fn load_spec(path: &Path) -> Result<ParticleSpec, LoadError> {
-  let file = File::open(path).map_err(|source| LoadError::Io { path: path.into(), source })?;
-  let parsed: SpecFile = Options::default()
-    .from_reader(file)
-    .map_err(|source| LoadError::Parse { path: path.into(), source })?;
+  let file = File::open(path).map_err(|source| LoadError::Io {
+    path: path.into(),
+    source,
+  })?;
+  let parsed: SpecFile =
+    Options::default()
+      .from_reader(file)
+      .map_err(|source| LoadError::Parse {
+        path: path.into(),
+        source,
+      })?;
   let spec = match parsed {
     SpecFile::Full(spec) => spec,
     SpecFile::Matrix(interactions) => ParticleSpec::new(interactions),
   };
-  validate_spec(&spec).map_err(|reason| LoadError::Malformed { path: path.into(), reason })?;
+  validate_spec(&spec).map_err(|reason| LoadError::Malformed {
+    path: path.into(),
+    reason,
+  })?;
   Ok(spec)
 }
 
 /// Zapisuje specyfikację (macierz i parametry reguł) do pliku `.ron`.
 pub fn dump_spec(path: &Path, spec: &ParticleSpec) -> Result<(), LoadError> {
-  let file = File::create(path).map_err(|source| LoadError::Io { path: path.into(), source })?;
+  let file = File::create(path).map_err(|source| LoadError::Io {
+    path: path.into(),
+    source,
+  })?;
   Options::default()
     .to_io_writer_pretty(file, spec, PrettyConfig::default())
-    .map_err(|source| LoadError::Write { path: path.into(), source })
+    .map_err(|source| LoadError::Write {
+      path: path.into(),
+      source,
+    })
 }
 
 fn validate_spec(spec: &ParticleSpec) -> Result<(), String> {
@@ -111,7 +151,9 @@ fn validate_spec(spec: &ParticleSpec) -> Result<(), String> {
   spec.params.validate()
 }
 
-fn validate_interaction_list(interactions: &[Interaction]) -> Result<(), MalformedInteractionError> {
+fn validate_interaction_list(
+  interactions: &[Interaction],
+) -> Result<(), MalformedInteractionError> {
   let total_interactions = interactions.len();
   interactions
     .iter()

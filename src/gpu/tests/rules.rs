@@ -18,7 +18,10 @@ fn setup() -> (ParticleSpec, Vec<GpuParticle>) {
 fn rules_from_a_file_match_the_builtin_ones() {
   let (spec, particles) = setup();
   let options = SimOptions::default();
-  let Some(mut builtin) = Harness::new(options.clone(), spec.clone(), particles.clone(), WORLD) else { return };
+  let Some(mut builtin) = Harness::new(options.clone(), spec.clone(), particles.clone(), WORLD)
+  else {
+    return;
+  };
   builtin.set_deterministic(true);
   let expected = builtin.run(3);
   // Harness trzyma blokadę GPU: drugi można utworzyć dopiero po zwolnieniu pierwszego.
@@ -40,9 +43,20 @@ fn saving_the_rules_file_reloads_the_module() {
   assert_ne!(frozen, builtin, "podmiana w źródle reguł nie zadziałała");
   let (spec, particles) = setup();
   let path = temp_rules("watched", &frozen);
-  let Some(mut harness) = Harness::with_rules(RuleSource::File(path.clone()), SimOptions::default(), spec, particles.clone(), WORLD) else { return };
+  let Some(mut harness) = Harness::with_rules(
+    RuleSource::File(path.clone()),
+    SimOptions::default(),
+    spec,
+    particles.clone(),
+    WORLD,
+  ) else {
+    return;
+  };
   let still = harness.run(1);
-  assert!(still.iter().zip(&particles).all(|(a, b)| a.pos == b.pos), "zamrożone reguły nie poruszają cząstek");
+  assert!(
+    still.iter().zip(&particles).all(|(a, b)| a.pos == b.pos),
+    "zamrożone reguły nie poruszają cząstek"
+  );
 
   std::fs::write(&path, builtin).unwrap();
   // Plik jest sprawdzany co pół sekundy.
@@ -51,7 +65,12 @@ fn saving_the_rules_file_reloads_the_module() {
     assert!(Instant::now() < deadline, "moduł nie przeładował się");
     std::thread::sleep(Duration::from_millis(100));
     harness.update();
-    if harness.run(1).iter().zip(&particles).any(|(a, b)| a.pos != b.pos) {
+    if harness
+      .run(1)
+      .iter()
+      .zip(&particles)
+      .any(|(a, b)| a.pos != b.pos)
+    {
       break;
     }
   }
@@ -62,9 +81,14 @@ fn saving_the_rules_file_reloads_the_module() {
 #[test]
 fn changing_model_fields_at_runtime_is_refused() {
   let (spec, particles) = setup();
-  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
+    return;
+  };
   let before = harness.run(1);
-  let path = temp_rules("fields", include_str!("../shaders/rules/diagnostic_rules.wesl"));
+  let path = temp_rules(
+    "fields",
+    include_str!("../shaders/rules/diagnostic_rules.wesl"),
+  );
   harness.set_rules(RuleSource::File(path));
   harness.update();
   // Gdyby moduł zmienił się na diagnostyczny, cząstki przestałyby się ruszać.
@@ -76,15 +100,21 @@ fn changing_model_fields_at_runtime_is_refused() {
 #[test]
 fn unreadable_rules_file_keeps_the_previous_module() {
   let (spec, particles) = setup();
-  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
+    return;
+  };
   let before = harness.run(1);
-  harness.set_rules(RuleSource::File(std::env::temp_dir().join("partikl-rules-does-not-exist.wesl")));
+  harness.set_rules(RuleSource::File(
+    std::env::temp_dir().join("partikl-rules-does-not-exist.wesl"),
+  ));
   harness.update();
   assert_eq!(harness.run(0), before);
 }
 
 #[test]
 fn missing_rules_file_is_a_load_error() {
-  let error = RuleSource::File(std::env::temp_dir().join("partikl-rules-nope.wesl")).read().err().expect("brak pliku");
+  let error = RuleSource::File(std::env::temp_dir().join("partikl-rules-nope.wesl"))
+    .read()
+    .expect_err("brak pliku");
   assert!(error.to_string().contains("partikl-rules-nope"));
 }

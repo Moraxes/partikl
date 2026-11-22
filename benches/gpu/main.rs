@@ -21,14 +21,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use arrow_array::{ArrayRef, Float32Array, RecordBatch, StringArray, UInt16Array, UInt32Array, UInt64Array};
-use partikl::gpu::{DEFAULT_MAX_CANDIDATES, MAX_STEPS_PER_FRAME, PassTimes};
+use arrow_array::{
+  ArrayRef, Float32Array, RecordBatch, StringArray, UInt16Array, UInt32Array, UInt64Array,
+};
 use arrow_schema::{DataType, Field, Schema};
 use clap::Parser;
+use partikl::gpu::{DEFAULT_MAX_CANDIDATES, MAX_STEPS_PER_FRAME, PassTimes};
 
 use common::{Output, WORLD, median, nanos, particle_spec, rng};
-use partikl::gpu::headless::Harness;
 use partikl::gpu::RuleSource;
+use partikl::gpu::headless::Harness;
 use partikl::options::SimOptions;
 use scenes::{Scene, candidates_mean};
 
@@ -92,30 +94,53 @@ struct Args {
 
 fn main() {
   let args = Args::parse();
-  let measured = args.measured.unwrap_or(if args.quick { QUICK_MEASURED } else { 10 });
+  let measured = args
+    .measured
+    .unwrap_or(if args.quick { QUICK_MEASURED } else { 10 });
   let seed = if args.quick { QUICK_SEED } else { args.seed };
-  let sizes = if args.quick { vec![QUICK_N] } else { args.sizes.clone() };
+  let sizes = if args.quick {
+    vec![QUICK_N]
+  } else {
+    args.sizes.clone()
+  };
   let passes: Vec<&str> = partikl::gpu::timing_entries().collect();
   let timed = !args.no_gpu_timing && args.batch <= MAX_STEPS_PER_FRAME as u64;
-  let schema = Arc::new(Schema::new(vec![
-    Field::new("n", DataType::UInt32, false),
-    Field::new("scene", DataType::Utf8, false),
-    Field::new("variant", DataType::Utf8, false),
-    Field::new("spec_seed", DataType::UInt64, false),
-    Field::new("step_offset", DataType::UInt32, false),
-    Field::new("candidates_mean", DataType::Float32, false),
-    Field::new("max_candidates", DataType::UInt32, false),
-    Field::new("substeps", DataType::UInt32, false),
-    Field::new("rep", DataType::UInt16, false),
-    Field::new("step_ns", DataType::UInt64, false),
-    Field::new("gpu_step_ns", DataType::UInt64, true),
-  ]
-  .into_iter()
-  .chain(passes.iter().map(|entry| Field::new(format!("gpu_{entry}_ns"), DataType::UInt64, true)))
-  .collect::<Vec<_>>()));
-  let mut output = Output::new("gpu", &args.out_dir, WORLD, args.warmup, measured, schema.clone());
+  let schema = Arc::new(Schema::new(
+    vec![
+      Field::new("n", DataType::UInt32, false),
+      Field::new("scene", DataType::Utf8, false),
+      Field::new("variant", DataType::Utf8, false),
+      Field::new("spec_seed", DataType::UInt64, false),
+      Field::new("step_offset", DataType::UInt32, false),
+      Field::new("candidates_mean", DataType::Float32, false),
+      Field::new("max_candidates", DataType::UInt32, false),
+      Field::new("substeps", DataType::UInt32, false),
+      Field::new("rep", DataType::UInt16, false),
+      Field::new("step_ns", DataType::UInt64, false),
+      Field::new("gpu_step_ns", DataType::UInt64, true),
+    ]
+    .into_iter()
+    .chain(
+      passes
+        .iter()
+        .map(|entry| Field::new(format!("gpu_{entry}_ns"), DataType::UInt64, true)),
+    )
+    .collect::<Vec<_>>(),
+  ));
+  let mut output = Output::new(
+    "gpu",
+    &args.out_dir,
+    WORLD,
+    args.warmup,
+    measured,
+    schema.clone(),
+  );
   let variants: Vec<SimOptions> = if args.all_variants {
-    RuleSource::Builtin.read().expect("wbudowane reguły").schema.combinations()
+    RuleSource::Builtin
+      .read()
+      .expect("wbudowane reguły")
+      .schema
+      .combinations()
   } else {
     vec![SimOptions::default()]
   };
@@ -157,13 +182,27 @@ fn main() {
           let start = Instant::now();
           harness.step(args.batch);
           times.push(nanos(start.elapsed()) / args.batch);
-          gpu.push(if timed { harness.take_gpu_times() } else { None });
+          gpu.push(if timed {
+            harness.take_gpu_times()
+          } else {
+            None
+          });
         }
         let samples = &times[args.warmup..];
         let gpu = &gpu[args.warmup..];
         // Nazwy wariantów jak dawniej (wyniki z poprzednich rewizji): nakładanie i `+average`.
-        let overlap = options.value("overlap").unwrap_or("spring").replace('_', " ");
-        let variant = format!("{overlap}{}", if options.value("average_forces").unwrap_or("on") == "on" { "+average" } else { "" });
+        let overlap = options
+          .value("overlap")
+          .unwrap_or("spring")
+          .replace('_', " ");
+        let variant = format!(
+          "{overlap}{}",
+          if options.value("average_forces").unwrap_or("on") == "on" {
+            "+average"
+          } else {
+            ""
+          }
+        );
         let rows = samples.len();
         let batch = RecordBatch::try_new(
           schema.clone(),
@@ -178,24 +217,46 @@ fn main() {
             Arc::new(UInt32Array::from(vec![args.substeps; rows])),
             Arc::new(UInt16Array::from((0..rows as u16).collect::<Vec<_>>())),
             Arc::new(UInt64Array::from(samples.to_vec())),
-            Arc::new(UInt64Array::from(gpu.iter().map(|t| t.as_ref().map(|t| t.total_ns() as u64)).collect::<Vec<_>>())),
+            Arc::new(UInt64Array::from(
+              gpu
+                .iter()
+                .map(|t| t.as_ref().map(|t| t.total_ns() as u64))
+                .collect::<Vec<_>>(),
+            )),
           ]
           .into_iter()
           .chain(passes.iter().map(|entry| {
-            Arc::new(UInt64Array::from(gpu.iter().map(|t| t.as_ref().map(|t| t.get(entry) as u64)).collect::<Vec<_>>()))
-              as ArrayRef
+            Arc::new(UInt64Array::from(
+              gpu
+                .iter()
+                .map(|t| t.as_ref().map(|t| t.get(entry) as u64))
+                .collect::<Vec<_>>(),
+            )) as ArrayRef
           }))
           .collect(),
         )
         .unwrap();
         output.write(&batch);
-        let micros = |values: Vec<f64>| if values.is_empty() { f64::NAN } else { median(&mut values.clone()) / 1000.0 };
+        let micros = |values: Vec<f64>| {
+          if values.is_empty() {
+            f64::NAN
+          } else {
+            median(&mut values.clone()) / 1000.0
+          }
+        };
         let gpu_times: Vec<&PassTimes> = gpu.iter().flatten().collect();
         let gpu_total = micros(gpu_times.iter().map(|t| t.total_ns()).collect());
         let forces = micros(gpu_times.iter().map(|t| t.get("forces")).collect());
-        let grid = micros(gpu_times.iter().map(|t| t.total_ns() - t.get("forces")).collect());
+        let grid = micros(
+          gpu_times
+            .iter()
+            .map(|t| t.total_ns() - t.get("forces"))
+            .collect(),
+        );
         let step = micros(samples.iter().map(|&t| t as f64).collect());
-        println!("{n:>9} {scene:<9} {variant:<16} {candidates:>9.0} {step:>9.1} {gpu_total:>9.1} {grid:>9.1} {forces:>9.1}");
+        println!(
+          "{n:>9} {scene:<9} {variant:<16} {candidates:>9.0} {step:>9.1} {gpu_total:>9.1} {grid:>9.1} {forces:>9.1}"
+        );
       }
     }
   }

@@ -14,8 +14,8 @@ use super::buffers::Buffers;
 use super::pipelines::{FORCES, ForcesVariant, GRID_PASSES, Pipelines, STATS};
 use super::stats::{GpuStats, Reader};
 use super::timing::{GpuTimings, Timer};
-use crate::gpu::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME, SamplingCap, Substeps};
 use crate::gpu::rules::RuleFlags;
+use crate::gpu::{GpuParams, GpuProgress, GpuSim, MAX_STEPS_PER_FRAME, SamplingCap, Substeps};
 
 /// Podkroki tej klatki. Świat główny tylko zwiększa `GpuParams::step_count` (takty); tu wykonujemy
 /// różnicę od ostatniej klatki, każdy takt jako `Substeps` podkroków GPU.
@@ -75,8 +75,13 @@ pub fn plan(
   cache: Res<PipelineCache>,
 ) {
   plan.count = 0;
-  let (Some(sim), Some(buffers)) = (sim, buffers) else { return };
-  let (Some(state), Some(model)) = (gpu_buffers.get(&sim.state), gpu_buffers.get(&sim.model)) else { return };
+  let (Some(sim), Some(buffers)) = (sim, buffers) else {
+    return;
+  };
+  let (Some(state), Some(model)) = (gpu_buffers.get(&sim.state), gpu_buffers.get(&sim.model))
+  else {
+    return;
+  };
   plan.variant = ForcesVariant::new(&flags, sim.num_types);
   plan.deterministic = params.deterministic;
   // Histogram następnego kroku liczą siły, więc nowe bufory i podmieniony stan (cząstki wskakują w
@@ -95,7 +100,10 @@ pub fn plan(
     return;
   }
   // Zaległość ponad `MAX_STEPS_PER_FRAME` (zacięcie) pomijamy.
-  let pending = params.step_count.saturating_sub(plan.done).min(MAX_STEPS_PER_FRAME as u64);
+  let pending = params
+    .step_count
+    .saturating_sub(plan.done)
+    .min(MAX_STEPS_PER_FRAME as u64);
   plan.done = params.step_count;
   if pending == 0 {
     return;
@@ -114,10 +122,19 @@ pub fn plan(
     plan.offsets.push(plan.uniforms.push(&engine));
   }
   plan.uniforms.write_buffer(&device, &queue);
-  let Some(uniforms) = plan.uniforms.binding() else { return };
+  let Some(uniforms) = plan.uniforms.binding() else {
+    return;
+  };
   // Bind group co klatkę: bufor uniformów może zmienić się przy zapisie.
   let layout = cache.get_bind_group_layout(&pipelines.layout);
-  plan.bind_group = Some(bindings::create_group(&device, &layout, uniforms, &state.buffer, &model.buffer, &buffers));
+  plan.bind_group = Some(bindings::create_group(
+    &device,
+    &layout,
+    uniforms,
+    &state.buffer,
+    &model.buffer,
+    &buffers,
+  ));
 }
 
 /// Dla każdego kroku planu: przebiegi siatki, potem siły. Zwykle jeden przebieg compute na
@@ -140,8 +157,12 @@ pub fn run(
   if let Some(timer) = timer.as_mut() {
     timer.resolve(context.command_encoder());
   }
-  let (Some(sim), Some(buffers)) = (sim, buffers) else { return };
-  let Some(bind_group) = &plan.bind_group else { return };
+  let (Some(sim), Some(buffers)) = (sim, buffers) else {
+    return;
+  };
+  let Some(bind_group) = &plan.bind_group else {
+    return;
+  };
   // Ponowne sprawdzenie: hot reload może unieważnić pipeline między `plan` a `run`.
   if plan.count == 0 || !pipelines.ready(&cache, &plan.variant) {
     return;
@@ -160,21 +181,33 @@ pub fn run(
     dispatches
   };
   let first_dispatches = dispatches_for(plan.recount_first);
-  let rest_dispatches =
-    if plan.recount_first { dispatches_for(false) } else { first_dispatches.clone() };
+  let rest_dispatches = if plan.recount_first {
+    dispatches_for(false)
+  } else {
+    first_dispatches.clone()
+  };
   if plan.recount_first {
     // `count` dolicza do `next_counts`, który po podmianie stanu zawiera stary histogram.
-    context.command_encoder().clear_buffer(&buffers.next_counts, 0, None);
+    context
+      .command_encoder()
+      .clear_buffer(&buffers.next_counts, 0, None);
   }
 
   let timed = timings.is_some_and(|t| t.enabled);
   match timer.filter(|t| timed && t.idle()) {
     None => {
       let encoder = context.command_encoder();
-      let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor { label: Some("partikl_step"), ..default() });
+      let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor {
+        label: Some("partikl_step"),
+        ..default()
+      });
       for (k, &offset) in plan.offsets.iter().enumerate() {
         pass.set_bind_group(0, bind_group, &[offset]);
-        for &(_, pipeline, groups) in if k == 0 { &first_dispatches } else { &rest_dispatches } {
+        for &(_, pipeline, groups) in if k == 0 {
+          &first_dispatches
+        } else {
+          &rest_dispatches
+        } {
           pass.set_pipeline(pipeline);
           pass.dispatch_workgroups(groups, 1, 1);
         }
@@ -188,15 +221,20 @@ pub fn run(
       let mut entries = Vec::new();
       for &(entry, pipeline, groups) in &first_dispatches {
         let writes = timer.writes(entries.len() as u32);
-        let mut pass =
-          encoder.begin_compute_pass(&ComputePassDescriptor { label: Some(entry), timestamp_writes: Some(writes) });
+        let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor {
+          label: Some(entry),
+          timestamp_writes: Some(writes),
+        });
         pass.set_bind_group(0, bind_group, &[first]);
         pass.set_pipeline(pipeline);
         pass.dispatch_workgroups(groups, 1, 1);
         entries.push(entry);
       }
       if !rest.is_empty() {
-        let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor { label: Some("partikl_step"), ..default() });
+        let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor {
+          label: Some("partikl_step"),
+          ..default()
+        });
         for &offset in rest {
           pass.set_bind_group(0, bind_group, &[offset]);
           for &(_, pipeline, groups) in &rest_dispatches {
@@ -213,12 +251,20 @@ pub fn run(
   // próbka odebrana. Wyłączone: ani przebiegu, ani kopii.
   let stats_on = gpu_stats.is_some_and(|s| s.enabled);
   if let Some(mut reader) = reader.filter(|r| stats_on && r.idle())
-    && let (Some(pipeline), Some(&last)) = (pipelines.stats.and_then(|id| cache.get_compute_pipeline(id)), plan.offsets.last())
+    && let (Some(pipeline), Some(&last)) = (
+      pipelines
+        .stats
+        .and_then(|id| cache.get_compute_pipeline(id)),
+      plan.offsets.last(),
+    )
   {
     let encoder = context.command_encoder();
     encoder.clear_buffer(&buffers.stats, 0, None);
     {
-      let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor { label: Some("partikl_stats"), ..default() });
+      let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor {
+        label: Some("partikl_stats"),
+        ..default()
+      });
       pass.set_bind_group(0, bind_group, &[last]);
       pass.set_pipeline(pipeline);
       pass.dispatch_workgroups(STATS.dispatch.groups(&sim), 1, 1);

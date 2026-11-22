@@ -22,17 +22,28 @@ pub fn input_app() -> App {
     .init_resource::<ButtonInput<MouseButton>>()
     .add_message::<MouseWheel>()
     .add_message::<MouseMotion>();
-  app.world_mut().spawn((Window::default(), PrimaryWindow, CursorOptions::default()));
+  app
+    .world_mut()
+    .spawn((Window::default(), PrimaryWindow, CursorOptions::default()));
   app
 }
 
 /// Kończy "klatkę" wejścia: zeruje `just_pressed`/`just_released`.
 pub fn clear_input(app: &mut App) {
-  app.world_mut().resource_mut::<ButtonInput<KeyCode>>().clear();
-  app.world_mut().resource_mut::<ButtonInput<MouseButton>>().clear();
+  app
+    .world_mut()
+    .resource_mut::<ButtonInput<KeyCode>>()
+    .clear();
+  app
+    .world_mut()
+    .resource_mut::<ButtonInput<MouseButton>>()
+    .clear();
 }
 
 /// Opcje wbudowanych reguł (jak w aplikacji domyślnie).
 pub fn builtin_schema() -> RuleSchema {
-  crate::gpu::RuleSource::Builtin.read().expect("wbudowane reguły").schema
+  crate::gpu::RuleSource::Builtin
+    .read()
+    .expect("wbudowane reguły")
+    .schema
 }

@@ -40,6 +40,10 @@ impl Material for ParticleMaterial {
   }
 
   fn alpha_mode(&self) -> AlphaMode {
-    if self.analytic_aa { AlphaMode::Blend } else { AlphaMode::Opaque }
+    if self.analytic_aa {
+      AlphaMode::Blend
+    } else {
+      AlphaMode::Opaque
+    }
   }
 }

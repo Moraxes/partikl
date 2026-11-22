@@ -3,14 +3,14 @@
 //! skalarna implementacja f64 (`tests.rs`).
 
 use bevy::asset::{RenderAssetUsages, embedded_asset, load_embedded_asset};
+use bevy::camera::visibility::NoFrustumCulling;
 use bevy::camera::{ClearColorConfig, Hdr, RenderTarget, ScalingMode};
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::mesh::PrimitiveTopology;
 use bevy::prelude::*;
+use bevy::render::RenderApp;
 use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
 use bevy::render::storage::ShaderBuffer;
-use bevy::camera::visibility::NoFrustumCulling;
-use bevy::render::RenderApp;
 use bevy::window::PrimaryWindow;
 use bytemuck::{Pod, Zeroable};
 use rand::prelude::*;
@@ -22,8 +22,8 @@ mod step_budget;
 pub use compute::RuleParams;
 pub use compute::stats::{GpuStats, SimStats};
 pub use compute::timing::{GpuTimings, PassTimes, entries as timing_entries};
-pub use step_budget::{SIM_SPEED, StepBudget, count_step};
 use step_budget::StepBudgetPlugin;
+pub use step_budget::{SIM_SPEED, StepBudget, count_step};
 pub mod headless;
 mod material;
 mod rules;
@@ -74,16 +74,24 @@ pub const MAX_CELLS: u32 = 256 * 256;
 impl Geometry {
   pub fn new(world: Vec2) -> Self {
     let dims_for = |side: f32| {
-      UVec2::new(((world.x / side).floor() as u32).max(MIN_CELLS), ((world.y / side).floor() as u32).max(MIN_CELLS))
+      UVec2::new(
+        ((world.x / side).floor() as u32).max(MIN_CELLS),
+        ((world.y / side).floor() as u32).max(MIN_CELLS),
+      )
     };
     // Najmniejszy bok, przy którym komórek jest nie więcej niż `MAX_CELLS`; pętla tylko dla
     // bardzo wydłużonych światów, w których `MIN_CELLS` podbija krótszą oś.
-    let mut side = (INTERACTION_RADIUS / GRID_REACH as f32).max((world.x * world.y / MAX_CELLS as f32).sqrt());
+    let mut side =
+      (INTERACTION_RADIUS / GRID_REACH as f32).max((world.x * world.y / MAX_CELLS as f32).sqrt());
     while dims_for(side).element_product() > MAX_CELLS {
       side *= 1.01;
     }
     let dims = dims_for(side);
-    Geometry { world, dims, cell_size: world / dims.as_vec2() }
+    Geometry {
+      world,
+      dims,
+      cell_size: world / dims.as_vec2(),
+    }
   }
 
   pub fn num_cells(&self) -> u32 {
@@ -93,11 +101,22 @@ impl Geometry {
 
 /// Stan startowy: pozycje jednostajne w świecie,
 /// prędkości z ±125, losowe typy.
-pub fn initial_particles(n: usize, types: usize, world: Vec2, rng: &mut impl Rng) -> Vec<GpuParticle> {
+pub fn initial_particles(
+  n: usize,
+  types: usize,
+  world: Vec2,
+  rng: &mut impl Rng,
+) -> Vec<GpuParticle> {
   (0..n)
     .map(|id| {
-      let pos = Vec2::new(rng.random::<f32>() * world.x - world.x / 2.0, rng.random::<f32>() * world.y - world.y / 2.0);
-      let velocity = Vec2::new(rng.random::<f32>() * 250.0 - 125.0, rng.random::<f32>() * 250.0 - 125.0);
+      let pos = Vec2::new(
+        rng.random::<f32>() * world.x - world.x / 2.0,
+        rng.random::<f32>() * world.y - world.y / 2.0,
+      );
+      let velocity = Vec2::new(
+        rng.random::<f32>() * 250.0 - 125.0,
+        rng.random::<f32>() * 250.0 - 125.0,
+      );
       GpuParticle {
         pos: pos.to_array(),
         vel: velocity.to_array(),
@@ -118,7 +137,11 @@ pub fn random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
       if hue > 360.0 {
         hue -= 360.0;
       }
-      Color::lch(0.5 + 0.5 * rng.random::<f32>(), 0.325 + 0.5 * rng.random::<f32>(), hue)
+      Color::lch(
+        0.5 + 0.5 * rng.random::<f32>(),
+        0.325 + 0.5 * rng.random::<f32>(),
+        hue,
+      )
     })
     .collect()
 }
@@ -173,7 +196,10 @@ impl SamplingCap {
   /// Następna wartość z `SAMPLING_CAPS`; po największej wraca do najmniejszej, a wartość spoza
   /// listy (z flagi) przechodzi do najbliższej większej.
   pub fn next(self) -> u32 {
-    SAMPLING_CAPS.into_iter().find(|&cap| cap > self.0).unwrap_or(SAMPLING_CAPS[0])
+    SAMPLING_CAPS
+      .into_iter()
+      .find(|&cap| cap > self.0)
+      .unwrap_or(SAMPLING_CAPS[0])
   }
 }
 
@@ -207,7 +233,10 @@ impl Substeps {
   /// Następna wartość z `SUBSTEP_CYCLE`; po największej wraca do najmniejszej, a wartość spoza
   /// cyklu przechodzi do najbliższej większej.
   pub fn next(self) -> u32 {
-    SUBSTEP_CYCLE.into_iter().find(|&k| k > self.0).unwrap_or(SUBSTEP_CYCLE[0])
+    SUBSTEP_CYCLE
+      .into_iter()
+      .find(|&k| k > self.0)
+      .unwrap_or(SUBSTEP_CYCLE[0])
   }
 }
 
@@ -270,10 +299,19 @@ impl Plugin for GpuPlugin {
         compute::GpuComputePlugin,
       ))
       // Bez okna (testy headless) stan dostarcza wywołujący przez `spawn_sim`.
-      .add_systems(Startup, init_gpu.run_if(any_with_component::<PrimaryWindow>))
+      .add_systems(
+        Startup,
+        init_gpu.run_if(any_with_component::<PrimaryWindow>),
+      )
       .init_resource::<RenderInterpolation>()
-      .add_systems(Update, apply_render_quality.run_if(resource_changed::<RenderQuality>))
-      .add_systems(Update, update_interpolation.run_if(resource_exists::<GpuSim>))
+      .add_systems(
+        Update,
+        apply_render_quality.run_if(resource_changed::<RenderQuality>),
+      )
+      .add_systems(
+        Update,
+        update_interpolation.run_if(resource_exists::<GpuSim>),
+      )
       .add_plugins(StepBudgetPlugin)
       .add_systems(FixedUpdate, count_step.run_if(in_state(SimState::Running)));
   }
@@ -308,7 +346,11 @@ fn update_interpolation(
   budget: Res<StepBudget>,
   mut materials: ResMut<Assets<ParticleMaterial>>,
 ) {
-  let lag = if enabled.0 { interpolation_lag(fixed.overstep_fraction(), budget.dropped()) } else { 0.0 };
+  let lag = if enabled.0 {
+    interpolation_lag(fixed.overstep_fraction(), budget.dropped())
+  } else {
+    0.0
+  };
   for (_, material) in materials.iter_mut() {
     material.params.lag = lag;
   }
@@ -338,11 +380,7 @@ fn apply_render_quality(
   }
   for (_, material) in materials.iter_mut() {
     material.analytic_aa = quality.analytic_aa;
-    material.params.analytic_aa = if quality.analytic_aa {
-      1.0
-    } else {
-      0.0
-    };
+    material.params.analytic_aa = if quality.analytic_aa { 1.0 } else { 0.0 };
   }
 }
 
@@ -367,10 +405,28 @@ fn init_gpu(
   let world = screen.get();
   info!("świat symulacji {world} (ekran)");
   let particles = initial_particles(args.num_particles, spec.interactions.len(), world, &mut rng);
-  let quality = RenderQuality { analytic_aa: args.antialias, hdr: args.hdr, ..RenderQuality::default() };
+  let quality = RenderQuality {
+    analytic_aa: args.antialias,
+    hdr: args.hdr,
+    ..RenderQuality::default()
+  };
   commands.insert_resource(quality);
-  let look = ParticleLook { size: args.particle_size, colors: random_colors(spec.interactions.len(), &mut rng), analytic_aa: quality.analytic_aa };
-  spawn_sim(&mut commands, buffers, meshes, materials, particles, &spec, &schema, world, look);
+  let look = ParticleLook {
+    size: args.particle_size,
+    colors: random_colors(spec.interactions.len(), &mut rng),
+    analytic_aa: quality.analytic_aa,
+  };
+  spawn_sim(
+    &mut commands,
+    buffers,
+    meshes,
+    materials,
+    particles,
+    &spec,
+    &schema,
+    world,
+    look,
+  );
 
   spawn_camera(&mut commands, None, ScalingMode::WindowSize, &quality);
 }
@@ -394,7 +450,12 @@ pub struct RenderQuality {
 
 impl Default for RenderQuality {
   fn default() -> Self {
-    RenderQuality { msaa: Msaa::Off, hdr: false, tonemapping: true, analytic_aa: false }
+    RenderQuality {
+      msaa: Msaa::Off,
+      hdr: false,
+      tonemapping: true,
+      analytic_aa: false,
+    }
   }
 }
 
@@ -407,14 +468,28 @@ pub struct ParticleLook {
 
 /// Kamera symulacji: rzut ortogonalny na czarnym tle. `target` `None` to okno główne; obraz to
 /// rysowanie bez okna (benchmark renderu).
-pub fn spawn_camera(commands: &mut Commands, target: Option<Handle<Image>>, scaling_mode: ScalingMode, quality: &RenderQuality) {
+pub fn spawn_camera(
+  commands: &mut Commands,
+  target: Option<Handle<Image>>,
+  scaling_mode: ScalingMode,
+  quality: &RenderQuality,
+) {
   let mut camera = commands.spawn((
-    MainCamera { zoom_base: 1.125, zoom_exponent: 1 },
+    MainCamera {
+      zoom_base: 1.125,
+      zoom_exponent: 1,
+    },
     Camera3d::default(),
-    Camera { clear_color: ClearColorConfig::Custom(Color::BLACK), ..Default::default() },
+    Camera {
+      clear_color: ClearColorConfig::Custom(Color::BLACK),
+      ..Default::default()
+    },
     quality.msaa,
     Transform::from_xyz(0.0, 0.0, 1000.0).looking_at(Vec3::ZERO, Vec3::Y),
-    Projection::from(OrthographicProjection { scaling_mode, ..OrthographicProjection::default_3d() }),
+    Projection::from(OrthographicProjection {
+      scaling_mode,
+      ..OrthographicProjection::default_3d()
+    }),
   ));
   if quality.hdr {
     camera.insert(Hdr);
@@ -442,13 +517,26 @@ pub fn spawn_sim(
   look: ParticleLook,
 ) -> Handle<ShaderBuffer> {
   let n = particles.len();
-  let colors: Vec<[f32; 4]> = look.colors.into_iter().map(|color| LinearRgba::from(color).to_f32_array()).collect();
-  let state = buffers.add(ShaderBuffer::new(particles, RenderAssetUsages::RENDER_WORLD));
+  let colors: Vec<[f32; 4]> = look
+    .colors
+    .into_iter()
+    .map(|color| LinearRgba::from(color).to_f32_array())
+    .collect();
+  let state = buffers.add(ShaderBuffer::new(
+    particles,
+    RenderAssetUsages::RENDER_WORLD,
+  ));
   let model_stride = schema.model_stride();
-  let model = buffers.add(ShaderBuffer::new(vec![0u32; n * model_stride as usize / 4], RenderAssetUsages::RENDER_WORLD));
+  let model = buffers.add(ShaderBuffer::new(
+    vec![0u32; n * model_stride as usize / 4],
+    RenderAssetUsages::RENDER_WORLD,
+  ));
   let colors = buffers.add(ShaderBuffer::new(colors, RenderAssetUsages::RENDER_WORLD));
 
-  let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD);
+  let mut mesh = Mesh::new(
+    PrimitiveTopology::TriangleList,
+    RenderAssetUsages::RENDER_WORLD,
+  );
   mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, particle_quads(n));
   let material = materials.add(ParticleMaterial {
     particles: state.clone(),
@@ -462,7 +550,11 @@ pub fn spawn_sim(
     },
     analytic_aa: look.analytic_aa,
   });
-  commands.spawn((Mesh3d(meshes.add(mesh)), MeshMaterial3d(material), NoFrustumCulling));
+  commands.spawn((
+    Mesh3d(meshes.add(mesh)),
+    MeshMaterial3d(material),
+    NoFrustumCulling,
+  ));
 
   commands.insert_resource(GpuSim {
     state: state.clone(),
@@ -477,7 +569,14 @@ pub fn spawn_sim(
 }
 
 /// Narożniki quada (dwa trójkąty) w jednostkach promienia cząstki.
-const QUAD: [[f32; 2]; 6] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
+const QUAD: [[f32; 2]; 6] = [
+  [-1.0, -1.0],
+  [1.0, -1.0],
+  [1.0, 1.0],
+  [-1.0, -1.0],
+  [1.0, 1.0],
+  [-1.0, 1.0],
+];
 
 /// Wierzchołki do rysowania: 6 na cząstkę, `(narożnik.x, narożnik.y, numer cząstki)`. Pozycję
 /// cząstki czyta vertex shader z bufora stanu. Numer jest w wierzchołku, bo `vertex_index`
@@ -485,7 +584,9 @@ const QUAD: [[f32; 2]; 6] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, -1.0]
 fn particle_quads(n: usize) -> Vec<[f32; 3]> {
   // Numer w f32 jest dokładny do 2^24.
   assert!(n <= 1 << 24, "za dużo cząstek do rysowania: {n}");
-  (0..n).flat_map(|i| QUAD.map(|[x, y]| [x, y, i as f32])).collect()
+  (0..n)
+    .flat_map(|i| QUAD.map(|[x, y]| [x, y, i as f32]))
+    .collect()
 }
 
 #[cfg(test)]

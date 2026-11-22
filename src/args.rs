@@ -99,14 +99,19 @@ pub struct ProgramArgs {
 fn parse_substeps(value: &str) -> Result<u32, String> {
   match value.parse::<u32>() {
     Ok(k) if SUBSTEP_CYCLE.contains(&k) => Ok(k),
-    _ => Err(format!("`{value}`: dozwolone wartości to {SUBSTEP_CYCLE:?}")),
+    _ => Err(format!(
+      "`{value}`: dozwolone wartości to {SUBSTEP_CYCLE:?}"
+    )),
   }
 }
 
 impl ProgramArgs {
   /// Źródło modułu reguł.
   pub fn rule_source(&self) -> RuleSource {
-    self.rules.clone().map_or(RuleSource::Builtin, RuleSource::File)
+    self
+      .rules
+      .clone()
+      .map_or(RuleSource::Builtin, RuleSource::File)
   }
 }
 

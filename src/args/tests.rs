@@ -9,7 +9,13 @@ fn parse(args: &[&str]) -> Result<ProgramArgs, clap::Error> {
 
 #[test]
 fn options_are_repeatable_and_checked_against_the_rules() {
-  let args = parse(&["--option", "overlap=resolve", "--option", "average_forces=off"]).unwrap();
+  let args = parse(&[
+    "--option",
+    "overlap=resolve",
+    "--option",
+    "average_forces=off",
+  ])
+  .unwrap();
   let schema = args.rule_source().read().unwrap().schema;
   let options = SimOptions::from_overrides(&schema, &args.options).unwrap();
   assert_eq!(options.value("overlap"), Some("resolve"));
@@ -23,10 +29,16 @@ fn options_are_repeatable_and_checked_against_the_rules() {
 fn substeps_flag_accepts_only_one_two_or_four() {
   assert_eq!(parse(&[]).unwrap().substeps, 1);
   for k in ["1", "2", "4"] {
-    assert_eq!(parse(&["--substeps", k]).unwrap().substeps, k.parse::<u32>().unwrap());
+    assert_eq!(
+      parse(&["--substeps", k]).unwrap().substeps,
+      k.parse::<u32>().unwrap()
+    );
   }
   for bad in ["0", "3", "8", "x"] {
-    assert!(parse(&["--substeps", bad]).is_err(), "{bad} powinno być odrzucone");
+    assert!(
+      parse(&["--substeps", bad]).is_err(),
+      "{bad} powinno być odrzucone"
+    );
   }
 }
 

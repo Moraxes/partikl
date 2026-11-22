@@ -34,7 +34,11 @@ pub fn rng(seed: u64) -> StdRng {
 pub fn particle_spec(types: usize, seed: u64) -> ParticleSpec {
   let mut rng = rng(seed);
   let interactions = (0..types)
-    .map(|_| Interaction { force_coeffs: (0..types).map(|_| rng.random_range(-500.0..500.0)).collect() })
+    .map(|_| Interaction {
+      force_coeffs: (0..types)
+        .map(|_| rng.random_range(-500.0..500.0))
+        .collect(),
+    })
     .collect();
   ParticleSpec::new(interactions)
 }
@@ -46,17 +50,28 @@ pub fn nanos(d: Duration) -> u64 {
 pub fn median(values: &mut [f64]) -> f64 {
   values.sort_by(|a, b| a.total_cmp(b));
   let m = values.len() / 2;
-  if values.len().is_multiple_of(2) { (values[m - 1] + values[m]) / 2.0 } else { values[m] }
+  if values.len().is_multiple_of(2) {
+    (values[m - 1] + values[m]) / 2.0
+  } else {
+    values[m]
+  }
 }
 
 /// Commit z flagą `-dirty`, jeśli drzewo ma niezatwierdzone zmiany.
 pub fn git_revision() -> String {
-  let run = |args: &[&str]| Command::new("git").args(args).output().ok().filter(|o| o.status.success());
+  let run = |args: &[&str]| {
+    Command::new("git")
+      .args(args)
+      .output()
+      .ok()
+      .filter(|o| o.status.success())
+  };
   let Some(hash) = run(&["rev-parse", "--short", "HEAD"]) else {
     return "unknown".into();
   };
   let hash = String::from_utf8_lossy(&hash.stdout).trim().to_string();
-  let dirty = run(&["status", "--porcelain", "--untracked-files=no"]).is_some_and(|o| !o.stdout.is_empty());
+  let dirty =
+    run(&["status", "--porcelain", "--untracked-files=no"]).is_some_and(|o| !o.stdout.is_empty());
   if dirty { format!("{hash}-dirty") } else { hash }
 }
 
@@ -69,10 +84,20 @@ pub struct Output {
 
 impl Output {
   /// `world`, `warmup` i `measured` trafiają do metadanych pliku (opis przebiegu).
-  pub fn new(bench: &str, out_dir: &Path, world: Vec2, warmup: usize, measured: usize, schema: SchemaRef) -> Self {
+  pub fn new(
+    bench: &str,
+    out_dir: &Path,
+    world: Vec2,
+    warmup: usize,
+    measured: usize,
+    schema: SchemaRef,
+  ) -> Self {
     fs::create_dir_all(out_dir).expect("cannot create output directory");
     let started = chrono::Local::now();
-    let path = out_dir.join(format!("{bench}-{}.parquet", started.format("%Y-%m-%d-%H-%M-%S")));
+    let path = out_dir.join(format!(
+      "{bench}-{}.parquet",
+      started.format("%Y-%m-%d-%H-%M-%S")
+    ));
     let run = Run {
       bench: bench.to_string(),
       revision: git_revision(),

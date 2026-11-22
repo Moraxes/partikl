@@ -1,14 +1,18 @@
 use super::*;
 
 fn temp_file(name: &str, contents: &str) -> PathBuf {
-  let path = std::env::temp_dir().join(format!("partikl-loading-{}-{name}.ron", std::process::id()));
+  let path =
+    std::env::temp_dir().join(format!("partikl-loading-{}-{name}.ron", std::process::id()));
   std::fs::write(&path, contents).unwrap();
   path
 }
 
 #[test]
 fn legacy_matrix_list_gets_default_params() {
-  let path = temp_file("legacy", "[(force_coeffs: [1.0, 2.0]), (force_coeffs: [3.0, 4.0])]");
+  let path = temp_file(
+    "legacy",
+    "[(force_coeffs: [1.0, 2.0]), (force_coeffs: [3.0, 4.0])]",
+  );
   let spec = load_spec(&path).unwrap();
   assert_eq!(spec.flat_matrix(), [1.0, 2.0, 3.0, 4.0]);
   assert_eq!(spec.params, crate::gpu::RuleParams::default());
@@ -16,15 +20,28 @@ fn legacy_matrix_list_gets_default_params() {
 
 #[test]
 fn partial_params_keep_defaults() {
-  let path = temp_file("partial", "(interactions: [(force_coeffs: [5.0])], params: (friction: 0.5))");
+  let path = temp_file(
+    "partial",
+    "(interactions: [(force_coeffs: [5.0])], params: (friction: 0.5))",
+  );
   let spec = load_spec(&path).unwrap();
   assert_eq!(spec.params.friction, 0.5);
-  assert_eq!(spec.params.repulsion_radius, crate::gpu::RuleParams::default().repulsion_radius);
+  assert_eq!(
+    spec.params.repulsion_radius,
+    crate::gpu::RuleParams::default().repulsion_radius
+  );
 }
 
 #[test]
 fn dump_round_trips() {
-  let mut spec = ParticleSpec::new(vec![Interaction { force_coeffs: vec![1.5, -2.0] }, Interaction { force_coeffs: vec![0.0, 4.0] }]);
+  let mut spec = ParticleSpec::new(vec![
+    Interaction {
+      force_coeffs: vec![1.5, -2.0],
+    },
+    Interaction {
+      force_coeffs: vec![0.0, 4.0],
+    },
+  ]);
   spec.params.friction = 0.25;
   let path = temp_file("dump", "");
   dump_spec(&path, &spec).unwrap();
@@ -43,15 +60,33 @@ fn errors_name_the_file_and_do_not_panic() {
   assert!(matches!(error, LoadError::Parse { .. }));
   assert!(error.to_string().contains("partikl-loading-"));
 
-  let ragged = temp_file("ragged", "[(force_coeffs: [1.0, 2.0]), (force_coeffs: [3.0])]");
-  assert!(matches!(load_spec(&ragged), Err(LoadError::Malformed { .. })));
+  let ragged = temp_file(
+    "ragged",
+    "[(force_coeffs: [1.0, 2.0]), (force_coeffs: [3.0])]",
+  );
+  assert!(matches!(
+    load_spec(&ragged),
+    Err(LoadError::Malformed { .. })
+  ));
 
   let empty = temp_file("empty", "[]");
-  assert!(matches!(load_spec(&empty), Err(LoadError::Malformed { .. })));
+  assert!(matches!(
+    load_spec(&empty),
+    Err(LoadError::Malformed { .. })
+  ));
 
-  let unknown = temp_file("unknown", "(interactions: [(force_coeffs: [1.0])], params: (frikcja: 1.0))");
+  let unknown = temp_file(
+    "unknown",
+    "(interactions: [(force_coeffs: [1.0])], params: (frikcja: 1.0))",
+  );
   assert!(matches!(load_spec(&unknown), Err(LoadError::Parse { .. })));
 
-  let too_wide = temp_file("wide", "(interactions: [(force_coeffs: [1.0])], params: (kernel_width: 100.0))");
-  assert!(matches!(load_spec(&too_wide), Err(LoadError::Malformed { .. })));
+  let too_wide = temp_file(
+    "wide",
+    "(interactions: [(force_coeffs: [1.0])], params: (kernel_width: 100.0))",
+  );
+  assert!(matches!(
+    load_spec(&too_wide),
+    Err(LoadError::Malformed { .. })
+  ));
 }

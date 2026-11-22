@@ -10,8 +10,8 @@ use bevy::render::render_resource::binding_types::{storage_buffer_sized, uniform
 use bevy::render::render_resource::*;
 use bevy::render::renderer::RenderDevice;
 
-use super::{EngineUniforms, RuleParams};
 use super::buffers::Buffers;
+use super::{EngineUniforms, RuleParams};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
@@ -98,7 +98,10 @@ impl Binding {
 }
 
 pub fn layout() -> BindGroupLayoutDescriptor {
-  let entries: Vec<_> = Binding::ALL.into_iter().map(Binding::layout_entry).collect();
+  let entries: Vec<_> = Binding::ALL
+    .into_iter()
+    .map(Binding::layout_entry)
+    .collect();
   BindGroupLayoutDescriptor::new("partikl_sim", &entries)
 }
 

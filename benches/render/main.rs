@@ -19,14 +19,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use arrow_array::{ArrayRef, Float32Array, RecordBatch, StringArray, UInt16Array, UInt32Array, UInt64Array};
+use arrow_array::{
+  ArrayRef, Float32Array, RecordBatch, StringArray, UInt16Array, UInt32Array, UInt64Array,
+};
 use arrow_schema::{DataType, Field, Schema};
 use bevy::prelude::*;
 use clap::Parser;
 
 use common::{Output, median, nanos, particle_spec, rng};
-use partikl::gpu::{DEFAULT_MAX_CANDIDATES, RenderQuality};
 use partikl::gpu::headless::{Harness, Offscreen};
+use partikl::gpu::{DEFAULT_MAX_CANDIDATES, RenderQuality};
 use partikl::options::SimOptions;
 use scenes::{Scene, candidates_mean};
 
@@ -122,8 +124,13 @@ fn msaa(samples: u8) -> Msaa {
 }
 
 /// Iloczyn trzech list (wszystkie kombinacje).
-fn iproduct<'a, A, B, C>(a: &'a [A], b: &'a [B], c: &'a [C]) -> impl Iterator<Item = (&'a A, &'a B, &'a C)> {
-  a.iter().flat_map(move |x| b.iter().flat_map(move |y| c.iter().map(move |z| (x, y, z))))
+fn iproduct<'a, A, B, C>(
+  a: &'a [A],
+  b: &'a [B],
+  c: &'a [C],
+) -> impl Iterator<Item = (&'a A, &'a B, &'a C)> {
+  a.iter()
+    .flat_map(move |x| b.iter().flat_map(move |y| c.iter().map(move |z| (x, y, z))))
 }
 
 /// Zapisuje ostatnią zrenderowaną klatkę jako PNG.
@@ -133,13 +140,21 @@ fn save_screenshot(harness: &mut Harness, dir: &std::path::Path, name: &str) {
   std::fs::create_dir_all(dir).expect("cannot create screenshot directory");
   let pixels = harness.target_pixels();
   let image = Image::new(
-    Extent3d { width: TARGET.x, height: TARGET.y, depth_or_array_layers: 1 },
+    Extent3d {
+      width: TARGET.x,
+      height: TARGET.y,
+      depth_or_array_layers: 1,
+    },
     TextureDimension::D2,
     pixels,
     TextureFormat::Rgba8UnormSrgb,
     RenderAssetUsages::default(),
   );
-  image.try_into_dynamic().expect("PNG").save(dir.join(name)).expect("cannot save screenshot");
+  image
+    .try_into_dynamic()
+    .expect("PNG")
+    .save(dir.join(name))
+    .expect("cannot save screenshot");
 }
 
 /// Wycinek `w`×`h` od `(x0, y0)` powiększony `scale` razy (najbliższy sąsiad), RGBA8.
@@ -171,13 +186,21 @@ fn save_png(path: &std::path::Path, width: u32, height: u32, rgba: Vec<u8>) {
   use bevy::asset::RenderAssetUsages;
   use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
   let image = Image::new(
-    Extent3d { width, height, depth_or_array_layers: 1 },
+    Extent3d {
+      width,
+      height,
+      depth_or_array_layers: 1,
+    },
     TextureDimension::D2,
     rgba,
     TextureFormat::Rgba8UnormSrgb,
     RenderAssetUsages::default(),
   );
-  image.try_into_dynamic().expect("PNG").save(path).expect("cannot save image");
+  image
+    .try_into_dynamic()
+    .expect("PNG")
+    .save(path)
+    .expect("cannot save image");
 }
 
 /// Galeria porównań wyglądu: jeden stan (po rozbiegu), rysowany w parach wariantów.
@@ -188,13 +211,27 @@ fn gallery(args: &Args, dir: &std::path::Path) {
   let spec = || particle_spec(args.types, args.seed);
   let initial = Scene::Uniform.particles(n, args.types, WORLD, &mut rng(args.seed));
   // Rozbieg: stan z prawdziwej dynamiki (struktury), potem ten sam stan dla każdego wariantu.
-  let Some(mut harness) = Harness::new(options.clone(), spec(), initial, WORLD) else { return };
+  let Some(mut harness) = Harness::new(options.clone(), spec(), initial, WORLD) else {
+    return;
+  };
   harness.set_max_candidates(args.max_candidates);
   let state = harness.run(args.gallery_steps);
   drop(harness);
   let render = |quality: RenderQuality| -> Vec<u8> {
-    let offscreen = Offscreen { size: TARGET, quality, app_colors: true, real_time: false };
-    let mut harness = Harness::with_render(options.clone(), spec(), state.clone(), WORLD, Some(offscreen)).expect("GPU");
+    let offscreen = Offscreen {
+      size: TARGET,
+      quality,
+      app_colors: true,
+      real_time: false,
+    };
+    let mut harness = Harness::with_render(
+      options.clone(),
+      spec(),
+      state.clone(),
+      WORLD,
+      Some(offscreen),
+    )
+    .expect("GPU");
     harness.set_max_candidates(args.max_candidates);
     for _ in 0..6 {
       harness.update();
@@ -204,7 +241,14 @@ fn gallery(args: &Args, dir: &std::path::Path) {
   let base = RenderQuality::default();
   let pairs = [
     ("ldr_vs_hdr", base, RenderQuality { hdr: true, ..base }),
-    ("noaa_vs_aa", base, RenderQuality { analytic_aa: true, ..base }),
+    (
+      "noaa_vs_aa",
+      base,
+      RenderQuality {
+        analytic_aa: true,
+        ..base
+      },
+    ),
   ];
   // Środek obrazu: 900×700 pikseli fizycznych w skali 1:1, 225×175 w skali 4×.
   let (cx, cy) = (TARGET.x / 2, TARGET.y / 2);
@@ -212,7 +256,10 @@ fn gallery(args: &Args, dir: &std::path::Path) {
     let (a, b) = (render(left), render(right));
     for (scale, w, h) in [(1u32, 900u32, 700u32), (4, 225, 175)] {
       let (x0, y0) = (cx - w / 2, cy - h / 2);
-      let (pa, pb) = (panel(&a, x0, y0, w, h, scale), panel(&b, x0, y0, w, h, scale));
+      let (pa, pb) = (
+        panel(&a, x0, y0, w, h, scale),
+        panel(&b, x0, y0, w, h, scale),
+      );
       let (image, width) = side_by_side(&pa, &pb, w * scale, h * scale);
       let path = dir.join(format!("{name}_{scale}x.png"));
       save_png(&path, width, h * scale, image);
@@ -227,7 +274,9 @@ fn main() {
     gallery(&args, dir);
     return;
   }
-  let measured = args.measured.unwrap_or(if args.quick { QUICK_MEASURED } else { 60 });
+  let measured = args
+    .measured
+    .unwrap_or(if args.quick { QUICK_MEASURED } else { 60 });
   let schema = Arc::new(Schema::new(vec![
     Field::new("n", DataType::UInt32, false),
     Field::new("scene", DataType::Utf8, false),
@@ -239,9 +288,19 @@ fn main() {
     Field::new("frame_ns", DataType::UInt64, false),
     Field::new("sim_speed", DataType::Float32, true),
   ]));
-  let mut output = Output::new("render", &args.out_dir, WORLD, args.warmup, measured, schema.clone());
+  let mut output = Output::new(
+    "render",
+    &args.out_dir,
+    WORLD,
+    args.warmup,
+    measured,
+    schema.clone(),
+  );
   let options = SimOptions::default();
-  println!("{:>9} {:<9} {:<26} {:>9} {:>10} {:>8}", "n", "scene", "variant", "kandydaci", "klatka ms", "symul.");
+  println!(
+    "{:>9} {:<9} {:<26} {:>9} {:>10} {:>8}",
+    "n", "scene", "variant", "kandydaci", "klatka ms", "symul."
+  );
   'cases: for &n in &args.sizes {
     for &scene in &args.scenes {
       for &samples in &args.msaa {
@@ -249,9 +308,21 @@ fn main() {
           let state = scene.particles(n, args.types, WORLD, &mut rng(args.seed));
           let candidates = candidates_mean(&state, WORLD);
           let spec = particle_spec(args.types, args.seed);
-          let quality = RenderQuality { msaa: msaa(samples), hdr, tonemapping, analytic_aa };
-          let offscreen = Offscreen { size: TARGET, quality, app_colors: false, real_time: args.modes.iter().any(|m| m == "loop") };
-          let Some(mut harness) = Harness::with_render(options.clone(), spec, state, WORLD, Some(offscreen)) else {
+          let quality = RenderQuality {
+            msaa: msaa(samples),
+            hdr,
+            tonemapping,
+            analytic_aa,
+          };
+          let offscreen = Offscreen {
+            size: TARGET,
+            quality,
+            app_colors: false,
+            real_time: args.modes.iter().any(|m| m == "loop"),
+          };
+          let Some(mut harness) =
+            Harness::with_render(options.clone(), spec, state, WORLD, Some(offscreen))
+          else {
             break 'cases;
           };
           harness.set_substeps(args.substeps);
@@ -287,10 +358,18 @@ fn main() {
               if hdr { "hdr" } else { "ldr" },
               if tonemapping { "tm" } else { "raw" },
               if analytic_aa { "aa" } else { "noaa" },
-              if args.substeps > 1 { format!(" k{}", args.substeps) } else { String::new() },
+              if args.substeps > 1 {
+                format!(" k{}", args.substeps)
+              } else {
+                String::new()
+              },
             );
             if let (Some(dir), "draw") = (&args.screenshots, mode.as_str()) {
-              save_screenshot(&mut harness, dir, &format!("{n}-{scene}-{}.png", variant.replace(' ', "_")));
+              save_screenshot(
+                &mut harness,
+                dir,
+                &format!("{n}-{scene}-{}.png", variant.replace(' ', "_")),
+              );
             }
             let rows = samples_ns.len();
             let batch = RecordBatch::try_new(
@@ -304,7 +383,11 @@ fn main() {
                 Arc::new(Float32Array::from(vec![candidates as f32; rows])),
                 Arc::new(UInt16Array::from((0..rows as u16).collect::<Vec<_>>())),
                 Arc::new(UInt64Array::from(samples_ns.to_vec())),
-                Arc::new(Float32Array::from(if speeds.is_empty() { vec![None; rows] } else { speeds.clone() })),
+                Arc::new(Float32Array::from(if speeds.is_empty() {
+                  vec![None; rows]
+                } else {
+                  speeds.clone()
+                })),
               ],
             )
             .unwrap();
@@ -317,7 +400,9 @@ fn main() {
               let mut s: Vec<f64> = speeds.iter().flatten().map(|&v| v as f64 * 100.0).collect();
               format!("{:.0}%", median(&mut s))
             };
-            println!("{n:>9} {scene:<9} {variant:<26} {candidates:>9.0} {frame_ms:>10.2} {speed:>8}");
+            println!(
+              "{n:>9} {scene:<9} {variant:<26} {candidates:>9.0} {frame_ms:>10.2} {speed:>8}"
+            );
           }
         }
       }

@@ -23,15 +23,25 @@ fn geometry_covers_interaction_radius() {
     assert!(g.dims.x >= MIN_CELLS && g.dims.y >= MIN_CELLS);
     assert!(g.num_cells() <= MAX_CELLS, "{world}: {}", g.dims);
     if world.x >= 100.0 {
-      assert!(g.cell_size.x * GRID_REACH as f32 >= INTERACTION_RADIUS - 1e-3, "{world}");
-      assert!(g.cell_size.y * GRID_REACH as f32 >= INTERACTION_RADIUS - 1e-3, "{world}");
+      assert!(
+        g.cell_size.x * GRID_REACH as f32 >= INTERACTION_RADIUS - 1e-3,
+        "{world}"
+      );
+      assert!(
+        g.cell_size.y * GRID_REACH as f32 >= INTERACTION_RADIUS - 1e-3,
+        "{world}"
+      );
     }
   }
 }
 
 #[test]
 fn deterministic_mode_repeats_bit_for_bit() {
-  let options = Mode { average_forces: false, overlap: Overlap::Spring }.sim();
+  let options = Mode {
+    average_forces: false,
+    overlap: Overlap::Spring,
+  }
+  .sim();
   let run = || {
     let mut rng = StdRng::seed_from_u64(5);
     let spec = spec(&mut rng, 3);
@@ -40,8 +50,13 @@ fn deterministic_mode_repeats_bit_for_bit() {
     harness.set_deterministic(true);
     Some(harness.run(32))
   };
-  let (Some(first), Some(second)) = (run(), run()) else { return };
-  assert_eq!(first, second, "trajektorie różnią się mimo trybu deterministycznego");
+  let (Some(first), Some(second)) = (run(), run()) else {
+    return;
+  };
+  assert_eq!(
+    first, second,
+    "trajektorie różnią się mimo trybu deterministycznego"
+  );
 }
 
 /// Pętla jak w aplikacji (`real_time`): kroki wynikają ze stałego kroku w czasie rzeczywistym,
@@ -52,14 +67,40 @@ fn real_time_loop_runs_the_fixed_step_clock() {
   let mut rng = StdRng::seed_from_u64(31);
   let spec = spec(&mut rng, 3);
   let particles = random_particles(&mut rng, 2_000, 3);
-  let offscreen = Offscreen { size: UVec2::new(64, 40), quality: RenderQuality::default(), app_colors: false, real_time: true };
-  let Some(mut harness) = Harness::with_render(SimOptions::default(), spec, particles, WORLD, Some(offscreen)) else { return };
+  let offscreen = Offscreen {
+    size: UVec2::new(64, 40),
+    quality: RenderQuality::default(),
+    app_colors: false,
+    real_time: true,
+  };
+  let Some(mut harness) = Harness::with_render(
+    SimOptions::default(),
+    spec,
+    particles,
+    WORLD,
+    Some(offscreen),
+  ) else {
+    return;
+  };
   harness.run_loop(std::time::Duration::from_millis(500));
   let stats = harness.run_loop(std::time::Duration::from_secs(1));
-  assert!(stats.frame_ns.len() > 10, "klatek: {}", stats.frame_ns.len());
+  assert!(
+    stats.frame_ns.len() > 10,
+    "klatek: {}",
+    stats.frame_ns.len()
+  );
   // 100 kroków na sekundę z zapasem na obciążenie maszyny.
-  assert!((50..=150).contains(&stats.steps), "kroków w sekundzie: {}", stats.steps);
-  let speed = stats.sim_speed.last().copied().flatten().expect("prędkość symulacji");
+  assert!(
+    (50..=150).contains(&stats.steps),
+    "kroków w sekundzie: {}",
+    stats.steps
+  );
+  let speed = stats
+    .sim_speed
+    .last()
+    .copied()
+    .flatten()
+    .expect("prędkość symulacji");
   assert!(speed > 0.5, "prędkość {speed}");
 }
 
@@ -81,13 +122,23 @@ fn substeps_keep_particles_finite_and_speed_in_range() {
     harness.set_substeps(substeps);
     Some(harness.run(40))
   };
-  let (Some(single), Some(double)) = (run(1), run(2)) else { return };
+  let (Some(single), Some(double)) = (run(1), run(2)) else {
+    return;
+  };
   assert_eq!(double.len(), 5_000);
   let ids: Vec<u32> = double.iter().map(|p| p.id).collect();
   assert_eq!(ids, (0..5_000).collect::<Vec<u32>>());
-  assert!(double.iter().all(|p| p.pos.iter().chain(&p.vel).all(|v| v.is_finite())), "NaN albo nieskończoność");
+  assert!(
+    double
+      .iter()
+      .all(|p| p.pos.iter().chain(&p.vel).all(|v| v.is_finite())),
+    "NaN albo nieskończoność"
+  );
   let ratio = mean_speed(&double) / mean_speed(&single);
-  assert!((0.5..2.0).contains(&ratio), "stosunek prędkości K=2 do K=1: {ratio}");
+  assert!(
+    (0.5..2.0).contains(&ratio),
+    "stosunek prędkości K=2 do K=1: {ratio}"
+  );
 }
 
 /// Zmiana K nie zmienia prędkości
@@ -97,14 +148,22 @@ fn changing_substeps_keeps_velocity() {
   let spec = spec(&mut rng, 3);
   let particles = random_particles(&mut rng, 5_000, 3);
   let before = mean_speed(&particles);
-  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
+    return;
+  };
   harness.set_substeps(4);
   let after = mean_speed(&harness.run(1));
-  assert!((0.5..2.0).contains(&(after / before)), "prędkość po zmianie K: {before} -> {after}");
+  assert!(
+    (0.5..2.0).contains(&(after / before)),
+    "prędkość po zmianie K: {before} -> {after}"
+  );
   // Powrót do K = 1 nie przeskalowuje prędkości.
   harness.set_substeps(1);
   let back = mean_speed(&harness.run(1));
-  assert!((0.5..2.0).contains(&(back / before)), "prędkość po powrocie do K = 1: {before} -> {back}");
+  assert!(
+    (0.5..2.0).contains(&(back / before)),
+    "prędkość po powrocie do K = 1: {before} -> {back}"
+  );
 }
 
 /// `GpuProgress` liczy podkroki GPU (takty × K), a `GpuParams::step_count` takty.
@@ -113,11 +172,20 @@ fn progress_counts_gpu_substeps() {
   let mut rng = StdRng::seed_from_u64(47);
   let spec = spec(&mut rng, 3);
   let particles = random_particles(&mut rng, 1_000, 3);
-  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
+    return;
+  };
   harness.set_substeps(3);
   harness.step(5);
   assert_eq!(harness.world().resource::<GpuParams>().step_count, 5);
-  assert_eq!(harness.world().resource::<GpuProgress>().0.load(std::sync::atomic::Ordering::SeqCst), 15);
+  assert_eq!(
+    harness
+      .world()
+      .resource::<GpuProgress>()
+      .0
+      .load(std::sync::atomic::Ordering::SeqCst),
+    15
+  );
 }
 
 #[test]
@@ -126,7 +194,9 @@ fn set_state_replaces_particles_on_gpu() {
   let spec = spec(&mut rng, 3);
   let first = random_particles(&mut rng, 2000, 3);
   let second = random_particles(&mut rng, 2000, 3);
-  let Some(mut harness) = Harness::new(SimOptions::default(), spec, first, WORLD) else { return };
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, first, WORLD) else {
+    return;
+  };
   harness.run(4);
   harness.set_state(second.clone());
   assert_eq!(harness.run(0), second);
@@ -137,7 +207,9 @@ fn timed_step_reports_every_pass() {
   let mut rng = StdRng::seed_from_u64(13);
   let spec = spec(&mut rng, 3);
   let particles = random_particles(&mut rng, 20_000, 3);
-  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
+    return;
+  };
   harness.run(4);
   harness.set_gpu_timing(true);
   // Pierwsza klatka z pomiarem bywa odrzucona (zerowy znacznik).
@@ -173,7 +245,9 @@ fn timed_step_gives_the_same_state() {
     harness.step(MAX_STEPS_PER_FRAME as u64);
     Some(harness.run(0))
   };
-  let (Some(plain), Some(timed)) = (run(false), run(true)) else { return };
+  let (Some(plain), Some(timed)) = (run(false), run(true)) else {
+    return;
+  };
   assert_eq!(plain, timed, "pomiar czasu zmienia wynik kroku");
 }
 
@@ -187,8 +261,20 @@ struct Neighbourhood {
 }
 
 /// Wynik reguł diagnostycznych liczony wprost po wszystkich parach w f64 (odległość na torusie).
-fn brute_force_neighbourhoods(spec: &ParticleSpec, particles: &[GpuParticle], world: Vec2) -> Vec<Neighbourhood> {
-  let wrap = |d: f64, size: f64| if d > size / 2.0 { d - size } else if d < -size / 2.0 { d + size } else { d };
+fn brute_force_neighbourhoods(
+  spec: &ParticleSpec,
+  particles: &[GpuParticle],
+  world: Vec2,
+) -> Vec<Neighbourhood> {
+  let wrap = |d: f64, size: f64| {
+    if d > size / 2.0 {
+      d - size
+    } else if d < -size / 2.0 {
+      d + size
+    } else {
+      d
+    }
+  };
   particles
     .iter()
     .enumerate()
@@ -204,7 +290,8 @@ fn brute_force_neighbourhoods(spec: &ParticleSpec, particles: &[GpuParticle], wo
         n.count += 1.0;
         n.delta[0] += dx;
         n.delta[1] += dy;
-        n.coeff += spec.interactions[other.species as usize].force_coeffs[me.species as usize] as f64;
+        n.coeff +=
+          spec.interactions[other.species as usize].force_coeffs[me.species as usize] as f64;
       }
       n
     })
@@ -213,14 +300,28 @@ fn brute_force_neighbourhoods(spec: &ParticleSpec, particles: &[GpuParticle], wo
 
 /// Jeden krok z regułami diagnostycznymi: wynik w `last` cząstki i w jej modelu (patrz
 /// `diagnostic_rules.wesl`).
-fn diagnostic_step(spec: ParticleSpec, particles: Vec<GpuParticle>, world: Vec2) -> Option<Vec<Neighbourhood>> {
-  let mut harness = Harness::with_rules(RuleSource::Diagnostic, SimOptions::default(), spec, particles, world)?;
+fn diagnostic_step(
+  spec: ParticleSpec,
+  particles: Vec<GpuParticle>,
+  world: Vec2,
+) -> Option<Vec<Neighbourhood>> {
+  let mut harness = Harness::with_rules(
+    RuleSource::Diagnostic,
+    SimOptions::default(),
+    spec,
+    particles,
+    world,
+  )?;
   let (particles, model) = harness.run_with_model::<DiagnosticModel>(1);
   Some(
     particles
       .iter()
       .zip(&model)
-      .map(|(p, m)| Neighbourhood { count: m.count as f64, delta: [p.vel[0] as f64, p.vel[1] as f64], coeff: m.coeff as f64 })
+      .map(|(p, m)| Neighbourhood {
+        count: m.count as f64,
+        delta: [p.vel[0] as f64, p.vel[1] as f64],
+        coeff: m.coeff as f64,
+      })
       .collect(),
   )
 }
@@ -242,9 +343,19 @@ fn assert_neighbourhoods(actual: &[Neighbourhood], expected: &[Neighbourhood], c
   for (i, (a, e)) in actual.iter().zip(expected).enumerate() {
     assert_eq!(a.count, e.count, "{context}: cząstka {i}: liczba sąsiadów");
     for k in 0..2 {
-      assert!((a.delta[k] - e.delta[k]).abs() <= 5e-3 + 1e-5 * e.delta[k].abs(), "{context}: cząstka {i}: suma delta {:?} wobec {:?}", a.delta, e.delta);
+      assert!(
+        (a.delta[k] - e.delta[k]).abs() <= 5e-3 + 1e-5 * e.delta[k].abs(),
+        "{context}: cząstka {i}: suma delta {:?} wobec {:?}",
+        a.delta,
+        e.delta
+      );
     }
-    assert!((a.coeff - e.coeff).abs() <= 1e-2 + 1e-3 * e.coeff.abs(), "{context}: cząstka {i}: suma coeff {} wobec {}", a.coeff, e.coeff);
+    assert!(
+      (a.coeff - e.coeff).abs() <= 1e-2 + 1e-3 * e.coeff.abs(),
+      "{context}: cząstka {i}: suma coeff {} wobec {}",
+      a.coeff,
+      e.coeff
+    );
   }
 }
 
@@ -254,8 +365,13 @@ fn engine_finds_every_neighbour_in_range() {
   let spec = spec(&mut rng, 3);
   let particles = random_particles(&mut rng, 700, 3);
   let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
-  let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
-  assert!(expected.iter().any(|n| n.count > 10.0), "scena bez sąsiadów nic nie sprawdza");
+  let Some(actual) = diagnostic_step(spec, particles, WORLD) else {
+    return;
+  };
+  assert!(
+    expected.iter().any(|n| n.count > 10.0),
+    "scena bez sąsiadów nic nie sprawdza"
+  );
   assert_neighbourhoods(&actual, &expected, "700 cząstek");
 }
 
@@ -268,7 +384,9 @@ fn engine_passes_the_right_coefficient_for_any_number_of_types() {
     let spec = spec(&mut rng, types);
     let particles = random_particles(&mut rng, 500, types);
     let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
-    let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
+    let Some(actual) = diagnostic_step(spec, particles, WORLD) else {
+      return;
+    };
     assert_neighbourhoods(&actual, &expected, &format!("{types} typów"));
   }
 }
@@ -276,22 +394,43 @@ fn engine_passes_the_right_coefficient_for_any_number_of_types() {
 /// Sąsiedzi przez szew torusa: cztery cząstki przy narożnikach świata widzą się nawzajem.
 #[test]
 fn engine_finds_neighbours_across_the_world_seam() {
-  let corners = [Vec2::new(-249.0, -164.0), Vec2::new(249.0, -164.0), Vec2::new(-249.0, 164.0), Vec2::new(249.0, 164.0)];
+  let corners = [
+    Vec2::new(-249.0, -164.0),
+    Vec2::new(249.0, -164.0),
+    Vec2::new(-249.0, 164.0),
+    Vec2::new(249.0, 164.0),
+  ];
   let mut particles: Vec<GpuParticle> = corners
     .iter()
     .enumerate()
-    .map(|(id, p)| GpuParticle { pos: p.to_array(), vel: [0.0, 0.0], species: 0, id: id as u32 })
+    .map(|(id, p)| GpuParticle {
+      pos: p.to_array(),
+      vel: [0.0, 0.0],
+      species: 0,
+      id: id as u32,
+    })
     .collect();
   // Samotna cząstka w środku, bez sąsiadów.
-  particles.push(GpuParticle { pos: [0.0, 0.0], vel: [0.0, 0.0], species: 0, id: 4 });
+  particles.push(GpuParticle {
+    pos: [0.0, 0.0],
+    vel: [0.0, 0.0],
+    species: 0,
+    id: 4,
+  });
   let spec = spec(&mut StdRng::seed_from_u64(1), 2);
   let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
-  let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
+  let Some(actual) = diagnostic_step(spec, particles, WORLD) else {
+    return;
+  };
   assert_neighbourhoods(&actual, &expected, "narożniki");
   // Wprost, bez wyroczni: cząstka w (-249, -164) widzi trzy pozostałe po drugiej stronie szwu,
   // o 2 jednostki w osi (i √8 po przekątnej).
   assert_eq!(actual[0].count, 3.0);
-  assert!((actual[0].delta[0] + 4.0).abs() < 1e-3 && (actual[0].delta[1] + 4.0).abs() < 1e-3, "{:?}", actual[0].delta);
+  assert!(
+    (actual[0].delta[0] + 4.0).abs() < 1e-3 && (actual[0].delta[1] + 4.0).abs() < 1e-3,
+    "{:?}",
+    actual[0].delta
+  );
   assert_eq!(actual[4].count, 0.0);
 }
 
@@ -308,7 +447,9 @@ fn engine_counts_the_same_with_bigger_cells_in_a_large_world() {
     p.pos[1] *= 0.02;
   }
   let expected = brute_force_neighbourhoods(&spec, &particles, world);
-  let Some(actual) = diagnostic_step(spec, particles, world) else { return };
+  let Some(actual) = diagnostic_step(spec, particles, world) else {
+    return;
+  };
   assert_neighbourhoods(&actual, &expected, "duży świat");
 }
 
@@ -320,13 +461,30 @@ fn engine_samples_dense_states_without_bias() {
   let spec = spec(&mut rng, 3);
   let particles = random_particles(&mut rng, 20_000, 3);
   let expected = brute_force_neighbourhoods(&spec, &particles, WORLD);
-  let Some(actual) = diagnostic_step(spec, particles, WORLD) else { return };
-  let (sum_actual, sum_expected): (f64, f64) = (actual.iter().map(|n| n.count).sum(), expected.iter().map(|n| n.count).sum());
+  let Some(actual) = diagnostic_step(spec, particles, WORLD) else {
+    return;
+  };
+  let (sum_actual, sum_expected): (f64, f64) = (
+    actual.iter().map(|n| n.count).sum(),
+    expected.iter().map(|n| n.count).sum(),
+  );
   // Średnio ponad 500 sąsiadów, czyli próbkowanie rzeczywiście działa.
-  assert!(sum_expected / expected.len() as f64 > 500.0, "stan za rzadki: {}", sum_expected / expected.len() as f64);
-  assert!((sum_actual / sum_expected - 1.0).abs() < 0.01, "suma sąsiadów {sum_actual} wobec {sum_expected}");
+  assert!(
+    sum_expected / expected.len() as f64 > 500.0,
+    "stan za rzadki: {}",
+    sum_expected / expected.len() as f64
+  );
+  assert!(
+    (sum_actual / sum_expected - 1.0).abs() < 0.01,
+    "suma sąsiadów {sum_actual} wobec {sum_expected}"
+  );
   for (i, (a, e)) in actual.iter().zip(&expected).enumerate() {
-    assert!((a.count - e.count).abs() <= 0.25 * e.count.max(10.0), "cząstka {i}: oszacowano {} sąsiadów, jest {}", a.count, e.count);
+    assert!(
+      (a.count - e.count).abs() <= 0.25 * e.count.max(10.0),
+      "cząstka {i}: oszacowano {} sąsiadów, jest {}",
+      a.count,
+      e.count
+    );
   }
 }
 
@@ -339,14 +497,18 @@ fn sampling_cap_keeps_every_particle_finite_and_present() {
   let particles = random_particles(&mut rng, 20_000, 3);
   let mut ids: Vec<u32> = particles.iter().map(|p| p.id).collect();
   ids.sort_unstable();
-  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else { return };
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
+    return;
+  };
   for cap in [128, 256, 512, 1024] {
     harness.set_max_candidates(cap);
     harness.run(3);
     let state = harness.run(0);
     assert_eq!(state.len(), ids.len(), "próg {cap}");
     assert!(
-      state.iter().all(|p| p.pos.iter().chain(&p.vel).all(|v| v.is_finite())),
+      state
+        .iter()
+        .all(|p| p.pos.iter().chain(&p.vel).all(|v| v.is_finite())),
       "próg {cap}: nieskończone położenie"
     );
     let mut got: Vec<u32> = state.iter().map(|p| p.id).collect();
@@ -362,10 +524,17 @@ fn state_invariants_hold_for_the_diagnostic_rules() {
   let mut rng = StdRng::seed_from_u64(80);
   let spec = spec(&mut rng, 3);
   let particles = random_particles(&mut rng, 5_000, 3);
-  let Some(mut harness) = Harness::with_rules(RuleSource::Diagnostic, SimOptions::default(), spec, particles, WORLD) else { return };
+  let Some(mut harness) = Harness::with_rules(
+    RuleSource::Diagnostic,
+    SimOptions::default(),
+    spec,
+    particles,
+    WORLD,
+  ) else {
+    return;
+  };
   assert_invariants(&harness.run(10), WORLD, "reguły diagnostyczne, 10 kroków");
 }
-
 
 /// Model cząstki (pola reguł) przenosi się razem z nią przez scatter (i sortowanie komórek w
 /// trybie deterministycznym): sprężyna nie zmienia `crowding`, więc po wielu krokach każda cząstka
@@ -377,9 +546,14 @@ fn model_stays_with_its_particle() {
     let spec = spec(&mut rng, 3);
     let mut state = State::new(random_particles(&mut rng, 6_000, 3));
     state.crowding = (0..state.particles.len()).map(|id| id as f32).collect();
-    let Some(mut harness) = harness_for(Mode::default().sim(), spec, &state, WORLD) else { return };
+    let Some(mut harness) = harness_for(Mode::default().sim(), spec, &state, WORLD) else {
+      return;
+    };
     harness.set_deterministic(deterministic);
     let after = run_state(&mut harness, 20);
-    assert_eq!(after.crowding, state.crowding, "model rozjechał się z cząstkami (deterministic = {deterministic})");
+    assert_eq!(
+      after.crowding, state.crowding,
+      "model rozjechał się z cząstkami (deterministic = {deterministic})"
+    );
   }
 }

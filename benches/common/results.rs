@@ -32,7 +32,6 @@ use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::metadata::KeyValue;
 use parquet::file::properties::WriterProperties;
 
-
 pub const SCHEMA: &str = "partikl-bench";
 pub const SCHEMA_VERSION: &str = "1.6";
 
@@ -82,10 +81,16 @@ impl ResultsFile {
       .set_key_value_metadata(Some(run.key_values()))
       .build();
     // Bez kopii schematu Arrow w stopce (`ARROW:schema`, ok. 1 KB): schemat Parquet wystarcza.
-    let options = ArrowWriterOptions::new().with_properties(props).with_skip_arrow_metadata(true);
-    let writer =
-      ArrowWriter::try_new_with_options(file, schema, options).expect("cannot start parquet writer");
-    ResultsFile { writer, partial, path }
+    let options = ArrowWriterOptions::new()
+      .with_properties(props)
+      .with_skip_arrow_metadata(true);
+    let writer = ArrowWriter::try_new_with_options(file, schema, options)
+      .expect("cannot start parquet writer");
+    ResultsFile {
+      writer,
+      partial,
+      path,
+    }
   }
 
   pub fn write(&mut self, batch: &RecordBatch) {

@@ -6,9 +6,18 @@ fn reference_step(spec: &ParticleSpec, state: &State, options: Mode, world: Vec2
   let particles = &state.particles;
   let u = &spec.params;
   let radius = |crowding: f64| {
-    (u.repulsion_radius as f64 * (crowding / u.adaptive_neighbours as f64).sqrt()).clamp(u.repulsion_radius as f64, u.adaptive_range_max as f64)
+    (u.repulsion_radius as f64 * (crowding / u.adaptive_neighbours as f64).sqrt())
+      .clamp(u.repulsion_radius as f64, u.adaptive_range_max as f64)
   };
-  let wrap = |d: f64, size: f64| if d > size / 2.0 { d - size } else if d < -size / 2.0 { d + size } else { d };
+  let wrap = |d: f64, size: f64| {
+    if d > size / 2.0 {
+      d - size
+    } else if d < -size / 2.0 {
+      d + size
+    } else {
+      d
+    }
+  };
   let dt = u.dt as f64;
   let (next, next_crowding): (Vec<_>, Vec<_>) = particles
     .iter()
@@ -25,11 +34,15 @@ fn reference_step(spec: &ParticleSpec, state: &State, options: Mode, world: Vec2
           continue;
         }
         let reach = match options.overlap {
-          Overlap::AdaptiveRange => radius(state.crowding[i] as f64).max(radius(state.crowding[j] as f64)),
+          Overlap::AdaptiveRange => {
+            radius(state.crowding[i] as f64).max(radius(state.crowding[j] as f64))
+          }
           _ => u.repulsion_radius as f64,
         };
-        let coeff = spec.interactions[other.species as usize].force_coeffs[me.species as usize] as f64;
-        let attraction = coeff * (1.0 - ((d - u.kernel_middle as f64) / u.kernel_width as f64).abs()).max(0.0);
+        let coeff =
+          spec.interactions[other.species as usize].force_coeffs[me.species as usize] as f64;
+        let attraction =
+          coeff * (1.0 - ((d - u.kernel_middle as f64) / u.kernel_width as f64).abs()).max(0.0);
         let magnitude = if options.overlap == Overlap::Resolve {
           if d < reach {
             cx += 0.5 * (d - reach) * dx / d;
@@ -77,25 +90,22 @@ fn reference_step(spec: &ParticleSpec, state: &State, options: Mode, world: Vec2
           *n += size;
         }
       }
- 
+
       (
         GpuParticle {
-          pos: [
-            nx as f32,
-            ny as f32,
-          ],
-          vel: [
-            (freex / damping) as f32,
-            (freey / damping) as f32,
-          ],
+          pos: [nx as f32, ny as f32],
+          vel: [(freex / damping) as f32, (freey / damping) as f32],
           species: me.species,
-          id: me.id
+          id: me.id,
         },
-        crowding as f32
+        crowding as f32,
       )
     })
     .unzip();
-  State { particles: next, crowding: next_crowding }
+  State {
+    particles: next,
+    crowding: next_crowding,
+  }
 }
 
 #[test]
@@ -108,7 +118,10 @@ fn one_step_matches_reference() {
     (false, Overlap::AdaptiveRange),
     (true, Overlap::AdaptiveRange),
   ] {
-    let options = Mode { average_forces, overlap };
+    let options = Mode {
+      average_forces,
+      overlap,
+    };
     let mut rng = StdRng::seed_from_u64(7);
     let spec = spec(&mut rng, 4);
     // Mało kandydatów w sąsiedztwie (poniżej progu próbkowania), ale dość gęsto na pary.
@@ -117,8 +130,14 @@ fn one_step_matches_reference() {
       state = state.with_random_crowding(&mut rng);
     }
     let expected = reference_step(&spec, &state, options, WORLD);
-    let Some(mut harness) = harness_for(options.sim(), spec, &state, WORLD) else { return };
-    assert_close(&run_state(&mut harness, 1), &expected, &format!("{options:?}"));
+    let Some(mut harness) = harness_for(options.sim(), spec, &state, WORLD) else {
+      return;
+    };
+    assert_close(
+      &run_state(&mut harness, 1),
+      &expected,
+      &format!("{options:?}"),
+    );
   }
 }
 
@@ -138,7 +157,9 @@ fn large_world_matches_reference() {
   }
   let state = State::new(particles);
   let expected = reference_step(&spec, &state, options, world);
-  let Some(mut harness) = harness_for(options.sim(), spec, &state, world) else { return };
+  let Some(mut harness) = harness_for(options.sim(), spec, &state, world) else {
+    return;
+  };
   assert_close(&run_state(&mut harness, 1), &expected, "duży świat");
 }
 
@@ -147,64 +168,113 @@ fn large_world_matches_reference() {
 #[test]
 fn one_step_matches_reference_for_any_number_of_types() {
   for types in [1, 2, 4, 5, 8, 9, 13] {
-    let options = Mode { average_forces: true, overlap: Overlap::Spring };
+    let options = Mode {
+      average_forces: true,
+      overlap: Overlap::Spring,
+    };
     let mut rng = StdRng::seed_from_u64(40 + types as u64);
     let spec = spec(&mut rng, types);
     let state = State::new(random_particles(&mut rng, 700, types));
     let expected = reference_step(&spec, &state, options, WORLD);
-    let Some(mut harness) = harness_for(options.sim(), spec, &state, WORLD) else { return };
-    assert_close(&run_state(&mut harness, 1), &expected, &format!("{types} typów"));
+    let Some(mut harness) = harness_for(options.sim(), spec, &state, WORLD) else {
+      return;
+    };
+    assert_close(
+      &run_state(&mut harness, 1),
+      &expected,
+      &format!("{types} typów"),
+    );
   }
 }
 
 /// Zmiana opcji w trakcie działa od następnego kroku: wariant sił dla nowych opcji.
 #[test]
 fn options_switch_at_runtime() {
-  let first = Mode { average_forces: false, overlap: Overlap::Spring };
+  let first = Mode {
+    average_forces: false,
+    overlap: Overlap::Spring,
+  };
   let make_spec = || spec(&mut StdRng::seed_from_u64(21), 4);
   let spec = make_spec();
   let mut rng = StdRng::seed_from_u64(22);
   let state = State::new(random_particles(&mut rng, 700, 4)).with_random_crowding(&mut rng);
-  let Some(mut harness) = harness_for(first.sim(), make_spec(), &state, WORLD) else { return };
-  assert_close(&run_state(&mut harness, 1), &reference_step(&spec, &state, first, WORLD), "start");
+  let Some(mut harness) = harness_for(first.sim(), make_spec(), &state, WORLD) else {
+    return;
+  };
+  assert_close(
+    &run_state(&mut harness, 1),
+    &reference_step(&spec, &state, first, WORLD),
+    "start",
+  );
   for next in [
-    Mode { average_forces: true, overlap: Overlap::AdaptiveRange },
-    Mode { average_forces: false, overlap: Overlap::Resolve },
+    Mode {
+      average_forces: true,
+      overlap: Overlap::AdaptiveRange,
+    },
+    Mode {
+      average_forces: false,
+      overlap: Overlap::Resolve,
+    },
     first,
   ] {
     harness.set_options(next.sim());
     reset(&mut harness, &state);
-    assert_close(&run_state(&mut harness, 1), &reference_step(&spec, &state, next, WORLD), &format!("{next:?}"));
+    assert_close(
+      &run_state(&mut harness, 1),
+      &reference_step(&spec, &state, next, WORLD),
+      &format!("{next:?}"),
+    );
   }
 }
 
 #[test]
 fn many_steps_keep_invariants() {
-  let options = Mode { average_forces: true, overlap: Overlap::AdaptiveRange };
+  let options = Mode {
+    average_forces: true,
+    overlap: Overlap::AdaptiveRange,
+  };
   let mut rng = StdRng::seed_from_u64(11);
   let spec = spec(&mut rng, 3);
   // Gęsty stan: ponad 512 kandydatów w sąsiedztwie, więc działa próbkowanie.
   let state = State::new(random_particles(&mut rng, 20_000, 3));
-  let Some(mut harness) = harness_for(options.sim(), spec, &state, WORLD) else { return };
+  let Some(mut harness) = harness_for(options.sim(), spec, &state, WORLD) else {
+    return;
+  };
   let after = run_state(&mut harness, 40);
   assert_invariants(&after.particles, WORLD, "reguły domyślne, 40 kroków");
-  assert!(after.crowding.iter().all(|c| c.is_finite() && *c >= 0.0), "crowding poza zakresem");
+  assert!(
+    after.crowding.iter().all(|c| c.is_finite() && *c >= 0.0),
+    "crowding poza zakresem"
+  );
 }
 
 /// Histogram następnego kroku liczą siły poprzedniego kroku, więc podmiana stanu między krokami
 /// (cząstki w innych komórkach) wymaga przeliczenia od zera: po scatterze nic nie ginie ani się nie powtarza.
 #[test]
 fn swapping_state_between_steps_keeps_every_particle() {
-  let options = Mode { average_forces: true, overlap: Overlap::AdaptiveRange };
+  let options = Mode {
+    average_forces: true,
+    overlap: Overlap::AdaptiveRange,
+  };
   let mut rng = StdRng::seed_from_u64(41);
   let spec = spec(&mut rng, 3);
   let first = State::new(random_particles(&mut rng, 5_000, 3));
-  let Some(mut harness) = harness_for(options.sim(), spec, &first, WORLD) else { return };
-  assert_invariants(&run_state(&mut harness, 3).particles, WORLD, "przed podmianą");
+  let Some(mut harness) = harness_for(options.sim(), spec, &first, WORLD) else {
+    return;
+  };
+  assert_invariants(
+    &run_state(&mut harness, 3).particles,
+    WORLD,
+    "przed podmianą",
+  );
   for round in 0..3 {
     let next = State::new(random_particles(&mut rng, 5_000, 3));
     reset(&mut harness, &next);
-    assert_invariants(&run_state(&mut harness, 2).particles, WORLD, &format!("po podmianie {round}"));
+    assert_invariants(
+      &run_state(&mut harness, 2).particles,
+      WORLD,
+      &format!("po podmianie {round}"),
+    );
   }
 }
 
@@ -212,12 +282,21 @@ fn swapping_state_between_steps_keeps_every_particle() {
 /// kroku, bez rekompilacji i bez nowego `GpuSim`.
 #[test]
 fn spec_changes_at_runtime() {
-  let options = Mode { average_forces: true, overlap: Overlap::Spring };
+  let options = Mode {
+    average_forces: true,
+    overlap: Overlap::Spring,
+  };
   let mut rng = StdRng::seed_from_u64(31);
   let first = spec(&mut rng, 4);
   let state = State::new(random_particles(&mut rng, 700, 4));
-  let Some(mut harness) = harness_for(options.sim(), first.clone(), &state, WORLD) else { return };
-  assert_close(&run_state(&mut harness, 1), &reference_step(&first, &state, options, WORLD), "start");
+  let Some(mut harness) = harness_for(options.sim(), first.clone(), &state, WORLD) else {
+    return;
+  };
+  assert_close(
+    &run_state(&mut harness, 1),
+    &reference_step(&first, &state, options, WORLD),
+    "start",
+  );
 
   let mut second = spec(&mut rng, 4);
   second.params.friction = 0.2;
@@ -227,7 +306,11 @@ fn spec_changes_at_runtime() {
   harness.set_spec(second.clone());
   reset(&mut harness, &state);
   let actual = run_state(&mut harness, 1);
-  assert_close(&actual, &reference_step(&second, &state, options, WORLD), "po zmianie spec");
+  assert_close(
+    &actual,
+    &reference_step(&second, &state, options, WORLD),
+    "po zmianie spec",
+  );
   assert_ne!(
     actual.particles[0].pos,
     reference_step(&first, &state, options, WORLD).particles[0].pos,

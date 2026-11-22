@@ -22,10 +22,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
+use bevy::render::RenderApp;
 use bevy::render::extract_resource::ExtractResource;
 use bevy::render::render_resource::*;
 use bevy::render::renderer::{RenderDevice, RenderQueue};
-use bevy::render::RenderApp;
 
 use super::pipelines::{FORCES, GRID_PASSES};
 
@@ -55,7 +55,11 @@ impl PassTimes {
   }
 
   pub fn get(&self, entry: &str) -> f64 {
-    self.per_step_ns.iter().find(|(e, _)| *e == entry).map_or(0.0, |(_, ns)| *ns)
+    self
+      .per_step_ns
+      .iter()
+      .find(|(e, _)| *e == entry)
+      .map_or(0.0, |(_, ns)| *ns)
   }
 }
 
@@ -82,10 +86,20 @@ enum State {
   /// do bufora: `resolve_query_set` dopiero w następnej klatce, bo Metal domyka znaczniki
   /// ostatnich przebiegów już po `resolve` w tej samej klatce (tick zerowy albo z poprzedniej
   /// próbki, koniec ostatniego przebiegu za późno).
-  Sampled { steps: u32, dispatches: Vec<&'static str> },
+  Sampled {
+    steps: u32,
+    dispatches: Vec<&'static str>,
+  },
   /// Wyniki skopiowane do bufora do odczytu (zakodowane w tej klatce).
-  Encoded { steps: u32, dispatches: Vec<&'static str> },
-  Mapping { steps: u32, dispatches: Vec<&'static str>, ready: Arc<AtomicBool> },
+  Encoded {
+    steps: u32,
+    dispatches: Vec<&'static str>,
+  },
+  Mapping {
+    steps: u32,
+    dispatches: Vec<&'static str>,
+    ready: Arc<AtomicBool>,
+  },
 }
 
 impl Timer {
@@ -113,7 +127,10 @@ impl Timer {
     if !matches!(self.state, State::Sampled { .. }) {
       return;
     }
-    let State::Sampled { steps, dispatches } = std::mem::replace(&mut self.state, State::Idle) else { unreachable!() };
+    let State::Sampled { steps, dispatches } = std::mem::replace(&mut self.state, State::Idle)
+    else {
+      unreachable!()
+    };
     let queries = 2 * dispatches.len() as u32;
     encoder.resolve_query_set(&self.query_set, 0..queries, &self.resolve, 0);
     encoder.copy_buffer_to_buffer(&self.resolve, 0, &self.read, 0, Some(queries as u64 * 8));
@@ -127,15 +144,30 @@ pub fn init(mut commands: Commands, device: Res<RenderDevice>, queue: Res<Render
     return;
   }
   let size = MAX_QUERIES as u64 * 8;
-  let buffer = |label, usage| device.create_buffer(&BufferDescriptor { label: Some(label), size, usage, mapped_at_creation: false });
+  let buffer = |label, usage| {
+    device.create_buffer(&BufferDescriptor {
+      label: Some(label),
+      size,
+      usage,
+      mapped_at_creation: false,
+    })
+  };
   commands.insert_resource(Timer {
-    query_set: device.wgpu_device().create_query_set(&wgpu::QuerySetDescriptor {
-      label: Some("partikl_timestamps"),
-      ty: wgpu::QueryType::Timestamp,
-      count: MAX_QUERIES,
-    }),
-    resolve: buffer("partikl_timestamps_resolve", BufferUsages::QUERY_RESOLVE | BufferUsages::COPY_SRC),
-    read: buffer("partikl_timestamps_read", BufferUsages::MAP_READ | BufferUsages::COPY_DST),
+    query_set: device
+      .wgpu_device()
+      .create_query_set(&wgpu::QuerySetDescriptor {
+        label: Some("partikl_timestamps"),
+        ty: wgpu::QueryType::Timestamp,
+        count: MAX_QUERIES,
+      }),
+    resolve: buffer(
+      "partikl_timestamps_resolve",
+      BufferUsages::QUERY_RESOLVE | BufferUsages::COPY_SRC,
+    ),
+    read: buffer(
+      "partikl_timestamps_read",
+      BufferUsages::MAP_READ | BufferUsages::COPY_DST,
+    ),
     period_ns: queue.get_timestamp_period() as f64,
     state: State::Idle,
   });
@@ -147,25 +179,50 @@ pub fn map(timer: Option<ResMut<Timer>>) {
   if !matches!(timer.state, State::Encoded { .. }) {
     return;
   }
-  let State::Encoded { steps, dispatches } = std::mem::replace(&mut timer.state, State::Idle) else { unreachable!() };
+  let State::Encoded { steps, dispatches } = std::mem::replace(&mut timer.state, State::Idle)
+  else {
+    unreachable!()
+  };
   let ready = Arc::new(AtomicBool::new(false));
   let flag = ready.clone();
   let bytes = 2 * dispatches.len() as u64 * 8;
-  timer.read.slice(..bytes).map_async(MapMode::Read, move |result| flag.store(result.is_ok(), Ordering::Release));
-  timer.state = State::Mapping { steps, dispatches, ready };
+  timer
+    .read
+    .slice(..bytes)
+    .map_async(MapMode::Read, move |result| {
+      flag.store(result.is_ok(), Ordering::Release)
+    });
+  timer.state = State::Mapping {
+    steps,
+    dispatches,
+    ready,
+  };
 }
 
 /// Gdy mapowanie skończone: czasy przebiegów do `GpuTimings::latest`.
 pub fn collect(timer: Option<ResMut<Timer>>, timings: Option<Res<GpuTimings>>) {
-  let (Some(mut timer), Some(timings)) = (timer, timings) else { return };
-  let State::Mapping { ready, .. } = &timer.state else { return };
+  let (Some(mut timer), Some(timings)) = (timer, timings) else {
+    return;
+  };
+  let State::Mapping { ready, .. } = &timer.state else {
+    return;
+  };
   if !ready.load(Ordering::Acquire) {
     return;
   }
-  let State::Mapping { steps, dispatches, .. } = std::mem::replace(&mut timer.state, State::Idle) else { unreachable!() };
+  let State::Mapping {
+    steps, dispatches, ..
+  } = std::mem::replace(&mut timer.state, State::Idle)
+  else {
+    unreachable!()
+  };
   let bytes = 2 * dispatches.len() as u64 * 8;
   let ticks: Vec<u64> = {
-    let view = timer.read.slice(..bytes).get_mapped_range().expect("bufor znaczników zmapowany");
+    let view = timer
+      .read
+      .slice(..bytes)
+      .get_mapped_range()
+      .expect("bufor znaczników zmapowany");
     bytemuck::cast_slice(&view).to_vec()
   };
   timer.read.unmap();

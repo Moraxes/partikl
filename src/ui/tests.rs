@@ -7,10 +7,16 @@ use bevy::input::touch::TouchPhase;
 use bevy::window::WindowMode;
 
 fn tap_key(app: &mut App, key: KeyCode) {
-  app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
+  app
+    .world_mut()
+    .resource_mut::<ButtonInput<KeyCode>>()
+    .press(key);
   app.update();
   clear_input(app);
-  app.world_mut().resource_mut::<ButtonInput<KeyCode>>().release(key);
+  app
+    .world_mut()
+    .resource_mut::<ButtonInput<KeyCode>>()
+    .release(key);
   clear_input(app);
   // Zmiana `State` zostaje zastosowana w następnej klatce.
   app.update();
@@ -29,9 +35,15 @@ fn spawn_camera(app: &mut App, translation: Vec3, scale: f32) -> Entity {
   app
     .world_mut()
     .spawn((
-      MainCamera { zoom_base: 1.125, zoom_exponent: 1 },
+      MainCamera {
+        zoom_base: 1.125,
+        zoom_exponent: 1,
+      },
       Transform::from_translation(translation),
-      Projection::from(OrthographicProjection { scale, ..OrthographicProjection::default_3d() }),
+      Projection::from(OrthographicProjection {
+        scale,
+        ..OrthographicProjection::default_3d()
+      }),
     ))
     .id()
 }
@@ -50,13 +62,22 @@ fn space_toggles_pause() {
   let mut app = input_app();
   app.add_systems(Update, handle_keyboard_input);
   app.update();
-  assert_eq!(*app.world().resource::<State<SimState>>().get(), SimState::Running);
+  assert_eq!(
+    *app.world().resource::<State<SimState>>().get(),
+    SimState::Running
+  );
 
   tap_key(&mut app, KeyCode::Space);
-  assert_eq!(*app.world().resource::<State<SimState>>().get(), SimState::Paused);
+  assert_eq!(
+    *app.world().resource::<State<SimState>>().get(),
+    SimState::Paused
+  );
 
   tap_key(&mut app, KeyCode::Space);
-  assert_eq!(*app.world().resource::<State<SimState>>().get(), SimState::Running);
+  assert_eq!(
+    *app.world().resource::<State<SimState>>().get(),
+    SimState::Running
+  );
 }
 
 #[test]
@@ -64,14 +85,23 @@ fn unrelated_key_does_not_change_sim_state() {
   let mut app = input_app();
   app.add_systems(Update, handle_keyboard_input);
   tap_key(&mut app, KeyCode::KeyA);
-  assert_eq!(*app.world().resource::<State<SimState>>().get(), SimState::Running);
+  assert_eq!(
+    *app.world().resource::<State<SimState>>().get(),
+    SimState::Running
+  );
 }
 
 #[test]
 fn n_toggles_force_averaging() {
   let mut app = input_app();
   app.add_systems(Update, handle_keyboard_input);
-  let averaging = |app: &App| app.world().resource::<SimOptions>().value("average_forces").map(str::to_owned);
+  let averaging = |app: &App| {
+    app
+      .world()
+      .resource::<SimOptions>()
+      .value("average_forces")
+      .map(str::to_owned)
+  };
   tap_key(&mut app, KeyCode::KeyN);
   assert_eq!(averaging(&app).as_deref(), Some("off"));
   tap_key(&mut app, KeyCode::KeyN);
@@ -85,10 +115,20 @@ fn o_cycles_overlap_modes() {
   let mut modes = vec![];
   for _ in 0..3 {
     tap_key(&mut app, KeyCode::KeyO);
-    modes.push(app.world().resource::<SimOptions>().value("overlap").unwrap().to_owned());
+    modes.push(
+      app
+        .world()
+        .resource::<SimOptions>()
+        .value("overlap")
+        .unwrap()
+        .to_owned(),
+    );
   }
   assert_eq!(modes, ["resolve", "adaptive_range", "spring"]);
-  assert_eq!(app.world().resource::<SimOptions>().value("average_forces"), None);
+  assert_eq!(
+    app.world().resource::<SimOptions>().value("average_forces"),
+    None
+  );
 }
 
 /// Klawisze opcji pochodzą z deklaracji reguł: bez deklaracji N i O nic nie robią.
@@ -157,8 +197,13 @@ fn sampling_cap_next_handles_values_off_the_cycle() {
 #[test]
 fn hud_text_shows_fps_and_options() {
   let schema = builtin_schema();
-  let options = SimOptions::default().with("average_forces", "on").with("overlap", "adaptive_range");
-  let quality = RenderQuality { hdr: true, ..RenderQuality::default() };
+  let options = SimOptions::default()
+    .with("average_forces", "on")
+    .with("overlap", "adaptive_range");
+  let quality = RenderQuality {
+    hdr: true,
+    ..RenderQuality::default()
+  };
   let text = hud_text(Some(59.6), Some(100.0), &schema, &options, &quality, 256, 1);
   assert!(text.contains("60 fps"), "{text}");
   assert!(text.contains("average forces on  N"), "{text}");
@@ -166,10 +211,29 @@ fn hud_text_shows_fps_and_options() {
   assert!(text.contains("candidates 256  C"), "{text}");
   assert!(text.contains("hdr on"), "{text}");
   assert!(text.contains("antialiasing off"), "{text}");
-  assert!(hud_text(None, None, &schema, &SimOptions::default(), &RenderQuality::default(), DEFAULT_MAX_CANDIDATES, 1).contains("– fps"));
+  assert!(
+    hud_text(
+      None,
+      None,
+      &schema,
+      &SimOptions::default(),
+      &RenderQuality::default(),
+      DEFAULT_MAX_CANDIDATES,
+      1
+    )
+    .contains("– fps")
+  );
   // Prędkość symulacji widać tylko, gdy zwalnia.
   assert!(!text.contains("speed"), "{text}");
-  let slow = hud_text(Some(55.0), Some(54.6), &schema, &options, &quality, DEFAULT_MAX_CANDIDATES, 1);
+  let slow = hud_text(
+    Some(55.0),
+    Some(54.6),
+    &schema,
+    &options,
+    &quality,
+    DEFAULT_MAX_CANDIDATES,
+    1,
+  );
   assert!(slow.contains("sim speed 55%"), "{slow}");
 }
 
@@ -177,7 +241,17 @@ fn hud_text_shows_fps_and_options() {
 #[test]
 fn hud_shows_substeps_only_above_one() {
   let schema = builtin_schema();
-  let hud = |k: u32| hud_text(Some(60.0), None, &schema, &SimOptions::default(), &RenderQuality::default(), DEFAULT_MAX_CANDIDATES, k);
+  let hud = |k: u32| {
+    hud_text(
+      Some(60.0),
+      None,
+      &schema,
+      &SimOptions::default(),
+      &RenderQuality::default(),
+      DEFAULT_MAX_CANDIDATES,
+      k,
+    )
+  };
   assert!(!hud(1).contains("substeps"), "{}", hud(1));
   assert!(hud(2).contains("substeps 2  S"), "{}", hud(2));
   assert!(hud(4).contains("substeps 4  S"), "{}", hud(4));
@@ -253,8 +327,18 @@ fn esc_does_not_close_unfocused_window() {
 // --- handle_mouse_input ---
 
 fn send_wheel(app: &mut App, unit: MouseScrollUnit, y: f32) {
-  let window = app.world_mut().query_filtered::<Entity, With<Window>>().single(app.world()).unwrap();
-  app.world_mut().write_message(MouseWheel { unit, x: 0.0, y, window, phase: TouchPhase::Moved });
+  let window = app
+    .world_mut()
+    .query_filtered::<Entity, With<Window>>()
+    .single(app.world())
+    .unwrap();
+  app.world_mut().write_message(MouseWheel {
+    unit,
+    x: 0.0,
+    y,
+    window,
+    phase: TouchPhase::Moved,
+  });
 }
 
 #[test]
@@ -280,7 +364,10 @@ fn wheel_down_zooms_out() {
 }
 
 fn drag(app: &mut App, delta: Vec2) {
-  app.world_mut().resource_mut::<ButtonInput<MouseButton>>().press(MouseButton::Left);
+  app
+    .world_mut()
+    .resource_mut::<ButtonInput<MouseButton>>()
+    .press(MouseButton::Left);
   app.world_mut().write_message(MouseMotion { delta });
   app.update();
   clear_input(app);
@@ -309,13 +396,19 @@ fn motion_without_button_does_not_move_camera() {
   app.add_systems(Update, handle_mouse_input);
   let camera = spawn_camera(&mut app, Vec3::new(0.0, 0.0, 1000.0), 1.0);
   let before = camera_translation(&app, camera);
-  app.world_mut().write_message(MouseMotion { delta: Vec2::new(10.0, 5.0) });
+  app.world_mut().write_message(MouseMotion {
+    delta: Vec2::new(10.0, 5.0),
+  });
   app.update();
   assert_eq!(camera_translation(&app, camera), before);
 }
 
 fn cursor_state(app: &mut App) -> (bool, CursorGrabMode) {
-  let cursor = app.world_mut().query_filtered::<&CursorOptions, With<PrimaryWindow>>().single(app.world()).unwrap();
+  let cursor = app
+    .world_mut()
+    .query_filtered::<&CursorOptions, With<PrimaryWindow>>()
+    .single(app.world())
+    .unwrap();
   (cursor.visible, cursor.grab_mode)
 }
 
@@ -329,7 +422,10 @@ fn cursor_is_hidden_and_locked_only_while_dragging() {
   drag(&mut app, Vec2::new(10.0, 5.0));
   assert_eq!(cursor_state(&mut app), (false, CursorGrabMode::Locked));
 
-  app.world_mut().resource_mut::<ButtonInput<MouseButton>>().release(MouseButton::Left);
+  app
+    .world_mut()
+    .resource_mut::<ButtonInput<MouseButton>>()
+    .release(MouseButton::Left);
   app.update();
   assert_eq!(cursor_state(&mut app), (true, CursorGrabMode::None));
 }
