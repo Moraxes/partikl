@@ -276,6 +276,8 @@ impl Plugin for GpuPlugin {
     library.push(load_embedded_asset!(app, "shaders/engine/render.wesl"));
     embedded_asset!(app, "shaders/rules/matrix.wesl");
     library.push(load_embedded_asset!(app, "shaders/rules/matrix.wesl"));
+    embedded_asset!(app, "shaders/rules/nodes.wesl");
+    library.push(load_embedded_asset!(app, "shaders/rules/nodes.wesl"));
     app.insert_resource(compute::ShaderLibrary(library));
     app
       .insert_resource(Time::<Fixed>::from_seconds(DELTA_TIME))

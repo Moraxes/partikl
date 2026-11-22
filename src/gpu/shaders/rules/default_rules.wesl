@@ -17,6 +17,7 @@
 import super::super::engine::types::Particle;
 import super::bindings::rule_params;
 import super::matrix::{Coeffs, load_coeffs, coeff_for};
+import super::nodes as nd;
 
 //@field crowding: f32 shared
 // Wygładzona liczba sąsiadów (tryb zmiennego zasięgu).
@@ -62,44 +63,37 @@ fn accum_init() -> RuleAccum {
   return RuleAccum(vec2<f32>(0.0), 0.0, vec2<f32>(0.0), 0.0);
 }
 
-// Zasięg odpychania w trybie zmiennym dla wygładzonej liczby sąsiadów.
-fn adaptive_radius(crowding: f32) -> f32 {
-  let u = rule_params;
-  return clamp(u.repulsion_radius * sqrt(crowding / u.adaptive_neighbours), u.repulsion_radius, u.adaptive_range_max);
-}
-
 // Wkład jednego sąsiada (już w zasięgu oddziaływania, `dist_sq > 0`). `delta` wskazuje od
 // `self_p` do `other` (po torusie; `other.pos` jest bez przesunięcia torusa), siłę typu sąsiada
 // na typ `self_p` reguła czyta z macierzy (`rule_self.coeffs`), `weight` to waga próbkowania
 // (1 bez próbkowania).
 fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: f32, rule_self: RuleSelf, weight: f32, accum: ptr<function, RuleAccum>) {
   let u = rule_params;
-  let coeff = coeff_for(rule_self.coeffs, other.species);
-  let inv = inverseSqrt(dist_sq);
-  let dist = dist_sq * inv;
-  let dir = delta * inv;
   var reach = u.repulsion_radius;
+  let g = nd::pair_geom(delta, dist_sq);
 @if(OVERLAP_ADAPTIVE) {
-  reach = max(adaptive_radius(rule_self.crowding), adaptive_radius(other.crowding));
+  reach = max(
+    nd::adaptive_reach(u.repulsion_radius, rule_self.crowding, u.adaptive_neighbours, u.adaptive_range_max),
+    nd::adaptive_reach(u.repulsion_radius, other.crowding, u.adaptive_neighbours, u.adaptive_range_max),
+  );
 }
-  let attraction = coeff * max(0.0, 1.0 - abs((dist - u.kernel_middle) / u.kernel_width));
-  var magnitude = 0.0;
+  let attraction = coeff_for(rule_self.coeffs, other.species) * nd::hat(g.dist, u.kernel_middle, u.kernel_width);
 @if(OVERLAP_RESOLVE) {
   // Bez sprężyny; przyciąganie zaczyna się dalej niż zasięg odpychania.
-  magnitude = weight * attraction;
-  if dist < reach {
-    (*accum).overlap_corr += 0.5 * (dist - reach) * dir;
+  (*accum).force += weight * attraction * g.dir;
+  if nd::inside(g.dist, reach) {
+    (*accum).overlap_corr += nd::overlap_push(g.dist, reach, g.dir);
     (*accum).overlap_count += 1.0;
   }
 }
 @else {
-  if dist < reach {
-    magnitude = -u.repulsion_strength * weight * (reach - dist);
-  } else {
-    magnitude = weight * attraction;
-  }
+  let m = select(
+    attraction,
+    nd::spring(g.dist, reach, u.repulsion_strength),
+    nd::inside(g.dist, reach)
+  );
+  (*accum).force += m * g.dir * weight;
 }
-  (*accum).force += magnitude * dir;
 @if(AVERAGE_FORCES || OVERLAP_ADAPTIVE) {
   (*accum).count += weight;
 }
@@ -112,30 +106,19 @@ fn integrate_particle(self_p: Particle, m: ptr<function, Model>, accum: RuleAccu
   var p = self_p;
   var force = accum.force;
 @if(AVERAGE_FORCES) {
-  if accum.count > 0.0 {
-    force *= min(1.0, u.average_neighbours / accum.count);
-  }
+  force = nd::capped_mean2(force, accum.count, u.average_neighbours);
 }
 @if(OVERLAP_RESOLVE) {
-  // Poprawka tylko w pozycji, więc staje się prędkością `poprawka / dt`.
-  if accum.overlap_count > 0.0 {
-    let corr = accum.overlap_corr / accum.overlap_count;
-    p.pos += corr;
-    p.vel += corr / u.dt;
-  }
+  let corr = nd::mean2(accum.overlap_corr, accum.overlap_count);
+  p.pos += corr;
+  p.vel += corr / u.dt;
 }
 @if(OVERLAP_ADAPTIVE) {
-  (*m).crowding += u.crowding_smoothing * (accum.count - (*m).crowding);
+  (*m).crowding = nd::smoothed((*m).crowding, accum.count, u.crowding_smoothing);
 }
-  let dt = u.dt;
-  var v = p.vel;
-  if dot(p.vel, p.vel) < u.velocity_threshold {
-    v = vec2<f32>(0.0);
-  }
-  let v_free = v + force * dt;
-  // Tarcie kwadratowe: dokładne rozwiązanie `v' = -c|v|v` na kroku.
-  let v_damped = v_free / (1.0 + u.friction * length(v_free) * dt);
-  p.vel = v_damped;
-  p.pos += v_damped * dt;
+  var v = nd::rest_below(p.vel, u.velocity_threshold);
+  v = nd::quad_drag(nd::kick(v, force, u.dt), u.friction, u.dt);
+  p.vel = v;
+  p.pos += v * u.dt;
   return p;
 }
