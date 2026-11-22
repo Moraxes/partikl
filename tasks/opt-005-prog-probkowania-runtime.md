@@ -2,7 +2,7 @@
 id: opt-005
 title: Próg próbkowania runtime
 summary: Próg próbkowania sterowany w runtime (haiku)
-status: doing
+status: done
 priority: soon
 branch: main
 part_of: opt-001
