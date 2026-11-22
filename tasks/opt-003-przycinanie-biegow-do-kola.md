@@ -2,12 +2,12 @@
 id: opt-003
 title: Przycinanie biegów do koła
 summary: Przycinanie biegów sąsiedztwa do koła (sonnet)
-status: doing
+status: dropped
 priority: soon
 branch: main
 part_of: opt-001
 created: 2026-11-22T01:12:30
-worked: 2026-11-22T01:36:59
+worked: 2026-11-22T12:48:47
 edited: 2026-11-22T01:43:34
 links:
 - kind: data
