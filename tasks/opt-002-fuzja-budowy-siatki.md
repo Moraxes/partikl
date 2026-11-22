@@ -14,6 +14,9 @@ links:
   target: baabcd6
   at: 2026-11-22T01:36:17
   note: 'perf(gpu): fuse grid histogram into the forces pass'
+- kind: data
+  target: .artifacts/bench/gpu-2026-11-22-01-35-24.parquet
+  at: 2026-11-22T01:36:31
 ---
 Model: sonnet (zmiana układu buforów i przebiegów compute, ryzyko hazardów pamięci).
 
