@@ -64,6 +64,9 @@ links:
 - kind: commit
   target: 6a4abbb
   at: 2026-11-22T01:58:51
+- kind: commit
+  target: 7bcf685
+  at: 2026-11-22T01:58:51
 ---
 Model: sonnet (plan kroków, dt w RuleParams, przeskalowanie Verleta, warunkowy przebieg; subtelne zależności).
 
