@@ -51,10 +51,10 @@ for ((r = 1; r <= rounds; r++)); do
   if ((r % 2)); then order="before after"; else order="after before"; fi
   for side in $order; do
     if [ "$side" = before ]; then
-      (cd "$base" && "$before" --quick --out-dir "$out" "${bench_args[@]}" >/dev/null 2>&1)
+      (cd "$base" && "$before" --quick --out-dir "$out" ${bench_args[@]+"${bench_args[@]}"} >/dev/null 2>&1)
       b=$(latest)
     else
-      "$after" --quick --out-dir "$out" "${bench_args[@]}" >/dev/null 2>&1
+      "$after" --quick --out-dir "$out" ${bench_args[@]+"${bench_args[@]}"} >/dev/null 2>&1
       a=$(latest)
     fi
     sleep 1 # osobne sekundy w nazwach plików

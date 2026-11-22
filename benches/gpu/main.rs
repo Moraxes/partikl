@@ -146,6 +146,13 @@ fn main() {
         for _ in 0..args.warmup + measured {
           if scene != Scene::Evolved {
             harness.set_state(state.clone());
+            // Pierwszy krok po `set_state` liczy histogram od nowa (recount), a znaczniki GPU są
+            // tylko w pierwszym kroku klatki, więc ten krok idzie przed pomiarem; jego czas GPU
+            // odbieramy i odrzucamy, żeby nie trafił do pomiaru.
+            harness.step(1);
+            if timed {
+              harness.take_gpu_times();
+            }
           }
           let start = Instant::now();
           harness.step(args.batch);
