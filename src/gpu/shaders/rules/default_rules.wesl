@@ -1,7 +1,4 @@
 // Reguły modelu (fizyka) wymienne bez ruszania silnika siatki.
-// Opcje deklaruje nagłówek (`//@option`): użytkownik wybiera je klawiszem albo `--option`, a wybór
-// włącza flagę shadera (nazwa po `=`); pierwszy wybór jest domyślny. Nakładanie się cząstek
-// rozwiązuje rozsuwanie: poprawka tylko w prędkości.
 // Silnik podaje jeszcze flagi TYPES_AT_MOST_4 / TYPES_AT_MOST_8 (liczba typów, dla `matrix.wesl`).
 // Kontrakt (silnik tylko to woła):
 //  - `Model`: pola modelu cząstki w osobnych buforach (silnik przenosi je z cząstką w scatterze i nie
@@ -17,8 +14,23 @@ import super::bindings::rule_params;
 import super::matrix::{Coeffs, load_coeffs, coeff_for};
 import super::nodes as nd;
 
+const RULE_SEPARATION: u32 = 0u;
+const RULE_ALIGNMENT: u32 = 1u;
+const RULE_COHESION: u32 = 2u;
+
 fn pair_weight(rule: u32, self_species: u32, other_species: u32) -> f32 {
-  return 1.0;
+  let u = rule_params;
+  switch rule {
+    case RULE_SEPARATION: {
+      return u.separation_weight;
+    }
+    case RULE_ALIGNMENT: {
+      return u.alignment_weight;
+    }
+    default: {
+      return u.coherence_weight;
+    }
+  }
 }
 
 //@field phantom_: f32
@@ -28,16 +40,17 @@ struct Model {
 
 struct Neighbour {
   pos: vec2<f32>,
+  vel: vec2<f32>,
   species: u32,
 }
 
-// Układ `sorted_hot[slot]`: (pos.x, pos.y, bity species, 0).
+// Układ `sorted_hot[slot]`: (pos.x, pos.y, vel.xy, species).
 fn pack_neighbour(p: Particle, m: Model) -> vec4<f32> {
-  return vec4<f32>(p.pos, bitcast<f32>(p.species), 0.0);
+  return vec4<f32>(p.pos, bitcast<f32>(pack2x16float(p.vel)), bitcast<f32>(p.species));
 }
 
 fn unpack_neighbour(v: vec4<f32>) -> Neighbour {
-  return Neighbour(v.xy, bitcast<u32>(v.z));
+  return Neighbour(v.xy, unpack2x16float(bitcast<u32>(v.z)), bitcast<u32>(v.w));
 }
 
 // Dane własnej cząstki liczone raz na cząstkę, przed pętlą po sąsiadach.
@@ -56,10 +69,17 @@ struct RuleAccum {
   // Rozsuwanie: suma poprawek pozycji i liczba nakładających się par.
   overlap_corr: vec2<f32>,
   overlap_count: f32,
+
+  // boidy
+  sep: vec2<f32>,
+  align: vec2<f32>,
+  align_w: f32,
+  cohere: vec2<f32>,
+  view_n: f32,
 }
 
 fn accum_init() -> RuleAccum {
-  return RuleAccum(vec2<f32>(0.0), 0.0, vec2<f32>(0.0), 0.0);
+  return RuleAccum(vec2(0.0), 0.0, vec2(0.0), 0.0, vec2(0.0), vec2(0.0), 0.0, vec2(0.0), 0.0);
 }
 
 // Wkład jednego sąsiada (już w zasięgu oddziaływania, `dist_sq > 0`). `delta` wskazuje od
@@ -78,6 +98,19 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
     (*accum).overlap_count += 1.0;
   }
   (*accum).count += weight;
+
+  // boidy
+  if g.dist < u.separation_radius {
+    let w = pair_weight(RULE_SEPARATION, self_p.species, other.species);
+    (*accum).sep += weight * w * nd::separation(g.dir, g.dist);
+  }
+  if g.dist < u.vision_radius {
+    let wa = pair_weight(RULE_ALIGNMENT, self_p.species, other.species);
+    let wc = pair_weight(RULE_COHESION, self_p.species, other.species);
+    (*accum).align += weight * wa * other.vel;
+    (*accum).cohere += weight * wc * delta;
+    (*accum).view_n += weight;
+  }
 }
 
 // Poprawka pozycji (rozsuwanie), tarcie kwadratowe i krok półjawnego Eulera (v, potem pos).
@@ -85,13 +118,22 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
 fn integrate_particle(self_p: Particle, m: ptr<function, Model>, accum: RuleAccum) -> Particle {
   let u = rule_params;
   var p = self_p;
-  var force = accum.force;
-  force = nd::capped_mean2(force, accum.count, u.average_neighbours);
+
+  let attraction = nd::capped_mean2(accum.force, accum.count, u.average_neighbours);
+
+  let n = accum.view_n;
+  let a_align = nd::mean2(accum.align - p.vel * accum.align_w, n);
+  let a_coh = nd::mean2(accum.cohere, n);
+  
+  let force = attraction + accum.sep + a_align + a_coh;
+
   // Poprawka tylko w prędkości; pozycja idzie za nią w tym samym kroku (p.pos += v * dt).
   let corr = nd::mean2(accum.overlap_corr, accum.overlap_count);
   p.vel += corr / u.dt;
   var v = nd::rest_below(p.vel, u.velocity_threshold);
   v = nd::quad_drag(nd::kick(v, force, u.dt), u.friction, u.dt);
+  v = nd::drive(v, u.target_speed, u.drive_rate, u.dt);
+
   p.vel = v;
   p.pos += v * u.dt;
   return p;

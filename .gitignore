@@ -9,6 +9,7 @@ node_modules/
 /spec-*.ron
 .tokensave
 .claude
+**/.DS_Store
 
 # Symlink do default_rules.wesl dla serwera języka WESL (moduł `rules::model` podaje Rust).
 /src/gpu/shaders/rules/model.wesl
