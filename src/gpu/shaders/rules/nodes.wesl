@@ -38,6 +38,16 @@ fn adaptive_reach(base: f32, crowding: f32, n0: f32, max_reach: f32) -> f32 {
   return clamp(base * sqrt(crowding / n0), base, max_reach);
 }
 
+fn separation(dir: vec2<f32>, dist: f32) -> vec2<f32> {
+  return -dir / max(dist, 1e-3);
+}
+
+// -- gate --
+
+fn in_view(self_heading: vec2<f32>, dir: vec2<f32>, cos_half_fov: f32) -> bool {
+  return dot(self_heading, dir) > cos_half_fov;
+}
+
 // -- post --
 
 fn mean2(sum: vec2<f32>, count: f32) -> vec2<f32> {
@@ -50,6 +60,14 @@ fn capped_mean2(sum: vec2<f32>, count: f32, n0: f32) -> vec2<f32> {
 
 fn smoothed(prev: f32, tgt: f32, rate: f32) -> f32 {
   return prev + rate * (tgt - prev);
+}
+
+fn drive(v: vec2<f32>, target_speed: f32, rate: f32, dt: f32) -> vec2<f32> {
+  let speed = length(v);
+  if speed < 1e-3 {
+    return v;
+  }
+  return v + (v / speed * (target_speed - speed) * rate * dt);
 }
 
 // -- całkowanie --

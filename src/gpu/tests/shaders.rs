@@ -23,7 +23,7 @@ const FLAG_SETS: &[&[&str]] = &[
   &["TYPES_AT_MOST_8"],
 ];
 
-const MODELS: &[&str] = &["default_rules", "diagnostic_rules"];
+const MODELS: &[&str] = &["default_rules", "diagnostic_rules", "boids"];
 
 fn shader_files() -> Vec<PathBuf> {
   let mut files = Vec::new();

@@ -99,6 +99,14 @@ pub struct RuleParams {
   pub friction: f32,
   #[serde(skip)]
   pub velocity_threshold: f32,
+  pub separation_radius: f32,
+  pub separation_weight: f32,
+  pub vision_radius: f32,
+  pub coherence_weight: f32,
+  pub alignment_weight: f32,
+  pub target_speed: f32,
+  pub drive_rate: f32,
+  pub fov_cos: f32,
 }
 
 impl RuleParams {
@@ -115,6 +123,14 @@ impl RuleParams {
       self.adaptive_range_max,
       self.crowding_smoothing,
       self.friction,
+      self.separation_radius,
+      self.separation_weight,
+      self.vision_radius,
+      self.coherence_weight,
+      self.alignment_weight,
+      self.target_speed,
+      self.drive_rate,
+      self.fov_cos,
     ];
     if finite.iter().any(|v| !v.is_finite()) {
       return Err("parametry reguł muszą być skończone".into());
@@ -129,6 +145,18 @@ impl RuleParams {
     if reach > INTERACTION_RADIUS {
       return Err(format!(
         "kernel_middle + kernel_width = {reach} przekracza zasięg siatki {INTERACTION_RADIUS} (config::INTERACTION_RADIUS)"
+      ));
+    }
+    let vision_radius = self.vision_radius;
+    if vision_radius > INTERACTION_RADIUS {
+      return Err(format!(
+        "vision_radius = {vision_radius} przekracza zasięg siatki {INTERACTION_RADIUS} (config::INTERACTION_RADIUS)"
+      ));
+    }
+    let separation_radius = self.separation_radius;
+    if separation_radius > INTERACTION_RADIUS {
+      return Err(format!(
+        "separation_radius = {separation_radius} przekracza zasięg siatki {INTERACTION_RADIUS} (config::INTERACTION_RADIUS)"
       ));
     }
     Ok(())
@@ -149,6 +177,14 @@ impl Default for RuleParams {
       crowding_smoothing: CROWDING_SMOOTHING,
       friction: FRICTION_COEFF,
       velocity_threshold: VELOCITY_THRESHOLD,
+      separation_radius: SEPARATION_RADIUS,
+      separation_weight: SEPARATION_WEIGHT,
+      vision_radius: VISION_RADIUS,
+      coherence_weight: COHERENCE_WEIGHT,
+      alignment_weight: ALIGNMENT_WEIGHT,
+      target_speed: TARGET_SPEED,
+      drive_rate: DRIVE_RATE,
+      fov_cos: FOV_COS,
     }
   }
 }

@@ -31,6 +31,7 @@ use crate::options::{RuleSchema, SimOptions};
 /// Ścieżka shadera, pod którą żyje moduł reguł; jej moduł WESL to `partikl::gpu::shaders::rules::model`.
 const MODULE_PATH: &str = "embedded://partikl/gpu/shaders/rules/model.wesl";
 const BUILTIN: &str = include_str!("shaders/rules/default_rules.wesl");
+const BOIDS: &str = include_str!("shaders/rules/boids.wesl");
 const DIAGNOSTIC: &str = include_str!("shaders/rules/diagnostic_rules.wesl");
 /// Jak często sprawdzamy, czy plik reguł się zmienił.
 const POLL: Duration = Duration::from_millis(500);
@@ -41,6 +42,8 @@ pub enum RuleSource {
   /// Wbudowane reguły fizyki (`rules/default_rules.wesl`).
   #[default]
   Builtin,
+  /// Boidy
+  Boids,
   /// Nic nie poruszają, zapisują w cząstce wynik sąsiedztwa (`rules/diagnostic_rules.wesl`); do
   /// testów silnika siatki bez fizyki.
   Diagnostic,
@@ -60,6 +63,7 @@ impl RuleSource {
   pub fn read(&self) -> Result<Loaded, LoadError> {
     let (code, path): (Cow<'static, str>, PathBuf) = match self {
       RuleSource::Builtin => (BUILTIN.into(), "wbudowane reguły".into()),
+      RuleSource::Boids => (BOIDS.into(), "reguły dla boidów".into()),
       RuleSource::Diagnostic => (DIAGNOSTIC.into(), "reguły diagnostyczne".into()),
       RuleSource::File(path) => (
         std::fs::read_to_string(path)

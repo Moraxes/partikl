@@ -8,6 +8,7 @@ rust-toolchain.toml
 node_modules/
 /spec-*.ron
 .tokensave
+.claude
 
 # Symlink do default_rules.wesl dla serwera języka WESL (moduł `rules::model` podaje Rust).
 /src/gpu/shaders/rules/model.wesl

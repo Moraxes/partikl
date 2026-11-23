@@ -14,6 +14,14 @@ struct RuleParams {
   crowding_smoothing: f32,
   friction: f32,
   velocity_threshold: f32,
+  separation_radius: f32,
+  separation_weight: f32,
+  vision_radius: f32,
+  coherence_weight: f32,
+  alignment_weight: f32,
+  target_speed: f32,
+  drive_rate: f32,
+  fov_cos: f32,
 }
 
 // Macierz sił `force_matrix[a * T + b]`: siła, z jaką typ `a` działa na typ `b`.
