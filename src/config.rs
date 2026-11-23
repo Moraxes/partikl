@@ -17,7 +17,7 @@ pub const INTERACTION_RADIUS: f32 = KERNEL_MIDDLE + KERNEL_WIDTH;
 pub const GRID_REACH: i32 = 2;
 
 /// Poniżej tej odległości działa twarde odpychanie niezależne od typu cząstek.
-pub const REPULSION_RADIUS: f32 = 10.0;
+pub const REPULSION_RADIUS: f32 = 1.0;
 /// Siła twardego odpychania na jednostkę wnikania w `REPULSION_RADIUS`.
 pub const REPULSION_STRENGTH: f32 = 100.0;
 
