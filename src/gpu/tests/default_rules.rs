@@ -64,11 +64,9 @@ fn reference_step(spec: &ParticleSpec, state: &State, options: Mode, world: Vec2
         fx *= scale;
         fy *= scale;
       }
-      let (mut x, mut y) = (px, py);
+      let (x, y) = (px, py);
       let (mut velx, mut vely) = (me.vel[0] as f64, me.vel[1] as f64);
       if cn > 0.0 {
-        x += cx / cn;
-        y += cy / cn;
         velx += cx / cn / dt;
         vely += cy / cn / dt;
       }

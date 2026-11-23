@@ -109,8 +109,8 @@ fn integrate_particle(self_p: Particle, m: ptr<function, Model>, accum: RuleAccu
   force = nd::capped_mean2(force, accum.count, u.average_neighbours);
 }
 @if(OVERLAP_RESOLVE) {
+  // Poprawka tylko w prędkości; pozycja idzie za nią w tym samym kroku (p.pos += v * dt).
   let corr = nd::mean2(accum.overlap_corr, accum.overlap_count);
-  p.pos += corr;
   p.vel += corr / u.dt;
 }
 @if(OVERLAP_ADAPTIVE) {
