@@ -91,46 +91,6 @@ fn unrelated_key_does_not_change_sim_state() {
   );
 }
 
-#[test]
-fn n_toggles_force_averaging() {
-  let mut app = input_app();
-  app.add_systems(Update, handle_keyboard_input);
-  let averaging = |app: &App| {
-    app
-      .world()
-      .resource::<SimOptions>()
-      .value("average_forces")
-      .map(str::to_owned)
-  };
-  tap_key(&mut app, KeyCode::KeyN);
-  assert_eq!(averaging(&app).as_deref(), Some("off"));
-  tap_key(&mut app, KeyCode::KeyN);
-  assert_eq!(averaging(&app).as_deref(), Some("on"));
-}
-
-#[test]
-fn o_cycles_overlap_modes() {
-  let mut app = input_app();
-  app.add_systems(Update, handle_keyboard_input);
-  let mut modes = vec![];
-  for _ in 0..3 {
-    tap_key(&mut app, KeyCode::KeyO);
-    modes.push(
-      app
-        .world()
-        .resource::<SimOptions>()
-        .value("overlap")
-        .unwrap()
-        .to_owned(),
-    );
-  }
-  assert_eq!(modes, ["spring", "adaptive_range", "resolve"]);
-  assert_eq!(
-    app.world().resource::<SimOptions>().value("average_forces"),
-    None
-  );
-}
-
 /// Klawisze opcji pochodzą z deklaracji reguł: bez deklaracji N i O nic nie robią.
 #[test]
 fn option_keys_come_from_the_rules() {
@@ -197,17 +157,13 @@ fn sampling_cap_next_handles_values_off_the_cycle() {
 #[test]
 fn hud_text_shows_fps_and_options() {
   let schema = builtin_schema();
-  let options = SimOptions::default()
-    .with("average_forces", "on")
-    .with("overlap", "adaptive_range");
+  let options = SimOptions::default();
   let quality = RenderQuality {
     hdr: true,
     ..RenderQuality::default()
   };
   let text = hud_text(Some(59.6), Some(100.0), &schema, &options, &quality, 256, 1);
   assert!(text.contains("60 fps"), "{text}");
-  assert!(text.contains("average forces on  N"), "{text}");
-  assert!(text.contains("overlap adaptive range  O"), "{text}");
   assert!(text.contains("candidates 256  C"), "{text}");
   assert!(text.contains("hdr on"), "{text}");
   assert!(text.contains("antialiasing off"), "{text}");

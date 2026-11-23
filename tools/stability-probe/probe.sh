@@ -4,7 +4,7 @@
 #   tools/stability-probe/probe.sh [-n SIZES] [-s STEPS] [-e EVERY] [-d OUTDIR] [-p PARAMS] AXIS...
 #
 # AXIS to `opcja=wybór1,wybór2,...`; sonda przechodzi po iloczynie kartezjańskim osi, np.
-#   tools/stability-probe/probe.sh average_forces=on,off overlap=spring,resolve,adaptive_range
+#   tools/stability-probe/probe.sh average_forces=on,off   # (reguły z opcją average_forces)
 # -n  rozmiary po przecinku (domyślnie 100000,1000000)    -s  kroków (2000)
 # -e  odstęp zrzutów w krokach (500)                      -p  RON dla --params (np. "(repulsion_radius: 10.0)")
 # -d  katalog wyników (domyślnie .cache/stability-probe/<data>); w nim <wariant>_n<N>/ (stats.csv,

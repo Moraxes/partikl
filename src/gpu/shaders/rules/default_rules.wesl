@@ -1,9 +1,7 @@
 // Reguły modelu (fizyka) wymienne bez ruszania silnika siatki.
 // Opcje deklaruje nagłówek (`//@option`): użytkownik wybiera je klawiszem albo `--option`, a wybór
-// włącza flagę shadera (nazwa po `=`); pierwszy wybór jest domyślny. Bez żadnej z dwóch pierwszych
-// flag nakładania działa sprężyna (wybór `spring`); domyślnie jest to rozsuwanie `resolve`.
-//@option average_forces key=N: on=AVERAGE_FORCES, off
-//@option overlap key=O: resolve=OVERLAP_RESOLVE, spring, adaptive_range=OVERLAP_ADAPTIVE
+// włącza flagę shadera (nazwa po `=`); pierwszy wybór jest domyślny. Nakładanie się cząstek
+// rozwiązuje rozsuwanie: poprawka tylko w prędkości.
 // Silnik podaje jeszcze flagi TYPES_AT_MOST_4 / TYPES_AT_MOST_8 (liczba typów, dla `matrix.wesl`).
 // Kontrakt (silnik tylko to woła):
 //  - `Model`: pola modelu cząstki w osobnych buforach (silnik przenosi je z cząstką w scatterze i nie
@@ -19,35 +17,36 @@ import super::bindings::rule_params;
 import super::matrix::{Coeffs, load_coeffs, coeff_for};
 import super::nodes as nd;
 
-//@field crowding: f32 shared
-// Wygładzona liczba sąsiadów (tryb zmiennego zasięgu).
+fn pair_weight(rule: u32, self_species: u32, other_species: u32) -> f32 {
+  return 1.0;
+}
+
+//@field phantom_: f32
 struct Model {
-  crowding: f32,
+  phantom_: f32,
 }
 
 struct Neighbour {
   pos: vec2<f32>,
   species: u32,
-  crowding: f32,
 }
 
-// Układ `sorted_hot[slot]`: (pos.x, pos.y, bity species, crowding).
+// Układ `sorted_hot[slot]`: (pos.x, pos.y, bity species, 0).
 fn pack_neighbour(p: Particle, m: Model) -> vec4<f32> {
-  return vec4<f32>(p.pos, bitcast<f32>(p.species), m.crowding);
+  return vec4<f32>(p.pos, bitcast<f32>(p.species), 0.0);
 }
 
 fn unpack_neighbour(v: vec4<f32>) -> Neighbour {
-  return Neighbour(v.xy, bitcast<u32>(v.z), v.w);
+  return Neighbour(v.xy, bitcast<u32>(v.z));
 }
 
 // Dane własnej cząstki liczone raz na cząstkę, przed pętlą po sąsiadach.
 struct RuleSelf {
   coeffs: Coeffs,
-  crowding: f32,
 }
 
 fn prepare_self(p: Particle, m: Model) -> RuleSelf {
-  return RuleSelf(load_coeffs(p.species), m.crowding);
+  return RuleSelf(load_coeffs(p.species));
 }
 
 struct RuleAccum {
@@ -69,34 +68,16 @@ fn accum_init() -> RuleAccum {
 // (1 bez próbkowania).
 fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: f32, rule_self: RuleSelf, weight: f32, accum: ptr<function, RuleAccum>) {
   let u = rule_params;
-  var reach = u.repulsion_radius;
+  let reach = u.repulsion_radius;
   let g = nd::pair_geom(delta, dist_sq);
-@if(OVERLAP_ADAPTIVE) {
-  reach = max(
-    nd::adaptive_reach(u.repulsion_radius, rule_self.crowding, u.adaptive_neighbours, u.adaptive_range_max),
-    nd::adaptive_reach(u.repulsion_radius, other.crowding, u.adaptive_neighbours, u.adaptive_range_max),
-  );
-}
   let attraction = coeff_for(rule_self.coeffs, other.species) * nd::hat(g.dist, u.kernel_middle, u.kernel_width);
-@if(OVERLAP_RESOLVE) {
-  // Bez sprężyny; przyciąganie zaczyna się dalej niż zasięg odpychania.
+  // Przyciąganie zaczyna się dalej niż zasięg odpychania.
   (*accum).force += weight * attraction * g.dir;
   if nd::inside(g.dist, reach) {
     (*accum).overlap_corr += nd::overlap_push(g.dist, reach, g.dir);
     (*accum).overlap_count += 1.0;
   }
-}
-@else {
-  let m = select(
-    attraction,
-    nd::spring(g.dist, reach, u.repulsion_strength),
-    nd::inside(g.dist, reach)
-  );
-  (*accum).force += m * g.dir * weight;
-}
-@if(AVERAGE_FORCES || OVERLAP_ADAPTIVE) {
   (*accum).count += weight;
-}
 }
 
 // Poprawka pozycji (rozsuwanie), tarcie kwadratowe i krok półjawnego Eulera (v, potem pos).
@@ -105,17 +86,10 @@ fn integrate_particle(self_p: Particle, m: ptr<function, Model>, accum: RuleAccu
   let u = rule_params;
   var p = self_p;
   var force = accum.force;
-@if(AVERAGE_FORCES) {
   force = nd::capped_mean2(force, accum.count, u.average_neighbours);
-}
-@if(OVERLAP_RESOLVE) {
   // Poprawka tylko w prędkości; pozycja idzie za nią w tym samym kroku (p.pos += v * dt).
   let corr = nd::mean2(accum.overlap_corr, accum.overlap_count);
   p.vel += corr / u.dt;
-}
-@if(OVERLAP_ADAPTIVE) {
-  (*m).crowding = nd::smoothed((*m).crowding, accum.count, u.crowding_smoothing);
-}
   var v = nd::rest_below(p.vel, u.velocity_threshold);
   v = nd::quad_drag(nd::kick(v, force, u.dt), u.friction, u.dt);
   p.vel = v;

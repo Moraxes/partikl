@@ -20,38 +20,6 @@ mod rules;
 mod shaders;
 mod stats;
 
-/// Opcje wbudowanych reguł tak, jak widzi je wyrocznia f64 (`default_rules.rs`).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-struct Mode {
-  average_forces: bool,
-  overlap: Overlap,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-enum Overlap {
-  Spring,
-  #[default]
-  Resolve,
-  AdaptiveRange,
-}
-
-impl Mode {
-  /// Te same opcje w postaci wyborów z deklaracji reguł (`//@option` w `default_rules.wesl`).
-  fn sim(self) -> SimOptions {
-    let overlap = match self.overlap {
-      Overlap::Spring => "spring",
-      Overlap::Resolve => "resolve",
-      Overlap::AdaptiveRange => "adaptive_range",
-    };
-    SimOptions::default()
-      .with(
-        "average_forces",
-        if self.average_forces { "on" } else { "off" },
-      )
-      .with("overlap", overlap)
-  }
-}
-
 const WORLD: Vec2 = Vec2::new(500.0, 330.0);
 
 fn spec(rng: &mut StdRng, types: usize) -> ParticleSpec {
@@ -70,30 +38,19 @@ fn random_particles(rng: &mut StdRng, n: usize, types: usize) -> Vec<GpuParticle
   initial_particles(n, types, WORLD, rng)
 }
 
-/// Stan cząstek razem z modelem wbudowanych reguł (`crowding` na cząstkę, indeksowane jak cząstki
+/// Stan cząstek razem z modelem wbudowanych reguł (jedna wartość `f32` na cząstkę, indeksowane jak cząstki
 /// po id); wyrocznia f64 i `assert_close` porównują oba.
 #[derive(Clone, Debug)]
 struct State {
   particles: Vec<GpuParticle>,
-  crowding: Vec<f32>,
+  model: Vec<f32>,
 }
 
 impl State {
-  /// Z zerowym `crowding`, jak na starcie aplikacji.
+  /// Z zerowym modelem, jak na starcie aplikacji.
   fn new(particles: Vec<GpuParticle>) -> State {
-    let crowding = vec![0.0; particles.len()];
-    State {
-      particles,
-      crowding,
-    }
-  }
-
-  fn with_random_crowding(mut self, rng: &mut StdRng) -> State {
-    self
-      .crowding
-      .iter_mut()
-      .for_each(|c| *c = rng.random_range(0.0..120.0));
-    self
+    let model = vec![0.0; particles.len()];
+    State { particles, model }
   }
 }
 
@@ -105,8 +62,8 @@ fn harness_for(
   world: Vec2,
 ) -> Option<Harness> {
   let mut harness = Harness::new(options, spec, state.particles.clone(), world)?;
-  if state.crowding.iter().any(|&c| c != 0.0) {
-    harness.set_model(state.crowding.clone());
+  if state.model.iter().any(|&c| c != 0.0) {
+    harness.set_model(state.model.clone());
   }
   Some(harness)
 }
@@ -114,16 +71,13 @@ fn harness_for(
 /// Wraca do stanu `state` (cząstki i model), bez kroku symulacji.
 fn reset(harness: &mut Harness, state: &State) {
   harness.set_state(state.particles.clone());
-  harness.set_model(state.crowding.clone());
+  harness.set_model(state.model.clone());
 }
 
 /// Wykonuje kroki i zwraca stan z modelem.
 fn run_state(harness: &mut Harness, steps: u64) -> State {
-  let (particles, crowding) = harness.run_with_model::<f32>(steps);
-  State {
-    particles,
-    crowding,
-  }
+  let (particles, model) = harness.run_with_model::<f32>(steps);
+  State { particles, model }
 }
 
 fn assert_close(actual: &State, expected: &State, context: &str) {
@@ -145,10 +99,10 @@ fn assert_close(actual: &State, expected: &State, context: &str) {
         e.vel
       );
     }
-    let (ac, ec) = (actual.crowding[i], expected.crowding[i]);
+    let (ac, ec) = (actual.model[i], expected.model[i]);
     assert!(
       (ac - ec).abs() < 1e-3,
-      "{context} cząstka {i}: crowding {ac} vs {ec}"
+      "{context} cząstka {i}: model {ac} vs {ec}"
     );
   }
 }

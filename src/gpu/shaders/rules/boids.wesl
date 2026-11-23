@@ -1,7 +1,6 @@
 // Reguły modelu (fizyka) wymienne bez ruszania silnika siatki.
 // Opcje deklaruje nagłówek (`//@option`): użytkownik wybiera je klawiszem albo `--option`, a wybór
-// włącza flagę shadera (nazwa po `=`); pierwszy wybór jest domyślny. Bez żadnej z dwóch pierwszych
-// flag nakładania działa sprężyna (wybór `spring`); domyślnie jest to rozsuwanie `resolve`.
+// włącza flagę shadera (nazwa po `=`); pierwszy wybór jest domyślny.
 // Silnik podaje jeszcze flagi TYPES_AT_MOST_4 / TYPES_AT_MOST_8 (liczba typów, dla `matrix.wesl`).
 // Kontrakt (silnik tylko to woła):
 //  - `Model`: pola modelu cząstki w osobnych buforach (silnik przenosi je z cząstką w scatterze i nie

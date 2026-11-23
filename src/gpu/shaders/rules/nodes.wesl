@@ -26,16 +26,8 @@ fn inside(dist: f32, reach: f32) -> bool {
   return dist < reach;
 }
 
-fn spring(dist: f32, reach: f32, k: f32) -> f32 {
-  return -k * (reach - dist);
-}
-
 fn overlap_push(dist: f32, reach: f32, dir: vec2<f32>) -> vec2<f32> {
   return 0.5 * (dist - reach) * dir;
-}
-
-fn adaptive_reach(base: f32, crowding: f32, n0: f32, max_reach: f32) -> f32 {
-  return clamp(base * sqrt(crowding / n0), base, max_reach);
 }
 
 fn separation(dir: vec2<f32>, dist: f32) -> vec2<f32> {

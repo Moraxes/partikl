@@ -4,7 +4,7 @@ use super::*;
 fn layout_matches_wgsl() {
   assert_eq!(size_of::<GpuParticle>(), 24);
   assert_eq!(EngineUniforms::min_size().get(), 56);
-  assert_eq!(RuleParams::min_size().get(), 44);
+  assert_eq!(RuleParams::min_size().get(), 60);
 }
 
 #[test]
@@ -37,11 +37,7 @@ fn geometry_covers_interaction_radius() {
 
 #[test]
 fn deterministic_mode_repeats_bit_for_bit() {
-  let options = Mode {
-    average_forces: false,
-    overlap: Overlap::Spring,
-  }
-  .sim();
+  let options = SimOptions::default();
   let run = || {
     let mut rng = StdRng::seed_from_u64(5);
     let spec = spec(&mut rng, 3);
@@ -537,7 +533,7 @@ fn state_invariants_hold_for_the_diagnostic_rules() {
 }
 
 /// Model cząstki (pola reguł) przenosi się razem z nią przez scatter (i sortowanie komórek w
-/// trybie deterministycznym): sprężyna nie zmienia `crowding`, więc po wielu krokach każda cząstka
+/// trybie deterministycznym): reguły nie zmieniają modelu, więc po wielu krokach każda cząstka
 /// ma nadal swoją wartość.
 #[test]
 fn model_stays_with_its_particle() {
@@ -545,14 +541,14 @@ fn model_stays_with_its_particle() {
     let mut rng = StdRng::seed_from_u64(95);
     let spec = spec(&mut rng, 3);
     let mut state = State::new(random_particles(&mut rng, 6_000, 3));
-    state.crowding = (0..state.particles.len()).map(|id| id as f32).collect();
-    let Some(mut harness) = harness_for(Mode::default().sim(), spec, &state, WORLD) else {
+    state.model = (0..state.particles.len()).map(|id| id as f32).collect();
+    let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
       return;
     };
     harness.set_deterministic(deterministic);
     let after = run_state(&mut harness, 20);
     assert_eq!(
-      after.crowding, state.crowding,
+      after.model, state.model,
       "model rozjechał się z cząstkami (deterministic = {deterministic})"
     );
   }

@@ -89,13 +89,9 @@ pub struct RuleParams {
   #[serde(skip)]
   pub dt: f32,
   pub repulsion_radius: f32,
-  pub repulsion_strength: f32,
   pub kernel_middle: f32,
   pub kernel_width: f32,
   pub average_neighbours: f32,
-  pub adaptive_neighbours: f32,
-  pub adaptive_range_max: f32,
-  pub crowding_smoothing: f32,
   pub friction: f32,
   #[serde(skip)]
   pub velocity_threshold: f32,
@@ -115,13 +111,9 @@ impl RuleParams {
   pub fn validate(&self) -> Result<(), String> {
     let finite = [
       self.repulsion_radius,
-      self.repulsion_strength,
       self.kernel_middle,
       self.kernel_width,
       self.average_neighbours,
-      self.adaptive_neighbours,
-      self.adaptive_range_max,
-      self.crowding_smoothing,
       self.friction,
       self.separation_radius,
       self.separation_weight,
@@ -135,11 +127,8 @@ impl RuleParams {
     if finite.iter().any(|v| !v.is_finite()) {
       return Err("parametry reguł muszą być skończone".into());
     }
-    if self.kernel_width <= 0.0 || self.adaptive_neighbours <= 0.0 || self.average_neighbours <= 0.0
-    {
-      return Err(
-        "kernel_width, average_neighbours i adaptive_neighbours muszą być dodatnie".into(),
-      );
+    if self.kernel_width <= 0.0 || self.average_neighbours <= 0.0 {
+      return Err("kernel_width i average_neighbours muszą być dodatnie".into());
     }
     let reach = self.kernel_middle + self.kernel_width;
     if reach > INTERACTION_RADIUS {
@@ -168,13 +157,9 @@ impl Default for RuleParams {
     RuleParams {
       dt: DELTA_TIME as f32,
       repulsion_radius: REPULSION_RADIUS,
-      repulsion_strength: REPULSION_STRENGTH,
       kernel_middle: KERNEL_MIDDLE,
       kernel_width: KERNEL_WIDTH,
       average_neighbours: AVERAGE_NEIGHBOURS,
-      adaptive_neighbours: ADAPTIVE_NEIGHBOURS,
-      adaptive_range_max: ADAPTIVE_RANGE_MAX,
-      crowding_smoothing: CROWDING_SMOOTHING,
       friction: FRICTION_COEFF,
       velocity_threshold: VELOCITY_THRESHOLD,
       separation_radius: SEPARATION_RADIUS,

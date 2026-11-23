@@ -82,10 +82,9 @@ pub struct ProgramArgs {
   /// Set a rules option at startup, as NAME=CHOICE (repeatable).
   ///
   /// The rules declare their options (see `//@option` in
-  /// `src/gpu/shaders/rules/default_rules.wesl`); the built-in rules have `average_forces`
-  /// (on, off) and `overlap` (resolve, spring, adaptive_range). Options toggle at runtime with
-  /// the key the rules declare (N and O for the built-in ones). Unset options take the first
-  /// choice.
+  /// `src/gpu/shaders/rules/default_rules.wesl`); the built-in rules declare
+  /// none at the moment. Options toggle at runtime with the key the rules declare. Unset options
+  /// take the first choice.
   #[arg(long = "option", value_name = "NAME=CHOICE")]
   pub options: Vec<String>,
 

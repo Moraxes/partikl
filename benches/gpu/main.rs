@@ -197,19 +197,7 @@ fn main() {
         let samples = &times[args.warmup..];
         let gpu = &gpu[args.warmup..];
         // Nazwy wariantów jak dawniej (wyniki z poprzednich rewizji): nakładanie i `+average`.
-        let overlap = options
-          .value("overlap")
-          .unwrap_or("resolve")
-          .replace('_', " ");
-        let variant = format!(
-          "{overlap}{}{}",
-          if options.value("average_forces").unwrap_or("on") == "on" {
-            "+average"
-          } else {
-            ""
-          },
-          args.sim.label()
-        );
+        let variant = format!("resolve+average{}", args.sim.label());
         let rows = samples.len();
         let batch = RecordBatch::try_new(
           schema.clone(),

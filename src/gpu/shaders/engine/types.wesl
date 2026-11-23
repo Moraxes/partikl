@@ -1,6 +1,6 @@
 // Typy wspólne silnika siatki i reguł. Układ musi zgadzać się z `src/gpu/mod.rs`.
 
-// Cząstka silnika: tylko to, czego potrzebuje siatka i render. Pola modelu (np. `crowding`) leżą w
+// Cząstka silnika: tylko to, czego potrzebuje siatka i render. Pola modelu leżą w
 // osobnych buforach deklarowanych przez reguły (`Model`, patrz `rules/default_rules.wesl`).
 struct Particle {
   pos: vec2<f32>,

@@ -5,13 +5,9 @@
 struct RuleParams {
   dt: f32,
   repulsion_radius: f32,
-  repulsion_strength: f32,
   kernel_middle: f32,
   kernel_width: f32,
   average_neighbours: f32,
-  adaptive_neighbours: f32,
-  adaptive_range_max: f32,
-  crowding_smoothing: f32,
   friction: f32,
   velocity_threshold: f32,
   separation_radius: f32,

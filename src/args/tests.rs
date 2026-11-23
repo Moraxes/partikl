@@ -9,20 +9,11 @@ fn parse(args: &[&str]) -> Result<ProgramArgs, clap::Error> {
 
 #[test]
 fn options_are_repeatable_and_checked_against_the_rules() {
-  let args = parse(&[
-    "--option",
-    "overlap=resolve",
-    "--option",
-    "average_forces=off",
-  ])
-  .unwrap();
+  let args = parse(&["--option", "a=b", "--option", "c=d"]).unwrap();
+  assert_eq!(args.options, ["a=b", "c=d"]);
+  // Wbudowane reguły nie deklarują opcji, więc każda nazwa jest nieznana.
   let schema = args.rule_source().read().unwrap().schema;
-  let options = SimOptions::from_overrides(&schema, &args.options).unwrap();
-  assert_eq!(options.value("overlap"), Some("resolve"));
-  assert_eq!(options.value("average_forces"), Some("off"));
-
-  let bad = parse(&["--option", "overlap=nope"]).unwrap();
-  assert!(SimOptions::from_overrides(&schema, &bad.options).is_err());
+  assert!(SimOptions::from_overrides(&schema, &args.options).is_err());
 }
 
 #[test]

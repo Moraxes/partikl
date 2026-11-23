@@ -13,15 +13,8 @@ use wesl::{CompileOptions, Feature, Features};
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/src/gpu/shaders");
 
-/// Zestawy flag: każda opcja wbudowanych reguł i oba progi liczby typów (`matrix.wesl`).
-const FLAG_SETS: &[&[&str]] = &[
-  &[],
-  &["AVERAGE_FORCES"],
-  &["OVERLAP_RESOLVE"],
-  &["OVERLAP_ADAPTIVE", "AVERAGE_FORCES"],
-  &["TYPES_AT_MOST_4"],
-  &["TYPES_AT_MOST_8"],
-];
+/// Zestawy flag: oba progi liczby typów (`matrix.wesl`).
+const FLAG_SETS: &[&[&str]] = &[&[], &["TYPES_AT_MOST_4"], &["TYPES_AT_MOST_8"]];
 
 const MODELS: &[&str] = &["default_rules", "diagnostic_rules", "boids"];
 

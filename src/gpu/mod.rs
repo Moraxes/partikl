@@ -43,7 +43,7 @@ use material::ParticleMaterial;
 pub const MAX_STEPS_PER_FRAME: u32 = 16;
 
 /// Cząstka silnika w buforach GPU; układ jak `Particle` w `engine/types.wesl` (24 B). Pola modelu
-/// (np. `crowding`) są w osobnych buforach deklarowanych przez reguły (`GpuSim::model`).
+/// są w osobnych buforach deklarowanych przez reguły (`GpuSim::model`).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct GpuParticle {
