@@ -124,7 +124,7 @@ fn o_cycles_overlap_modes() {
         .to_owned(),
     );
   }
-  assert_eq!(modes, ["resolve", "adaptive_range", "spring"]);
+  assert_eq!(modes, ["spring", "adaptive_range", "resolve"]);
   assert_eq!(
     app.world().resource::<SimOptions>().value("average_forces"),
     None

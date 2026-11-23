@@ -199,7 +199,7 @@ fn main() {
         // Nazwy wariantów jak dawniej (wyniki z poprzednich rewizji): nakładanie i `+average`.
         let overlap = options
           .value("overlap")
-          .unwrap_or("spring")
+          .unwrap_or("resolve")
           .replace('_', " ");
         let variant = format!(
           "{overlap}{}{}",

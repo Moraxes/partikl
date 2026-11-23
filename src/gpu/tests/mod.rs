@@ -29,8 +29,8 @@ struct Mode {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 enum Overlap {
-  #[default]
   Spring,
+  #[default]
   Resolve,
   AdaptiveRange,
 }
