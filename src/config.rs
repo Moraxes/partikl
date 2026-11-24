@@ -29,10 +29,10 @@ pub const FRICTION_COEFF: f32 = 0.01;
 
 // Parametry boidów
 pub const SEPARATION_RADIUS: f32 = 10.0;
-pub const SEPARATION_WEIGHT: f32 = 0.0;
+pub const SEPARATION_WEIGHT: f32 = 2.0;
 pub const VISION_RADIUS: f32 = 40.0;
-pub const COHERENCE_WEIGHT: f32 = 0.0;
-pub const ALIGNMENT_WEIGHT: f32 = 0.0;
+pub const COHERENCE_WEIGHT: f32 = 1.0;
+pub const ALIGNMENT_WEIGHT: f32 = 1.0;
 pub const TARGET_SPEED: f32 = 40.0;
 pub const DRIVE_RATE: f32 = 0.0;
 pub const FOV_COS: f32 = 0.86;

@@ -108,6 +108,7 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
     let wa = pair_weight(RULE_ALIGNMENT, self_p.species, other.species);
     let wc = pair_weight(RULE_COHESION, self_p.species, other.species);
     (*accum).align += weight * wa * other.vel;
+    (*accum).align_w += weight * wa;
     (*accum).cohere += weight * wc * delta;
     (*accum).view_n += weight;
   }
