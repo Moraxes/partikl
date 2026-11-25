@@ -67,6 +67,7 @@ struct RuleAccum {
   // Sąsiedzi w zasięgu (z wagą próbkowania).
   neighbours: f32,
   same_species_neighbours: f32,
+  kernel_w: f32,
   // Rozsuwanie: suma poprawek pozycji i liczba nakładających się par.
   overlap_corr: vec2<f32>,
   overlap_count: f32,
@@ -82,7 +83,7 @@ struct RuleAccum {
 
 fn accum_init() -> RuleAccum {
   return RuleAccum(
-    vec2(0.0), 0.0, 0.0,
+    vec2(0.0), 0.0, 0.0, 0.0,
     vec2(0.0), 0.0,
     vec2(0.0), 0.0,
     vec2(0.0), 0.0,
@@ -98,10 +99,11 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
   let u = rule_params;
   let reach = u.repulsion_radius;
   let g = nd::pair_geom(delta, dist_sq);
-  let attraction = coeff_for(rule_self.coeffs, other.species)
-    * nd::hat(g.dist, u.kernel_middle, u.kernel_width);
+  let h = nd::hat(g.dist, u.kernel_middle, u.kernel_width);
+  let attraction = h * coeff_for(rule_self.coeffs, other.species);
   // Przyciąganie zaczyna się dalej niż zasięg odpychania.
   (*accum).force += weight * attraction * g.dir;
+  (*accum).kernel_w += weight * h;
   if nd::inside(g.dist, reach) {
     (*accum).overlap_corr += nd::overlap_push(g.dist, reach, g.dir);
     (*accum).overlap_count += 1.0;
@@ -132,7 +134,8 @@ fn integrate_particle(self_p: Particle, accum: RuleAccum) -> Particle {
   let u = rule_params;
   var p = self_p;
 
-  let attraction = nd::capped_mean2(accum.force, accum.neighbours, u.average_neighbours);
+  // średni wektor coeff * kierunek ważony kernelem przyciągania
+  let attraction = accum.force / (accum.kernel_w + 2.0);
 
   let n = accum.view_n;
   let a_sep = nd::mean2(accum.sep, accum.sep_n);
@@ -142,9 +145,9 @@ fn integrate_particle(self_p: Particle, accum: RuleAccum) -> Particle {
  
   let nw = 0.1 + accum.same_species_neighbours / max(1.0, accum.neighbours);
   let vw = log2(2.0 + dot(p.vel, p.vel));
-  let force = sqrt(nw * vw) * boid + attraction / sqrt(nw * vw);
+  let force = sqrt(nw * vw) * boid + 10.0 * attraction / sqrt(nw * vw);
 
-  // Poprawka tylko w prędkości ; pozycja idzie za nią w tym samym kroku (p.pos += v * dt).
+  // Poprawka tylko w prędkości; pozycja idzie za nią w tym samym kroku (p.pos += v * dt).
   let corr = nd::mean2(accum.overlap_corr, accum.overlap_count);
   p.vel += corr / u.dt;
   var v = nd::rest_below(p.vel, u.velocity_threshold);
