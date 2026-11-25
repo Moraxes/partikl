@@ -1,5 +1,5 @@
 //! Losowanie w trakcie działania: nowa macierz sił (klawisz R) i nowa paleta kolorów typów
-//! (klawisz Y), do których symulacja przechodzi płynnie w czasie `TRANSITION`, oraz od razu nowy
+//! (klawisz Y), do których symulacja przechodzi płynnie, oraz od razu nowy
 //! stan cząstek z nową paletą (klawisz T).
 
 use std::path::{Path, PathBuf};
@@ -17,9 +17,6 @@ use crate::loading::{LoadError, dump_timestamped_spec, generate_particle_spec};
 use crate::options::SimState;
 use crate::spec::{Interaction, ParticleSpec};
 
-/// Czas przejścia do nowej macierzy albo palety (czas wirtualny).
-const TRANSITION: Duration = Duration::from_secs(1);
-
 /// Prośba o nową macierz sił.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct RerollMatrix;
@@ -30,7 +27,9 @@ pub struct RerollState;
 
 /// Prośba o nowe kolory typów.
 #[derive(Message, Clone, Copy, Debug)]
-pub struct RerollColors;
+pub struct RerollColors {
+  pub over: Duration,
+}
 
 /// Trwające przejście macierzy (w pauzie stoi, jak symulacja).
 #[derive(Resource, Default)]
@@ -44,22 +43,21 @@ struct ColorTransition(Option<Tween<LinearRgba>>);
 struct Tween<T> {
   from: Vec<T>,
   to: Vec<T>,
+  over: Duration,
   elapsed: Duration,
 }
 
 impl<T> Tween<T> {
-  fn new(from: Vec<T>, to: Vec<T>) -> Self {
+  fn new(from: Vec<T>, to: Vec<T>, over: Duration) -> Self {
     Tween {
       from,
       to,
+      over,
       elapsed: Duration::ZERO,
     }
   }
 }
 
-/// Przesuwa trwające przejście o `delta` i zwraca bieżące wartości (`mix` daje wartość po części
-/// `t` z 0..1 przejścia); po czasie `TRANSITION` zwraca dokładnie cel i kończy przejście. `None`,
-/// gdy nic nie trwa.
 fn advance<T>(
   transition: &mut Option<Tween<T>>,
   delta: Duration,
@@ -67,10 +65,10 @@ fn advance<T>(
 ) -> Option<Vec<T>> {
   let mut tween = transition.take()?;
   tween.elapsed += delta;
-  if tween.elapsed >= TRANSITION {
+  if tween.elapsed >= tween.over {
     return Some(tween.to);
   }
-  let t = tween.elapsed.div_duration_f32(TRANSITION);
+  let t = tween.elapsed.div_duration_f32(tween.over);
   let values = tween
     .from
     .iter()
@@ -165,7 +163,11 @@ fn start_matrix_transition(
     Ok(None) => {}
     Err(error) => error!("{error}"),
   }
-  transition.0 = Some(Tween::new(spec.interactions.clone(), target.interactions));
+  transition.0 = Some(Tween::new(
+    spec.interactions.clone(),
+    target.interactions,
+    Duration::from_secs(1),
+  ));
 }
 
 /// Zapisuje wylosowaną specyfikację w `dir`, chyba że `--no-dump-interaction-spec` (bez
@@ -193,9 +195,16 @@ fn advance_color_transition(
 }
 
 /// Losuje paletę docelową i zaczyna przejście od bieżącej.
-fn start_color_transition(palette: Res<Palette>, mut transition: ResMut<ColorTransition>) {
+fn start_color_transition(
+  mut requests: MessageReader<RerollColors>,
+  palette: Res<Palette>,
+  mut transition: ResMut<ColorTransition>,
+) {
+  let Some(request) = requests.read().last() else {
+    return;
+  };
   let target = Palette::new(random_colors(palette.0.len(), &mut rand::rng()));
-  transition.0 = Some(Tween::new(palette.0.clone(), target.0));
+  transition.0 = Some(Tween::new(palette.0.clone(), target.0, request.over));
 }
 
 /// Wysyła zmienioną paletę do bufora kolorów (ten sam rozmiar, więc materiał zostaje ten sam).

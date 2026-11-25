@@ -158,7 +158,9 @@ fn color_target(app: &App) -> Option<Vec<LinearRgba>> {
 }
 
 fn reroll_colors(app: &mut App) {
-  app.world_mut().write_message(RerollColors);
+  app.world_mut().write_message(RerollColors {
+    over: Duration::from_secs(1),
+  });
   app.update();
 }
 

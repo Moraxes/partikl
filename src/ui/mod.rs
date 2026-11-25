@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::app::AppExit;
 use bevy::color::palettes::css::WHITE;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
@@ -219,13 +221,17 @@ pub fn handle_keyboard_input(
   }
   if keyboard.just_pressed(KeyCode::KeyR) {
     reroll_matrix.write(RerollMatrix);
-    reroll_colors.write(RerollColors);
+    reroll_colors.write(RerollColors {
+      over: Duration::from_secs(4),
+    });
   }
   if keyboard.just_pressed(KeyCode::KeyT) {
     reroll_state.write(RerollState);
   }
   if keyboard.just_pressed(KeyCode::KeyY) {
-    reroll_colors.write(RerollColors);
+    reroll_colors.write(RerollColors {
+      over: Duration::from_secs(1),
+    });
   }
   if keyboard.just_pressed(KeyCode::KeyF) {
     let Ok(mut primary_window) = windows.single_mut() else {

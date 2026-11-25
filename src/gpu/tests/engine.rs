@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use super::*;
 
 #[test]
@@ -306,7 +308,9 @@ fn reroll_colors_changes_only_colors_until_new_state_ends_it() {
   let colors = |harness: &mut Harness| harness.read_buffer(|sim| sim.colors.clone());
   let epoch = harness.world().resource::<GpuSim>().state_epoch;
   let initial = colors(&mut harness);
-  harness.world().write_message(RerollColors);
+  harness.world().write_message(RerollColors {
+    over: Duration::from_secs(1),
+  });
   // Pierwsza klatka zaczyna przejście, następna je przesuwa.
   harness.update();
   harness.update();
