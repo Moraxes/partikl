@@ -17,6 +17,7 @@ import super::nodes as nd;
 const RULE_SEPARATION: u32 = 0u;
 const RULE_ALIGNMENT: u32 = 1u;
 const RULE_COHESION: u32 = 2u;
+const F16_MAX: f32 = 65504.0;
 
 fn pair_weight(rule: u32, self_species: u32, other_species: u32) -> f32 {
   let u = rule_params;
@@ -46,7 +47,9 @@ struct Neighbour {
 
 // Układ `sorted_hot[slot]`: (pos.x, pos.y, vel.xy, species).
 fn pack_neighbour(p: Particle, m: Model) -> vec4<f32> {
-  return vec4<f32>(p.pos, bitcast<f32>(pack2x16float(p.vel)), bitcast<f32>(p.species));
+  // Zakres binary16 to [-65504, 65504]; większe składowe dają ±Inf i propagują NaN u sąsiadów.
+  let vel = clamp(p.vel, vec2(-F16_MAX), vec2(F16_MAX));
+  return vec4<f32>(p.pos, bitcast<f32>(pack2x16float(vel)), bitcast<f32>(p.species));
 }
 
 fn unpack_neighbour(v: vec4<f32>) -> Neighbour {
@@ -72,6 +75,7 @@ struct RuleAccum {
 
   // boidy
   sep: vec2<f32>,
+  sep_n: f32,
   align: vec2<f32>,
   align_w: f32,
   cohere: vec2<f32>,
@@ -79,7 +83,13 @@ struct RuleAccum {
 }
 
 fn accum_init() -> RuleAccum {
-  return RuleAccum(vec2(0.0), 0.0, vec2(0.0), 0.0, vec2(0.0), vec2(0.0), 0.0, vec2(0.0), 0.0);
+  return RuleAccum(
+    vec2(0.0), 0.0,
+    vec2(0.0), 0.0,
+    vec2(0.0), 0.0,
+    vec2(0.0), 0.0,
+    vec2(0.0), 0.0,
+  );
 }
 
 // Wkład jednego sąsiada (już w zasięgu oddziaływania, `dist_sq > 0`). `delta` wskazuje od
@@ -103,6 +113,7 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
   if g.dist < u.separation_radius {
     let w = pair_weight(RULE_SEPARATION, self_p.species, other.species);
     (*accum).sep += weight * w * nd::separation(g.dir, g.dist);
+    (*accum).sep_n += weight;
   }
   if g.dist < u.vision_radius {
     let wa = pair_weight(RULE_ALIGNMENT, self_p.species, other.species);
@@ -122,11 +133,12 @@ fn integrate_particle(self_p: Particle, m: ptr<function, Model>, accum: RuleAccu
 
   let attraction = nd::capped_mean2(accum.force, accum.count, u.average_neighbours);
 
+  let a_sep = nd::mean2(accum.sep, accum.sep_n);
   let n = accum.view_n;
   let a_align = nd::mean2(accum.align - p.vel * accum.align_w, n);
   let a_coh = nd::mean2(accum.cohere, n);
-  
-  let force = attraction + accum.sep + a_align + a_coh;
+
+  let force = attraction + a_sep + a_align + a_coh;
 
   // Poprawka tylko w prędkości; pozycja idzie za nią w tym samym kroku (p.pos += v * dt).
   let corr = nd::mean2(accum.overlap_corr, accum.overlap_count);

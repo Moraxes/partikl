@@ -77,7 +77,8 @@ fn quantize_f16(x: f32) -> f64 {
 
 /// Jeden krok fizyki wprost w f64, po wszystkich parach, z odległością na torusie.
 /// Ta sama fizyka co `rules/default_rules.wesl` i `rules/nodes.wesl`, bez próbkowania sąsiadów;
-/// parametry z `spec.params`, z kwantyzacją f16 prędkości sąsiada (`pack2x16float`/`unpack2x16float`).
+/// parametry z `spec.params`, z ograniczeniem składowych prędkości sąsiada do `[-65504, 65504]`
+/// i kwantyzacją f16 (`pack2x16float`/`unpack2x16float`).
 fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
   let particles = &state.particles;
   let u = &spec.params;
@@ -98,7 +99,7 @@ fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
       let (px, py) = (me.pos[0] as f64, me.pos[1] as f64);
       let (mut fx, mut fy, mut count) = (0.0f64, 0.0f64, 0.0f64);
       let (mut cx, mut cy, mut cn) = (0.0f64, 0.0f64, 0.0f64);
-      let (mut sx, mut sy) = (0.0f64, 0.0f64);
+      let (mut sx, mut sy, mut sep_n) = (0.0f64, 0.0f64, 0.0f64);
       let (mut ax, mut ay, mut align_w) = (0.0f64, 0.0f64, 0.0f64);
       let (mut cohx, mut cohy, mut view_n) = (0.0f64, 0.0f64, 0.0f64);
       for (j, other) in particles.iter().enumerate() {
@@ -128,12 +129,13 @@ fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
           let sep_d = d.max(1e-3);
           sx += ws * (-dirx / sep_d);
           sy += ws * (-diry / sep_d);
+          sep_n += 1.0;
         }
         if d < u.vision_radius as f64 {
           let wa = u.alignment_weight as f64;
           let wc = u.coherence_weight as f64;
-          ax += wa * quantize_f16(other.vel[0]);
-          ay += wa * quantize_f16(other.vel[1]);
+          ax += wa * quantize_f16(other.vel[0].clamp(-65504.0, 65504.0));
+          ay += wa * quantize_f16(other.vel[1].clamp(-65504.0, 65504.0));
           align_w += wa;
           cohx += wc * dx;
           cohy += wc * dy;
@@ -145,6 +147,11 @@ fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
         fx *= scale;
         fy *= scale;
       }
+      let (sep_x, sep_y) = if sep_n > 0.0 {
+        (sx / sep_n, sy / sep_n)
+      } else {
+        (0.0, 0.0)
+      };
       // W `integrate_particle` człon `a_align` odejmuje własną prędkość sprzed poprawki rozsuwania.
       let (self_vx, self_vy) = (me.vel[0] as f64, me.vel[1] as f64);
       let (align_x, align_y, coh_x, coh_y) = if view_n > 0.0 {
@@ -157,7 +164,7 @@ fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
       } else {
         (0.0, 0.0, 0.0, 0.0)
       };
-      let (force_x, force_y) = (fx + sx + align_x + coh_x, fy + sy + align_y + coh_y);
+      let (force_x, force_y) = (fx + sep_x + align_x + coh_x, fy + sep_y + align_y + coh_y);
 
       let (x, y) = (px, py);
       let (mut velx, mut vely) = (self_vx, self_vy);
@@ -402,7 +409,7 @@ fn separation_only_pushes_close_neighbours_apart() {
     // Bardzo blisko siebie (< 1e-3): ograniczenie max(dist, 1e-3) w nodes::separation.
     particle(4, [0.0, 100.0], [0.0, 0.0]),
     particle(5, [0.0002, 100.0], [0.0, 0.0]),
-    // Dwóch sąsiadów w separation_radius: accum.sep sumuje wkłady bez dzielenia przez ich liczbę.
+    // Dwóch sąsiadów w separation_radius: a_sep uśrednia wkłady przez sep_n.
     particle(6, [-100.0, 0.0], [0.0, 0.0]),
     particle(7, [-96.0, 0.0], [0.0, 0.0]),
     particle(8, [-100.0, 4.0], [0.0, 0.0]),
@@ -417,7 +424,8 @@ fn separation_only_pushes_close_neighbours_apart() {
   assert_eq!(actual.particles[2].vel, [0.0, 0.0]);
   assert_eq!(actual.particles[3].vel, [0.0, 0.0]);
   assert!((actual.particles[4].vel[0] + 25.0).abs() < 1e-2);
-  assert!((actual.particles[6].vel[0] - actual.particles[0].vel[0]).abs() < 1e-4);
+  assert!((actual.particles[6].vel[0] - 0.5 * actual.particles[0].vel[0]).abs() < 1e-4);
+  assert!((actual.particles[6].vel[0] - actual.particles[6].vel[1]).abs() < 1e-4);
 }
 
 #[test]
@@ -575,4 +583,104 @@ fn zero_boid_weights_match_reference_and_ignore_boid_radii() {
       .any(|(a, b)| (a.vel[0] - b.vel[0]).abs() > 1e-3),
     "wyzerowane wagi boidów powinny różnić się od domyślnych"
   );
+}
+
+#[test]
+fn velocity_above_f16_max_does_not_propagate_nan() {
+  // Prędkości powyżej f16::MAX (65504) w pack_neighbour są ograniczane przed pack2x16float,
+  // więc przeciwnie skierowane szybkie cząstki nie dają ±Inf ani NaN u sąsiadów.
+  let mut isolated = isolated_spec(1);
+  isolated.params.vision_radius = 40.0;
+  isolated.params.alignment_weight = 1.0;
+  let state_one_step = State::new(vec![
+    particle(0, [0.0, 0.0], [100_000.0, -90_000.0]),
+    particle(1, [-10.0, 0.0], [-100_000.0, 90_000.0]),
+    particle(2, [5.0, 0.0], [0.0, 0.0]),
+    particle(3, [-5.0, 0.0], [10.0, -5.0]),
+  ]);
+  let expected = reference_step(&isolated, &state_one_step, WORLD);
+  let Some(mut harness) = harness_for(SimOptions::default(), isolated, &state_one_step, WORLD)
+  else {
+    return;
+  };
+  harness.set_stats(true);
+  // Rozgrzewka kompilacji przebiegu statystyk przed właściwym krokiem.
+  harness.step(1);
+  harness.take_stats();
+  reset(&mut harness, &state_one_step);
+  let actual = run_state(&mut harness, 1);
+  let stats = harness.take_stats().expect("statystyki po kroku");
+  assert_eq!(stats.nan_count, 0);
+  assert_close(&actual, &expected, "prędkość > 65504 w jednym kroku");
+  drop(harness);
+
+  // Pełna fizyka domyślna przez kilkadziesiąt kroków z szybkimi cząstkami w tłumie.
+  let mut rng = StdRng::seed_from_u64(90);
+  let full_spec = spec(&mut rng, 3);
+  let mut particles = random_particles(&mut rng, 200, 3);
+  particles[0].pos = [0.0, 0.0];
+  particles[0].vel = [80_000.0, -80_000.0];
+  particles[1].pos = [3.0, 0.0];
+  particles[1].vel = [-80_000.0, 80_000.0];
+  particles[2].pos = [1.5, 1.0];
+  particles[2].vel = [0.0, 0.0];
+  let multi_state = State::new(particles);
+  let Some(mut multi_harness) = harness_for(SimOptions::default(), full_spec, &multi_state, WORLD)
+  else {
+    return;
+  };
+  multi_harness.set_stats(true);
+  multi_harness.step(1);
+  multi_harness.take_stats();
+  reset(&mut multi_harness, &multi_state);
+  let after = run_state(&mut multi_harness, 30);
+  let stats = multi_harness
+    .take_stats()
+    .expect("statystyki po 30 krokach");
+  assert_eq!(stats.nan_count, 0);
+  assert_invariants(&after.particles, WORLD, "prędkość > 65504, 30 kroków");
+}
+
+#[test]
+fn dense_cluster_keeps_zero_nans_for_many_steps() {
+  use std::f32::consts::TAU;
+
+  let mut rng = StdRng::seed_from_u64(91);
+  let spec = spec(&mut rng, 3);
+  // 5000 cząstek ściśniętych w promieniu 5.0 (< separation_radius = 10.0, < vision_radius = 40.0),
+  // z dużym próbkowaniem sąsiadów (ponad 256 kandydatów).
+  let particles: Vec<GpuParticle> = (0..5_000u32)
+    .map(|id| {
+      let r = 5.0 * rng.random::<f32>().sqrt();
+      let angle = rng.random::<f32>() * TAU;
+      GpuParticle {
+        pos: [r * angle.cos(), r * angle.sin()],
+        vel: [rng.random_range(-50.0..50.0), rng.random_range(-50.0..50.0)],
+        species: rng.random_range(0..3),
+        id,
+      }
+    })
+    .collect();
+  let dense = State::new(particles);
+  let Some(mut harness) = harness_for(SimOptions::default(), spec, &dense, WORLD) else {
+    return;
+  };
+  harness.set_stats(true);
+  harness.step(1);
+  harness.take_stats();
+  reset(&mut harness, &dense);
+  let after = run_state(&mut harness, 60);
+  let stats = harness.take_stats().expect("statystyki gęstego skupiska");
+  assert_eq!(stats.nan_count, 0);
+  assert!(
+    stats.max_speed.is_finite(),
+    "max_speed niefinite: {}",
+    stats.max_speed
+  );
+  assert!(
+    stats.kinetic_energy.is_finite(),
+    "energia niefinite: {}",
+    stats.kinetic_energy
+  );
+  assert_invariants(&after.particles, WORLD, "gęste skupisko, 60 kroków");
 }
