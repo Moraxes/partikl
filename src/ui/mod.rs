@@ -219,6 +219,7 @@ pub fn handle_keyboard_input(
   }
   if keyboard.just_pressed(KeyCode::KeyR) {
     reroll_matrix.write(RerollMatrix);
+    reroll_colors.write(RerollColors);
   }
   if keyboard.just_pressed(KeyCode::KeyT) {
     reroll_state.write(RerollState);
