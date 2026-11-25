@@ -74,6 +74,10 @@ impl SimArgs {
     spec.params = over;
     spec.params.dt = dt;
     spec.params.velocity_threshold = threshold;
+    spec
+      .params
+      .validate()
+      .unwrap_or_else(|e| panic!("--params: {e}"));
   }
 
   /// Opis wybranych opcji i parametrów (do kolumny `variant`); pusty, gdy nic nie ustawiono.

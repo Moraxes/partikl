@@ -50,11 +50,11 @@ pub struct ProgramArgs {
   pub rules: Option<PathBuf>,
 
   /// Number of particle types, used when generating the interaction spec.
-  #[arg(short = 't', long, default_value_t = 3)]
+  #[arg(short = 't', long, default_value_t = 3, value_parser = parse_nonzero_usize)]
   pub num_types: usize,
 
   /// Number of particles to be generated initially.
-  #[arg(short = 'n', long, default_value_t = 100000)]
+  #[arg(short = 'n', long, default_value_t = 100000, value_parser = parse_nonzero_usize)]
   pub num_particles: usize,
 
   /// Prevents the interaction spec from being dumped.
@@ -106,6 +106,15 @@ fn parse_substeps(value: &str) -> Result<u32, String> {
     _ => Err(format!(
       "`{value}`: dozwolone wartości to {SUBSTEP_CYCLE:?}"
     )),
+  }
+}
+
+/// Dodatnia liczba całkowita (>= 1) dla `--num-types` i `--num-particles`.
+fn parse_nonzero_usize(value: &str) -> Result<usize, String> {
+  match value.parse::<usize>() {
+    Ok(n) if n >= 1 => Ok(n),
+    Ok(_) => Err(format!("`{value}`: oczekiwano wartości >= 1")),
+    Err(e) => Err(e.to_string()),
   }
 }
 

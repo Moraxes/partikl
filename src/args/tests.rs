@@ -62,3 +62,18 @@ fn positional_args_split_into_spec_file_and_overrides() {
   assert_eq!(parse(&["dir/a=b.ron"]).unwrap().spec_files().len(), 1);
   assert!(parse(&["=1"]).is_err());
 }
+
+#[test]
+fn num_types_and_num_particles_reject_zero() {
+  for bad in [
+    ["-t", "0"],
+    ["--num-types", "0"],
+    ["-n", "0"],
+    ["--num-particles", "0"],
+  ] {
+    assert!(parse(&bad).is_err(), "{bad:?} powinno być odrzucone");
+  }
+  let ok = parse(&["-t", "1", "-n", "1"]).unwrap();
+  assert_eq!(ok.num_types, 1);
+  assert_eq!(ok.num_particles, 1);
+}

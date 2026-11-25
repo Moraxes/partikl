@@ -137,3 +137,86 @@ fn overrides_reject_unknown_fields_and_bad_values() {
     );
   }
 }
+
+#[test]
+fn current_full_spec_loads_all_rule_params() {
+  let path = temp_file(
+    "full-current",
+    "(
+      interactions: [
+        (force_coeffs: [100.0, -50.0]),
+        (force_coeffs: [25.0, 10.0]),
+      ],
+      params: (
+        repulsion_radius: 1.5,
+        kernel_middle: 28.0,
+        kernel_width: 12.0,
+        average_neighbours: 48.0,
+        friction: 0.02,
+        separation_radius: 8.0,
+        separation_weight: 1.5,
+        vision_radius: 35.0,
+        coherence_weight: 0.8,
+        alignment_weight: 0.9,
+        target_speed: 30.0,
+        drive_rate: 0.5,
+        fov_cos: 0.5,
+      ),
+    )",
+  );
+  let spec = load_spec(&path).unwrap();
+  assert_eq!(spec.flat_matrix(), [100.0, -50.0, 25.0, 10.0]);
+  assert_eq!(spec.params.repulsion_radius, 1.5);
+  assert_eq!(spec.params.kernel_middle, 28.0);
+  assert_eq!(spec.params.kernel_width, 12.0);
+  assert_eq!(spec.params.average_neighbours, 48.0);
+  assert_eq!(spec.params.friction, 0.02);
+  assert_eq!(spec.params.separation_radius, 8.0);
+  assert_eq!(spec.params.separation_weight, 1.5);
+  assert_eq!(spec.params.vision_radius, 35.0);
+  assert_eq!(spec.params.coherence_weight, 0.8);
+  assert_eq!(spec.params.alignment_weight, 0.9);
+  assert_eq!(spec.params.target_speed, 30.0);
+  assert_eq!(spec.params.drive_rate, 0.5);
+  assert_eq!(spec.params.fov_cos, 0.5);
+}
+
+#[test]
+fn legacy_unknown_fields_are_rejected_by_deny_unknown_fields() {
+  for field in [
+    "repulsion_strength: 100.0",
+    "adaptive_neighbours: 64.0",
+    "adaptive_range_max: 2.0",
+    "crowding_smoothing: 0.5",
+  ] {
+    let name = field.split(':').next().unwrap();
+    let path = temp_file(
+      &format!("legacy-unknown-{name}"),
+      &format!("(interactions: [(force_coeffs: [1.0])], params: ({field}))"),
+    );
+    let err = load_spec(&path).unwrap_err();
+    assert!(
+      matches!(err, LoadError::Parse { .. }),
+      "{field}: oczekiwano LoadError::Parse, dostano {err}"
+    );
+  }
+}
+
+#[test]
+fn param_limits_are_enforced_on_load() {
+  for (name, params) in [
+    ("zero-width", "kernel_width: 0.0"),
+    ("zero-neighbours", "average_neighbours: 0.0"),
+    ("vision-too-far", "vision_radius: 100.0"),
+    ("separation-too-far", "separation_radius: 100.0"),
+  ] {
+    let path = temp_file(
+      name,
+      &format!("(interactions: [(force_coeffs: [1.0])], params: ({params}))"),
+    );
+    assert!(
+      matches!(load_spec(&path), Err(LoadError::Malformed { .. })),
+      "{name}: oczekiwano LoadError::Malformed"
+    );
+  }
+}
