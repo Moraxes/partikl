@@ -344,13 +344,19 @@ pub fn interpolation_lag(alpha: f32, dropped: bool) -> f32 {
   }
 }
 
-/// Co klatkę przekazuje materiałowi cofnięcie pozycji (`params.w`).
+/// Co klatkę przekazuje materiałowi cofnięcie pozycji (`params.w`). W pauzie zostawia ostatnie:
+/// zegar stały biegnie dalej, więc ułamek taktu krążyłby od 0 do 1 nad zamrożonym stanem
+/// i szybkie cząstki drgałyby o `vel·DELTA_TIME` wzdłuż prędkości.
 fn update_interpolation(
   enabled: Res<RenderInterpolation>,
+  state: Res<State<SimState>>,
   fixed: Res<Time<Fixed>>,
   budget: Res<StepBudget>,
   mut materials: ResMut<Assets<ParticleMaterial>>,
 ) {
+  if *state.get() == SimState::Paused {
+    return;
+  }
   let lag = if enabled.0 {
     interpolation_lag(fixed.overstep_fraction(), budget.dropped())
   } else {

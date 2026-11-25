@@ -283,6 +283,68 @@ fn interpolation_lag_scales_with_remaining_tick_and_vanishes_when_ticks_are_drop
   assert_eq!(interpolation_lag(0.25, true), 0.0);
 }
 
+/// W pauzie zegar stały biegnie dalej, ale cofnięcie rysowanej pozycji zostaje ostatnim sprzed
+/// pauzy (inaczej szybkie cząstki drgają wzdłuż prędkości); po wznowieniu znów idzie za zegarem.
+#[test]
+fn pause_freezes_interpolation_lag() {
+  use bevy::ecs::system::RunSystemOnce;
+  use std::time::Duration;
+  let mut w = World::new();
+  w.insert_resource(RenderInterpolation(true));
+  w.insert_resource(State::new(SimState::Running));
+  w.insert_resource(StepBudget::default());
+  let mut fixed = Time::<Fixed>::from_seconds(DELTA_TIME);
+  fixed.accumulate_overstep(Duration::from_secs_f64(0.25 * DELTA_TIME));
+  w.insert_resource(fixed);
+  let mut materials = Assets::<ParticleMaterial>::default();
+  let handle = materials.add(ParticleMaterial {
+    particles: Handle::default(),
+    colors: Handle::default(),
+    params: RenderParams {
+      radius: 1.0,
+      velocity_threshold: 0.0,
+      analytic_aa: 0.0,
+      lag: 0.0,
+      tick: DELTA_TIME as f32,
+    },
+    analytic_aa: false,
+  });
+  w.insert_resource(materials);
+  let set_alpha = |w: &mut World, alpha: f64| {
+    let mut fixed = w.resource_mut::<Time<Fixed>>();
+    let rest = fixed.overstep();
+    fixed.discard_overstep(rest);
+    fixed.accumulate_overstep(Duration::from_secs_f64(alpha * DELTA_TIME));
+  };
+  let lag = |w: &World| {
+    w.resource::<Assets<ParticleMaterial>>()
+      .get(&handle)
+      .unwrap()
+      .params
+      .lag
+  };
+
+  w.run_system_once(update_interpolation).unwrap();
+  let running = lag(&w);
+  assert!(
+    (running - 0.75 * DELTA_TIME as f32).abs() < 1e-5,
+    "{running}"
+  );
+
+  w.insert_resource(State::new(SimState::Paused));
+  set_alpha(&mut w, 0.5);
+  w.run_system_once(update_interpolation).unwrap();
+  assert_eq!(lag(&w), running, "pauza zmieniła cofnięcie");
+
+  w.insert_resource(State::new(SimState::Running));
+  w.run_system_once(update_interpolation).unwrap();
+  assert!(
+    (lag(&w) - 0.5 * DELTA_TIME as f32).abs() < 1e-5,
+    "{}",
+    lag(&w)
+  );
+}
+
 /// Dwie nakładające się cząstki różnych gatunków w tym samym punkcie dają ten sam piksel
 /// niezależnie od kolejności w buforze stanu: o przykryciu decyduje `p.id`, nie indeks bufora.
 #[test]
