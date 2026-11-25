@@ -106,7 +106,7 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
   (*accum).kernel_w += weight * h;
   if nd::inside(g.dist, reach) {
     (*accum).overlap_corr += nd::overlap_push(g.dist, reach, g.dir);
-    (*accum).overlap_count += 1.0;
+    (*accum).overlap_count += weight;
   }
   let same_species = self_p.species == other.species;
   (*accum).same_species_neighbours += weight * f32(same_species);
