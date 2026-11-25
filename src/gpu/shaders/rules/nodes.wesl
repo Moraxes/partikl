@@ -75,3 +75,20 @@ fn kick(v: vec2<f32>, force: vec2<f32>, dt: f32) -> vec2<f32> {
 fn quad_drag(v: vec2<f32>, c: f32, dt: f32) -> vec2<f32> {
   return v / (1.0 + c * dt * length(v));
 }
+
+// -- misc --
+
+// sigmoida oparta na inverse sqrt o tej samej pochodnej w 0 co logistyczna
+// 0.5 + 0.25 x / sqrt(1 + 0.25 x^2)
+fn sigmoid_rsqrt_01(x: f32) -> f32 {
+  return 0.25 * x * inverseSqrt(1.0 + 0.25 * x * x) + 0.5;
+}
+
+fn sigmoid_rsqrt_11(x: f32) -> f32 {
+  return 0.5 * x * inverseSqrt(1.0 + 0.25 * x * x);
+}
+
+// |a x b| = |a||b||sin(theta_ab)
+fn cross2(a: vec2<f32>, b: vec2<f32>) -> f32 {
+  return a.x * b.y - a.y * b.x;
+}
