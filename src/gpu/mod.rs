@@ -6,11 +6,12 @@ use bevy::asset::{RenderAssetUsages, embedded_asset, load_embedded_asset};
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::camera::{ClearColorConfig, Hdr, RenderTarget, ScalingMode};
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
-use bevy::mesh::PrimitiveTopology;
+use bevy::mesh::{Mesh2d, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::render::RenderApp;
 use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
 use bevy::render::storage::ShaderBuffer;
+use bevy::sprite_render::{Material2dPlugin, MeshMaterial2d};
 use bevy::window::PrimaryWindow;
 use bytemuck::{Pod, Zeroable};
 use rand::prelude::*;
@@ -290,7 +291,7 @@ impl Plugin for GpuPlugin {
       .init_resource::<Substeps>()
       .init_resource::<RenderQuality>()
       .add_plugins((
-        MaterialPlugin::<ParticleMaterial>::default(),
+        Material2dPlugin::<ParticleMaterial>::default(),
         ExtractResourcePlugin::<GpuSim>::default(),
         ExtractResourcePlugin::<ParticleSpec>::default(),
         ExtractResourcePlugin::<rules::RuleFlags>::default(),
@@ -482,16 +483,16 @@ pub fn spawn_camera(
       zoom_base: 1.125,
       zoom_exponent: 1,
     },
-    Camera3d::default(),
+    Camera2d,
     Camera {
       clear_color: ClearColorConfig::Custom(Color::BLACK),
       ..Default::default()
     },
     quality.msaa,
-    Transform::from_xyz(0.0, 0.0, 1000.0).looking_at(Vec3::ZERO, Vec3::Y),
+    Transform::default(),
     Projection::from(OrthographicProjection {
       scaling_mode,
-      ..OrthographicProjection::default_3d()
+      ..OrthographicProjection::default_2d()
     }),
   ));
   if quality.hdr {
@@ -554,8 +555,8 @@ pub fn spawn_sim(
     analytic_aa: look.analytic_aa,
   });
   commands.spawn((
-    Mesh3d(meshes.add(mesh)),
-    MeshMaterial3d(material),
+    Mesh2d(meshes.add(mesh)),
+    MeshMaterial2d(material),
     NoFrustumCulling,
   ));
 

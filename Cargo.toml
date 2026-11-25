@@ -13,7 +13,27 @@ brp = [ "dep:bevy_brp_extras" ]
 [dependencies]
 ron = "0.12.3"
 clap = { version = "4.6.8", features = [ "derive" ] }
-bevy = "0.20"
+bevy = { version = "0.20", default-features = false, features = [
+  "std",
+  "async_executor",
+  "multi_threaded",
+  "bevy_asset",
+  "bevy_log",
+  "bevy_state",
+  "reflect_auto_register",
+  "bevy_window",
+  "bevy_winit",
+  "bevy_render",
+  "bevy_core_pipeline",
+  "bevy_sprite_render",
+  "bevy_ui",
+  "bevy_ui_render",
+  "bevy_text",
+  "png",
+  "hdr",
+  "tonemapping_luts",
+  "zstd_rust",
+] }
 bevy_brp_extras = { version = "0.23", optional = true }
 bytemuck = { version = "1", features = [ "derive" ] }
 # Typy wgpu, których Bevy nie re-eksportuje (znaczniki czasu GPU); ta sama wersja co w Bevy.

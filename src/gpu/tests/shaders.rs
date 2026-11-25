@@ -1,7 +1,7 @@
 //! Każdy plik shadera kompilowany osobno (WESL → WGSL → walidacja naga), dla kilku zestawów flag.
 //! Błąd wskazuje plik i linię, w odróżnieniu od błędu pipeline'u w aplikacji, który ma tylko
 //! przesunięcie w sklejonym źródle. Moduł `rules::model` (w aplikacji podaje go Rust) to tu kolejno
-//! reguły wbudowane i diagnostyczne. Bez `render.wesl`: importuje moduły Bevy (`bevy_pbr`), więc
+//! reguły wbudowane i diagnostyczne. Bez `render.wesl`: importuje moduły Bevy (`bevy_sprite_render`), więc
 //! sprawdza go tylko test rysowania.
 
 use std::borrow::Cow;

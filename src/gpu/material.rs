@@ -3,6 +3,7 @@ use bevy::reflect::TypePath;
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::render::storage::ShaderBuffer;
 use bevy::shader::ShaderRef;
+use bevy::sprite_render::{AlphaMode2d, Material2d};
 
 const SHADER: &str = "embedded://partikl/gpu/shaders/engine/render.wesl";
 
@@ -35,7 +36,7 @@ pub struct RenderParams {
   pub tick: f32,
 }
 
-impl Material for ParticleMaterial {
+impl Material2d for ParticleMaterial {
   fn vertex_shader() -> ShaderRef {
     SHADER.into()
   }
@@ -44,11 +45,11 @@ impl Material for ParticleMaterial {
     SHADER.into()
   }
 
-  fn alpha_mode(&self) -> AlphaMode {
+  fn alpha_mode(&self) -> AlphaMode2d {
     if self.analytic_aa {
-      AlphaMode::Blend
+      AlphaMode2d::Blend
     } else {
-      AlphaMode::Opaque
+      AlphaMode2d::Opaque
     }
   }
 }

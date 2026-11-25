@@ -2,7 +2,7 @@
 // elipsa wydłużona z prędkością, obrót bez trygonometrii. Wierzchołek
 // niesie (narożnik quada, numer cząstki), patrz `particle_quads` w `src/gpu/mod.rs`.
 
-import bevy_pbr::render::mesh_view_bindings::view;
+import bevy_sprite_render::mesh2d::view_bindings::view;
 import super::types::Particle;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<storage, read> particles: array<Particle>;

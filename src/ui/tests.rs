@@ -42,7 +42,7 @@ fn spawn_camera(app: &mut App, translation: Vec3, scale: f32) -> Entity {
       Transform::from_translation(translation),
       Projection::from(OrthographicProjection {
         scale,
-        ..OrthographicProjection::default_3d()
+        ..OrthographicProjection::default_2d()
       }),
     ))
     .id()
