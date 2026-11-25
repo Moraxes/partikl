@@ -91,7 +91,7 @@ pub fn end_frame(
   let dropped = budget.wanted > budget.taken;
   budget.limit = next_limit(budget.limit, time.delta_secs(), budget.taken, dropped);
   // Pauza (brak taktów) nie zmienia średnich, więc wskaźnik zostaje ostatnią wartością.
-  if budget.wanted > 0 || budget.wanted_avg > 0.0 && budget.taken_avg > 0.0 {
+  if budget.wanted > 0 {
     budget.taken_avg += SMOOTHING * (budget.taken as f32 - budget.taken_avg);
     budget.wanted_avg += SMOOTHING * (budget.wanted as f32 - budget.wanted_avg);
   }

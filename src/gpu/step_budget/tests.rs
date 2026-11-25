@@ -98,3 +98,28 @@ fn simulation_speed_is_the_share_of_ticks_that_ran() {
   }
   assert!(app.world().resource::<StepBudget>().speed().unwrap() > 0.98);
 }
+
+#[test]
+fn pause_freezes_simulation_speed_instead_of_decaying_to_none() {
+  let mut app = clock_app(1);
+  app
+    .add_systems(Last, end_frame)
+    .init_resource::<Time<Real>>();
+  app.init_resource::<bevy::diagnostic::DiagnosticsStore>();
+  let frame = |app: &mut App| {
+    app
+      .world_mut()
+      .resource_mut::<Time<Real>>()
+      .advance_by(std::time::Duration::from_millis(18));
+    app.world_mut().run_schedule(Last);
+  };
+  // 2 takty przy limicie 1: prędkość 0,5 i niskie średnie początkowe.
+  ticks(&mut app, 2);
+  frame(&mut app);
+  let before = app.world().resource::<StepBudget>().speed().unwrap();
+  // Kilkadziesiąt klatek pauzy (wanted = 0) bez wygaszania średnich do None.
+  for _ in 0..90 {
+    frame(&mut app);
+  }
+  assert_eq!(app.world().resource::<StepBudget>().speed(), Some(before));
+}

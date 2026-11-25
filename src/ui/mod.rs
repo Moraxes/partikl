@@ -213,7 +213,9 @@ pub fn handle_keyboard_input(
     }
   }
   if keyboard.just_pressed(KeyCode::KeyF) {
-    let mut primary_window = windows.single_mut().unwrap();
+    let Ok(mut primary_window) = windows.single_mut() else {
+      return;
+    };
     primary_window.mode = match primary_window.mode {
       WindowMode::Windowed => WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
       _ => WindowMode::Windowed,
@@ -241,7 +243,9 @@ pub fn handle_mouse_input(
         ..
       } => (y / 10.0).round() as i32,
     };
-    let (mut main_camera, mut projection, _) = camera.single_mut().unwrap();
+    let Ok((mut main_camera, mut projection, _)) = camera.single_mut() else {
+      return;
+    };
     main_camera.zoom_exponent -= log_delta;
     if let Projection::Orthographic(projection) = &mut *projection {
       projection.scale = main_camera.zoom_base.powf(main_camera.zoom_exponent as f32);
@@ -250,12 +254,16 @@ pub fn handle_mouse_input(
 
   // Przeciąganie lewym przyciskiem: kursor zablokowany i ukryty, dopóki przycisk jest wciśnięty.
   if mouse_button_input.just_pressed(MouseButton::Left) {
-    let mut cursor = cursor_options.single_mut().unwrap();
+    let Ok(mut cursor) = cursor_options.single_mut() else {
+      return;
+    };
     cursor.visible = false;
     cursor.grab_mode = CursorGrabMode::Locked;
   }
   if mouse_button_input.just_released(MouseButton::Left) {
-    let mut cursor = cursor_options.single_mut().unwrap();
+    let Ok(mut cursor) = cursor_options.single_mut() else {
+      return;
+    };
     cursor.visible = true;
     cursor.grab_mode = CursorGrabMode::None;
   }
@@ -264,7 +272,9 @@ pub fn handle_mouse_input(
     if !mouse_button_input.pressed(MouseButton::Left) {
       continue;
     }
-    let (_, projection, mut camera_transform) = camera.single_mut().unwrap();
+    let Ok((_, projection, mut camera_transform)) = camera.single_mut() else {
+      return;
+    };
     if let Projection::Orthographic(projection) = &*projection {
       camera_transform.translation +=
         (event.delta * Vec2::new(-1.0, 1.0)).extend(0.0) * projection.scale;

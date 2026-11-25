@@ -385,3 +385,55 @@ fn cursor_is_hidden_and_locked_only_while_dragging() {
   app.update();
   assert_eq!(cursor_state(&mut app), (true, CursorGrabMode::None));
 }
+
+#[test]
+fn input_without_window_or_camera_does_not_panic() {
+  // Brak kamery (okno obecne): kółko myszy i przeciąganie nie panikują.
+  let mut app = input_app();
+  app.add_systems(Update, (handle_keyboard_input, handle_mouse_input));
+  send_wheel(&mut app, MouseScrollUnit::Line, 1.0);
+  app.update();
+  drag(&mut app, Vec2::new(10.0, 5.0));
+  app
+    .world_mut()
+    .resource_mut::<ButtonInput<MouseButton>>()
+    .release(MouseButton::Left);
+  app.update();
+  clear_input(&mut app);
+
+  // Brak okna i brak kamery: klawisz F, kliknięcie, puszczenie, ruch i kółko myszy.
+  let window = app
+    .world_mut()
+    .query_filtered::<Entity, With<Window>>()
+    .single(app.world())
+    .unwrap();
+  app.world_mut().entity_mut(window).despawn();
+
+  tap_key(&mut app, KeyCode::KeyF);
+  app.world_mut().write_message(MouseWheel {
+    unit: MouseScrollUnit::Line,
+    x: 0.0,
+    y: -1.0,
+    window: Entity::PLACEHOLDER,
+    phase: TouchPhase::Moved,
+  });
+  app.update();
+
+  app
+    .world_mut()
+    .resource_mut::<ButtonInput<MouseButton>>()
+    .press(MouseButton::Left);
+  app.update();
+  clear_input(&mut app);
+
+  app.world_mut().write_message(MouseMotion {
+    delta: Vec2::new(5.0, -3.0),
+  });
+  app.update();
+
+  app
+    .world_mut()
+    .resource_mut::<ButtonInput<MouseButton>>()
+    .release(MouseButton::Left);
+  app.update();
+}
