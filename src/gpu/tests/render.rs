@@ -273,12 +273,84 @@ fn interpolation_does_not_depend_on_k() {
   let Some(start) = interpolated_centroid_x(0.0, 2) else {
     return;
   };
-  assert!((start - 2.0).abs() < 6.0, "alpha 0, K=2: {start}");
+  assert!((start - 6.0).abs() < 0.6, "alpha 0, K=2: {start}");
 }
 
 #[test]
-fn interpolation_lag_scales_with_substeps_and_vanishes_when_ticks_are_dropped() {
+fn interpolation_lag_scales_with_remaining_tick_and_vanishes_when_ticks_are_dropped() {
   assert!((interpolation_lag(0.25, false) - 0.75 * DELTA_TIME as f32).abs() < 1e-3);
   assert_eq!(interpolation_lag(1.0, false), 0.0);
   assert_eq!(interpolation_lag(0.25, true), 0.0);
+}
+
+/// Dwie nakładające się cząstki różnych gatunków w tym samym punkcie dają ten sam piksel
+/// niezależnie od kolejności w buforze stanu: o przykryciu decyduje `p.id`, nie indeks bufora.
+#[test]
+fn overlapping_particles_keep_order_regardless_of_buffer_order() {
+  use crate::gpu::headless::Offscreen;
+  let world = Vec2::new(200.0, 120.0);
+  let size = (world * 2.0).as_uvec2();
+  let a = GpuParticle {
+    pos: [0.0, 0.0],
+    vel: [0.0, 0.0],
+    species: 0,
+    id: 0,
+  };
+  let b = GpuParticle {
+    pos: [0.0, 0.0],
+    vel: [0.0, 0.0],
+    species: 1,
+    id: 1,
+  };
+  let separated = vec![
+    a,
+    GpuParticle {
+      pos: [40.0, 0.0],
+      ..b
+    },
+  ];
+  let spec = zero_forces(spec(&mut StdRng::seed_from_u64(1), 2));
+  let Some(mut harness) = Harness::with_render(
+    SimOptions::default(),
+    spec,
+    separated,
+    world,
+    Some(Offscreen {
+      size,
+      quality: RenderQuality::default(),
+      app_colors: true,
+      real_time: false,
+    }),
+  ) else {
+    return;
+  };
+  let pixel_at = |harness: &mut Harness, world_x: f32| -> [u8; 4] {
+    for _ in 0..6 {
+      harness.update();
+    }
+    let px = harness.target_pixels();
+    let x = ((world_x + world.x / 2.0) * 2.0) as u32;
+    let y = size.y / 2;
+    let i = ((y * size.x + x) * 4) as usize;
+    [px[i], px[i + 1], px[i + 2], px[i + 3]]
+  };
+
+  let color_a = pixel_at(&mut harness, 0.0);
+  let color_b = pixel_at(&mut harness, 40.0);
+  assert_ne!(
+    color_a, color_b,
+    "gatunki muszą mieć różne kolory, inaczej test nie odróżni kolejności"
+  );
+
+  harness.set_state(vec![a, b]);
+  let order_ab = pixel_at(&mut harness, 0.0);
+
+  harness.set_state(vec![b, a]);
+  let order_ba = pixel_at(&mut harness, 0.0);
+
+  assert!(order_ab == color_a || order_ab == color_b);
+  assert_eq!(
+    order_ab, order_ba,
+    "zmiana kolejności w buforze zmieniła kolor na wierzchu: {order_ab:?} vs {order_ba:?}"
+  );
 }

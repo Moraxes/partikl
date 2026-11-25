@@ -32,7 +32,7 @@ struct RenderParams {
   tick: f32,
 }
 
-// Warstwa cząstki: skrót jej numeru (PCG) jako głębokość. Stan leży w kolejności komórek siatki,
+// Warstwa cząstki: skrót jej stałego id (PCG) jako głębokość. Stan leży w kolejności komórek siatki,
 // więc bez tego (opaque, wygrywa ostatnia rysowana) cząstka z późniejszej komórki zawsze
 // przykrywałaby wcześniejsze, a granice komórek byłyby widoczne jako prostokątne krawędzie
 // plam koloru (szczególnie przy wydłużonych, szybkich cząstkach). Test głębokości nic nie kosztuje
@@ -76,7 +76,7 @@ fn vertex(v: Vertex) -> VertexOutput {
     rot.y * local.x + rot.x * local.y
   );
   var out: VertexOutput;
-  out.clip = view.clip_from_world * vec4<f32>(world, 0.5 * layer(u32(v.position.z)), 1.0);
+  out.clip = view.clip_from_world * vec4<f32>(world, 0.5 * layer(p.id), 1.0);
   out.corner = corner * pad;
   out.species = p.species;
   return out;
