@@ -71,7 +71,7 @@ fn f16_bits_to_f32(h: u16) -> f32 {
 /// Specyfikacja WGSL dopuszcza zaokrąglenie do najbliższej parzystej (RNE) lub ku zeru (RTZ);
 /// przy typowych prędkościach (`<= 125`, ULP f16 `<= 0.0625`) i `dt = 0.01` różnica między tymi
 /// trybami nie przekracza `6.25e-4` i mieści się w tolerancji `1e-3` funkcji `assert_close`.
-fn quantize_f16(x: f32) -> f64 {
+pub(super) fn quantize_f16(x: f32) -> f64 {
   f16_bits_to_f32(f32_to_f16_bits(x)) as f64
 }
 

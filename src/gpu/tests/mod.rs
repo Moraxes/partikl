@@ -15,6 +15,7 @@ use bevy::render::render_resource::ShaderType;
 
 mod default_rules;
 mod engine;
+mod force_scales;
 mod render;
 mod rules;
 mod shaders;
