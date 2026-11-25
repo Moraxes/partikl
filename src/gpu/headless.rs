@@ -19,6 +19,7 @@ use bevy::window::ExitCondition;
 use bevy::winit::WinitPlugin;
 
 use super::material::ParticleMaterial;
+pub use super::state_file::{StateMeta, load_state, save_state};
 use super::*;
 use crate::options::{RuleSchema, SimOptions};
 

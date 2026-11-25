@@ -28,9 +28,9 @@ use arrow_schema::{DataType, Field, Schema};
 use clap::Parser;
 use partikl::gpu::{DEFAULT_MAX_CANDIDATES, MAX_STEPS_PER_FRAME, PassTimes};
 
-use common::{Output, SimArgs, WORLD, median, nanos, particle_spec, rng};
+use common::{Output, SimArgs, WORLD, git_revision, median, nanos, particle_spec, rng};
 use partikl::gpu::RuleSource;
-use partikl::gpu::headless::Harness;
+use partikl::gpu::headless::{Harness, StateMeta, load_state, save_state};
 use partikl::options::SimOptions;
 use scenes::{Scene, candidates_mean};
 
@@ -46,12 +46,27 @@ struct Args {
   /// Liczby cząstek.
   #[arg(long, value_delimiter = ',', default_value = "9000,100000")]
   sizes: Vec<usize>,
-  /// Sceny (gęstości).
-  #[arg(long, value_delimiter = ',', default_value = "uniform,clusters,dense")]
-  scenes: Vec<Scene>,
+  /// Sceny (gęstości); domyślnie `uniform,clusters,dense`, a z `--state` lub `--generate-states`
+  /// samo `evolved`.
+  #[arg(long, value_delimiter = ',')]
+  scenes: Option<Vec<Scene>>,
   /// Kroki rozbiegu przed pomiarem sceny `evolved`.
   #[arg(long, default_value_t = 512)]
   steps: u64,
+  /// Dla sceny `evolved`: ładuje stan po `--steps` krokach z `--state-dir` (lub generuje i
+  /// zapisuje przy pierwszym użyciu) i przywraca go przed każdym powtórzeniem.
+  #[arg(long)]
+  state: bool,
+  /// Z `--state`: generuje i nadpisuje zapisane stany od nowa.
+  #[arg(long)]
+  regenerate: bool,
+  /// Tylko generuje/aktualizuje pliki stanów w `--state-dir` (implikuje `--state`), bez pomiarów
+  /// i bez tworzenia pliku wyników `.parquet`.
+  #[arg(long)]
+  generate_states: bool,
+  /// Katalog zapisanych stanów dla `--state`.
+  #[arg(long, default_value = ".cache/gpu-states")]
+  state_dir: PathBuf,
   /// Kroków w jednym pomiarze (czas dzielony przez tę liczbę). Powyżej `MAX_STEPS_PER_FRAME`
   /// kroki idą w kilku klatkach, a czasu GPU nie ma (pomiar obejmuje jedną klatkę).
   #[arg(long, default_value_t = 16, value_parser = clap::value_parser!(u64).range(1..))]
@@ -94,8 +109,49 @@ struct Args {
   bench: bool,
 }
 
+/// Hash FNV-1a 64-bitowy złożony do 32 bitów (8 znaków hex w nazwie pliku stanu).
+fn options_hash32(options: &SimOptions, sim: &SimArgs) -> u32 {
+  let mut h: u64 = 0xcbf29ce484222325;
+  let feed = |h: &mut u64, bytes: &[u8]| {
+    for &b in bytes {
+      *h ^= b as u64;
+      *h = h.wrapping_mul(0x100000001b3);
+    }
+  };
+  feed(&mut h, format!("{options:?}").as_bytes());
+  feed(&mut h, b"|");
+  feed(&mut h, sim.label().as_bytes());
+  ((h >> 32) ^ (h & 0xffff_ffff)) as u32
+}
+
+fn state_path(args: &Args, n: usize, seed: u64, options: &SimOptions) -> PathBuf {
+  let mut name = format!(
+    "n{n}-t{}-s{seed}-k{}-w{}x{}",
+    args.types, args.steps, WORLD.x as u32, WORLD.y as u32
+  );
+  if args.max_candidates != DEFAULT_MAX_CANDIDATES {
+    name.push_str(&format!("-c{}", args.max_candidates));
+  }
+  if args.substeps != 1 {
+    name.push_str(&format!("-sub{}", args.substeps));
+  }
+  if *options != SimOptions::default() || !args.sim.label().is_empty() {
+    name.push_str(&format!("-{:08x}", options_hash32(options, &args.sim)));
+  }
+  name.push_str(".bin");
+  args.state_dir.join(name)
+}
+
 fn main() {
   let args = Args::parse();
+  let use_state = args.state || args.generate_states;
+  let scenes = args.scenes.clone().unwrap_or_else(|| {
+    if use_state {
+      vec![Scene::Evolved]
+    } else {
+      vec![Scene::Uniform, Scene::Clusters, Scene::Dense]
+    }
+  });
   let measured = args
     .measured
     .unwrap_or(if args.quick { QUICK_MEASURED } else { 10 });
@@ -105,6 +161,66 @@ fn main() {
   } else {
     args.sizes.clone()
   };
+  let variants: Vec<SimOptions> = if args.all_variants {
+    RuleSource::Builtin
+      .read()
+      .expect("wbudowane reguły")
+      .schema
+      .combinations()
+  } else {
+    vec![args.sim.sim_options()]
+  };
+  if args.all_variants && !args.sim.options.is_empty() {
+    panic!("--option nie łączy się z --all-variants");
+  }
+
+  if args.generate_states {
+    let revision = git_revision();
+    for &n in &sizes {
+      for &scene in &scenes {
+        if scene != Scene::Evolved {
+          continue;
+        }
+        for options in &variants {
+          let mut spec = particle_spec(args.types, seed);
+          args.sim.apply_params(&mut spec);
+          let meta = StateMeta {
+            num_particles: n as u32,
+            num_types: args.types as u32,
+            seed,
+            steps: args.steps,
+            world: WORLD,
+          };
+          let path = state_path(&args, n, seed, options);
+          if !args.regenerate
+            && path.exists()
+            && let Ok((_, rev)) = load_state(&path, &meta)
+          {
+            eprintln!("stan aktualny: {} ({rev})", path.display());
+            continue;
+          }
+          let initial = Scene::Uniform.particles(n, args.types, WORLD, &mut rng(seed));
+          let Some(mut harness) = Harness::new(options.clone(), spec, initial, WORLD) else {
+            return;
+          };
+          harness.set_max_candidates(args.max_candidates);
+          harness.set_substeps(args.substeps);
+          harness.step(args.steps);
+          let evolved = harness.run(0);
+          save_state(&path, &meta, &revision, &evolved)
+            .unwrap_or_else(|e| panic!("zapis stanu {}: {e}", path.display()));
+          eprintln!(
+            "zapisano stan: {} ({} cząstek, {} kroków, rewizja {revision})",
+            path.display(),
+            n,
+            args.steps
+          );
+        }
+      }
+    }
+    return;
+  }
+
   let passes: Vec<&str> = partikl::gpu::timing_entries().collect();
   let timed = !args.no_gpu_timing && args.batch <= MAX_STEPS_PER_FRAME as u64;
   let schema = Arc::new(Schema::new(
@@ -137,45 +253,82 @@ fn main() {
     measured,
     schema.clone(),
   );
-  let variants: Vec<SimOptions> = if args.all_variants {
-    RuleSource::Builtin
-      .read()
-      .expect("wbudowane reguły")
-      .schema
-      .combinations()
-  } else {
-    vec![args.sim.sim_options()]
-  };
-  if args.all_variants && !args.sim.options.is_empty() {
-    panic!("--option nie łączy się z --all-variants");
-  }
   println!(
     "{:>9} {:<9} {:<16} {:>9} {:>9} {:>9} {:>9} {:>9}",
     "n", "scene", "variant", "kandydaci", "krok µs", "GPU µs", "siatka", "siły"
   );
   'cases: for &n in &sizes {
-    for &scene in &args.scenes {
+    for &scene in &scenes {
       for options in &variants {
         let mut spec = particle_spec(args.types, seed);
         args.sim.apply_params(&mut spec);
-        let state = scene.particles(n, args.types, WORLD, &mut rng(seed));
-        let Some(mut harness) = Harness::new(options.clone(), spec, state.clone(), WORLD) else {
-          // Zapisane już wiersze trafiają do pliku (`finish` poniżej).
-          break 'cases;
-        };
-        harness.set_max_candidates(args.max_candidates);
-        harness.set_substeps(args.substeps);
-        let (step_offset, candidates) = if scene == Scene::Evolved {
-          harness.step(args.steps);
-          (args.steps, candidates_mean(&harness.run(0), WORLD))
-        } else {
-          (0, candidates_mean(&state, WORLD))
-        };
+        let (state, mut harness, reset_each_rep, step_offset, candidates) =
+          if scene == Scene::Evolved && use_state {
+            let meta = StateMeta {
+              num_particles: n as u32,
+              num_types: args.types as u32,
+              seed,
+              steps: args.steps,
+              world: WORLD,
+            };
+            let path = state_path(&args, n, seed, options);
+            let (state, harness) = if !args.regenerate && path.exists() {
+              let (loaded, rev) =
+                load_state(&path, &meta).unwrap_or_else(|e| panic!("stan {}: {e}", path.display()));
+              eprintln!("stan z {} ({rev})", path.display());
+              let Some(mut harness) = Harness::new(options.clone(), spec, loaded.clone(), WORLD)
+              else {
+                // Zapisane już wiersze trafiają do pliku (`finish` poniżej).
+                break 'cases;
+              };
+              harness.set_max_candidates(args.max_candidates);
+              harness.set_substeps(args.substeps);
+              (loaded, harness)
+            } else {
+              let initial = Scene::Uniform.particles(n, args.types, WORLD, &mut rng(seed));
+              let Some(mut harness) = Harness::new(options.clone(), spec, initial, WORLD) else {
+                break 'cases;
+              };
+              harness.set_max_candidates(args.max_candidates);
+              harness.set_substeps(args.substeps);
+              harness.step(args.steps);
+              let evolved = harness.run(0);
+              let rev = git_revision();
+              save_state(&path, &meta, &rev, &evolved)
+                .unwrap_or_else(|e| panic!("zapis stanu {}: {e}", path.display()));
+              eprintln!("zapisano stan: {} (rewizja {rev})", path.display());
+              (evolved, harness)
+            };
+            let candidates = candidates_mean(&state, WORLD);
+            (state, harness, true, args.steps, candidates)
+          } else {
+            let state = scene.particles(n, args.types, WORLD, &mut rng(seed));
+            let Some(mut harness) = Harness::new(options.clone(), spec, state.clone(), WORLD)
+            else {
+              // Zapisane już wiersze trafiają do pliku (`finish` poniżej).
+              break 'cases;
+            };
+            harness.set_max_candidates(args.max_candidates);
+            harness.set_substeps(args.substeps);
+            let (step_offset, candidates) = if scene == Scene::Evolved {
+              harness.step(args.steps);
+              (args.steps, candidates_mean(&harness.run(0), WORLD))
+            } else {
+              (0, candidates_mean(&state, WORLD))
+            };
+            (
+              state,
+              harness,
+              scene != Scene::Evolved,
+              step_offset,
+              candidates,
+            )
+          };
         harness.set_gpu_timing(timed);
         let mut times = Vec::new();
         let mut gpu: Vec<Option<PassTimes>> = Vec::new();
         for _ in 0..args.warmup + measured {
-          if scene != Scene::Evolved {
+          if reset_each_rep {
             harness.set_state(state.clone());
             // Pierwszy krok po `set_state` liczy histogram od nowa (recount), a znaczniki GPU są
             // tylko w pierwszym kroku klatki, więc ten krok idzie przed pomiarem; jego czas GPU

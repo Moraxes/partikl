@@ -9,6 +9,11 @@
 #
 # `AB_BASE=<rewizja>`: „przed” z tej rewizji zamiast HEAD (np. porównanie kilku commitów naraz).
 # `AB_BENCH=<nazwa>`: inny bench niż `gpu` (domyślny i jedyny po usunięciu benchów CPU).
+#
+# `--state` (dla `gpu`): przed pomiarem kod „przed” generuje stany sceny `evolved` po `--steps`
+# krokach do `.cache/ab/states`, a obie strony ładują te same stany przed każdym powtórzeniem.
+# Pozwala porównywać kod na realistycznych skupiskach także przy zmianie fizyki (zmian samej
+# dynamiki ten tryb nie ocenia).
 # Wynik per liczba cząstek i wariant opcji.
 #
 # „Przed” budowane w osobnym worktree `.cache/ab/worktree` z własnym katalogiem `target`
@@ -44,6 +49,41 @@ after=$(bench_bin "$root" "$root/target")
 latest() { ls "$out"/"$bench"-*.parquet | sort | tail -1 | xargs basename; }
 
 bench_args=("$@")
+run_args=("$@")
+
+has_state=0
+has_state_dir=0
+has_regenerate=0
+for arg in ${bench_args[@]+"${bench_args[@]}"}; do
+  case "$arg" in
+    --state) has_state=1 ;;
+    --state-dir|--state-dir=*) has_state_dir=1 ;;
+    --regenerate) has_regenerate=1 ;;
+  esac
+done
+
+if [ "$bench" = "gpu" ] && [ "$has_state" -eq 1 ]; then
+  states="$root/.cache/ab/states"
+  gen_args=()
+  run_args=()
+  for arg in ${bench_args[@]+"${bench_args[@]}"}; do
+    gen_args+=("$arg")
+    if [ "$arg" != "--regenerate" ]; then
+      run_args+=("$arg")
+    fi
+  done
+  gen_args+=(--generate-states)
+  if [ "$has_regenerate" -eq 0 ]; then
+    gen_args+=(--regenerate)
+  fi
+  if [ "$has_state_dir" -eq 0 ]; then
+    gen_args+=(--state-dir "$states")
+    run_args+=(--state-dir "$states")
+  fi
+  (cd "$base" && "$before" --quick "${gen_args[@]}") \
+    || { echo "„przed” ($(git rev-parse --short "$rev")) nie generuje stanów: --state wymaga rewizji z zapisem stanu (053)" >&2; exit 1; }
+  echo "stany z $(git rev-parse --short "$rev") w $states" >&2
+fi
 
 json="["
 for ((r = 1; r <= rounds; r++)); do
@@ -51,10 +91,10 @@ for ((r = 1; r <= rounds; r++)); do
   if ((r % 2)); then order="before after"; else order="after before"; fi
   for side in $order; do
     if [ "$side" = before ]; then
-      (cd "$base" && "$before" --quick --out-dir "$out" ${bench_args[@]+"${bench_args[@]}"} >/dev/null 2>&1)
+      (cd "$base" && "$before" --quick --out-dir "$out" ${run_args[@]+"${run_args[@]}"} >/dev/null 2>&1)
       b=$(latest)
     else
-      "$after" --quick --out-dir "$out" ${bench_args[@]+"${bench_args[@]}"} >/dev/null 2>&1
+      "$after" --quick --out-dir "$out" ${run_args[@]+"${run_args[@]}"} >/dev/null 2>&1
       a=$(latest)
     fi
     sleep 1 # osobne sekundy w nazwach plików

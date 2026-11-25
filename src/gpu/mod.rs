@@ -27,6 +27,7 @@ pub use step_budget::{SIM_SPEED, StepBudget, count_step};
 pub mod headless;
 mod material;
 mod rules;
+mod state_file;
 pub use rules::{RuleFlags, RuleSource};
 
 use crate::args::ProgramArgs;
