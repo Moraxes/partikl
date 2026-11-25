@@ -1,7 +1,83 @@
 use super::*;
 
+/// Konwersja `f32` -> bity IEEE 754 binary16 (zaokrąglenie do najbliższej parzystej),
+/// odpowiadająca `pack2x16float` w `rules/default_rules.wesl`.
+fn f32_to_f16_bits(x: f32) -> u16 {
+  let bits = x.to_bits();
+  let sign = ((bits >> 16) & 0x8000) as u16;
+  let exp = ((bits >> 23) & 0xFF) as i32;
+  let mant = bits & 0x007F_FFFF;
+
+  if exp == 255 {
+    return if mant == 0 {
+      sign | 0x7C00
+    } else {
+      sign | 0x7E00 | ((mant >> 13) as u16)
+    };
+  }
+  if exp > 142 {
+    return sign | 0x7C00;
+  }
+  if exp >= 113 {
+    let h_exp = (exp - 112) as u32;
+    let h_mant = mant >> 13;
+    let rem = mant & 0x1FFF;
+    let round_up = rem > 0x1000 || (rem == 0x1000 && (h_mant & 1) != 0);
+    let body = ((h_exp << 10) | h_mant) + u32::from(round_up);
+    return if body >= 0x7C00 {
+      sign | 0x7C00
+    } else {
+      sign | (body as u16)
+    };
+  }
+  if exp < 102 {
+    return sign;
+  }
+  let full_mant = 0x0080_0000 | mant;
+  let shift = (126 - exp) as u32;
+  let h_mant = full_mant >> shift;
+  let halfway = 1u32 << (shift - 1);
+  let rem = full_mant & ((1u32 << shift) - 1);
+  let round_up = rem > halfway || (rem == halfway && (h_mant & 1) != 0);
+  sign | ((h_mant + u32::from(round_up)) as u16)
+}
+
+/// Konwersja bitów IEEE 754 binary16 -> `f32`, odpowiadająca `unpack2x16float`.
+fn f16_bits_to_f32(h: u16) -> f32 {
+  let h = h as u32;
+  let sign = (h & 0x8000) << 16;
+  let exp = (h >> 10) & 0x1F;
+  let mant = h & 0x03FF;
+  if exp == 0 {
+    if mant == 0 {
+      return f32::from_bits(sign);
+    }
+    let shift = mant.leading_zeros() - 21;
+    let f_exp = 113 - shift;
+    let f_mant = (mant << shift) & 0x03FF;
+    return f32::from_bits(sign | (f_exp << 23) | (f_mant << 13));
+  }
+  if exp == 31 {
+    return if mant == 0 {
+      f32::from_bits(sign | 0x7F80_0000)
+    } else {
+      f32::from_bits(sign | 0x7FC0_0000 | (mant << 13))
+    };
+  }
+  f32::from_bits(sign | ((exp + 112) << 23) | (mant << 13))
+}
+
+/// Kwantyzacja prędkości sąsiada przez `pack2x16float` / `unpack2x16float` w buforze sąsiadów.
+/// Specyfikacja WGSL dopuszcza zaokrąglenie do najbliższej parzystej (RNE) lub ku zeru (RTZ);
+/// przy typowych prędkościach (`<= 125`, ULP f16 `<= 0.0625`) i `dt = 0.01` różnica między tymi
+/// trybami nie przekracza `6.25e-4` i mieści się w tolerancji `1e-3` funkcji `assert_close`.
+fn quantize_f16(x: f32) -> f64 {
+  f16_bits_to_f32(f32_to_f16_bits(x)) as f64
+}
+
 /// Jeden krok fizyki wprost w f64, po wszystkich parach, z odległością na torusie.
-/// Ta sama fizyka co `rules/default_rules.wesl`, bez próbkowania sąsiadów; parametry z `spec.params`.
+/// Ta sama fizyka co `rules/default_rules.wesl` i `rules/nodes.wesl`, bez próbkowania sąsiadów;
+/// parametry z `spec.params`, z kwantyzacją f16 prędkości sąsiada (`pack2x16float`/`unpack2x16float`).
 fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
   let particles = &state.particles;
   let u = &spec.params;
@@ -22,6 +98,9 @@ fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
       let (px, py) = (me.pos[0] as f64, me.pos[1] as f64);
       let (mut fx, mut fy, mut count) = (0.0f64, 0.0f64, 0.0f64);
       let (mut cx, mut cy, mut cn) = (0.0f64, 0.0f64, 0.0f64);
+      let (mut sx, mut sy) = (0.0f64, 0.0f64);
+      let (mut ax, mut ay, mut align_w) = (0.0f64, 0.0f64, 0.0f64);
+      let (mut cohx, mut cohy, mut view_n) = (0.0f64, 0.0f64, 0.0f64);
       for (j, other) in particles.iter().enumerate() {
         let dx = wrap(other.pos[0] as f64 - px, world.x as f64);
         let dy = wrap(other.pos[1] as f64 - py, world.y as f64);
@@ -29,27 +108,59 @@ fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
         if j == i || d == 0.0 || d > INTERACTION_RADIUS as f64 {
           continue;
         }
+        let (dirx, diry) = (dx / d, dy / d);
         let reach = u.repulsion_radius as f64;
         let coeff =
           spec.interactions[other.species as usize].force_coeffs[me.species as usize] as f64;
         let attraction =
           coeff * (1.0 - ((d - u.kernel_middle as f64) / u.kernel_width as f64).abs()).max(0.0);
         if d < reach {
-          cx += 0.5 * (d - reach) * dx / d;
-          cy += 0.5 * (d - reach) * dy / d;
+          cx += 0.5 * (d - reach) * dirx;
+          cy += 0.5 * (d - reach) * diry;
           cn += 1.0;
         }
-        fx += attraction * dx / d;
-        fy += attraction * dy / d;
+        fx += attraction * dirx;
+        fy += attraction * diry;
         count += 1.0;
+
+        if d < u.separation_radius as f64 {
+          let ws = u.separation_weight as f64;
+          let sep_d = d.max(1e-3);
+          sx += ws * (-dirx / sep_d);
+          sy += ws * (-diry / sep_d);
+        }
+        if d < u.vision_radius as f64 {
+          let wa = u.alignment_weight as f64;
+          let wc = u.coherence_weight as f64;
+          ax += wa * quantize_f16(other.vel[0]);
+          ay += wa * quantize_f16(other.vel[1]);
+          align_w += wa;
+          cohx += wc * dx;
+          cohy += wc * dy;
+          view_n += 1.0;
+        }
       }
       if count > 0.0 {
         let scale = (u.average_neighbours as f64 / count).min(1.0);
         fx *= scale;
         fy *= scale;
       }
+      // W `integrate_particle` człon `a_align` odejmuje własną prędkość sprzed poprawki rozsuwania.
+      let (self_vx, self_vy) = (me.vel[0] as f64, me.vel[1] as f64);
+      let (align_x, align_y, coh_x, coh_y) = if view_n > 0.0 {
+        (
+          (ax - self_vx * align_w) / view_n,
+          (ay - self_vy * align_w) / view_n,
+          cohx / view_n,
+          cohy / view_n,
+        )
+      } else {
+        (0.0, 0.0, 0.0, 0.0)
+      };
+      let (force_x, force_y) = (fx + sx + align_x + coh_x, fy + sy + align_y + coh_y);
+
       let (x, y) = (px, py);
-      let (mut velx, mut vely) = (me.vel[0] as f64, me.vel[1] as f64);
+      let (mut velx, mut vely) = (self_vx, self_vy);
       if cn > 0.0 {
         velx += cx / cn / dt;
         vely += cy / cn / dt;
@@ -58,9 +169,16 @@ fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
         velx = 0.0;
         vely = 0.0;
       }
-      let (freex, freey) = (velx + fx * dt, vely + fy * dt);
+      let (freex, freey) = (velx + force_x * dt, vely + force_y * dt);
       let damping = 1.0 + dt * u.friction as f64 * (freex * freex + freey * freey).sqrt();
-      let (mut nx, mut ny) = (x + freex / damping * dt, y + freey / damping * dt);
+      let (mut vx, mut vy) = (freex / damping, freey / damping);
+      let speed = (vx * vx + vy * vy).sqrt();
+      if speed >= 1e-3 {
+        let dv = (u.target_speed as f64 - speed) * u.drive_rate as f64 * dt;
+        vx += (vx / speed) * dv;
+        vy += (vy / speed) * dv;
+      }
+      let (mut nx, mut ny) = (x + vx * dt, y + vy * dt);
       for (n, size) in [(&mut nx, world.x as f64), (&mut ny, world.y as f64)] {
         if *n > size / 2.0 {
           *n -= size;
@@ -72,7 +190,7 @@ fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
       (
         GpuParticle {
           pos: [nx as f32, ny as f32],
-          vel: [(freex / damping) as f32, (freey / damping) as f32],
+          vel: [vx as f32, vy as f32],
           species: me.species,
           id: me.id,
         },
@@ -214,5 +332,247 @@ fn spec_changes_at_runtime() {
     actual.particles[0].pos,
     reference_step(&first, &state, WORLD).particles[0].pos,
     "zmiana powinna mieć wpływ na wynik"
+  );
+}
+
+fn particle(id: u32, pos: [f32; 2], vel: [f32; 2]) -> GpuParticle {
+  GpuParticle {
+    pos,
+    vel,
+    species: 0,
+    id,
+  }
+}
+
+fn isolated_spec(types: usize) -> ParticleSpec {
+  let mut spec = ParticleSpec::new(vec![
+    Interaction {
+      force_coeffs: vec![0.0; types],
+    };
+    types
+  ]);
+  spec.params.repulsion_radius = 0.0;
+  spec.params.friction = 0.0;
+  spec.params.velocity_threshold = 0.0;
+  spec.params.separation_weight = 0.0;
+  spec.params.alignment_weight = 0.0;
+  spec.params.coherence_weight = 0.0;
+  spec.params.drive_rate = 0.0;
+  spec
+}
+
+#[test]
+fn f16_quantization_matches_ieee754_binary16() {
+  assert_eq!(f32_to_f16_bits(0.0), 0x0000);
+  assert_eq!(f32_to_f16_bits(-0.0), 0x8000);
+  assert_eq!(f16_bits_to_f32(0x8000).to_bits(), (-0.0f32).to_bits());
+  assert_eq!(f32_to_f16_bits(1.0), 0x3C00);
+  assert_eq!(f32_to_f16_bits(-2.0), 0xC000);
+  assert_eq!(quantize_f16(123.456), 123.4375);
+
+  // Tie-to-even w zakresie normalnym: 1.0 + 0.5 ULP -> 1.0, 1.0 + 1.5 ULP -> 1.0 + 2 ULP.
+  assert_eq!(f32_to_f16_bits(1.0 + 2.0f32.powi(-11)), 0x3C00);
+  assert_eq!(f32_to_f16_bits(1.0 + 3.0 * 2.0f32.powi(-11)), 0x3C02);
+
+  // Subnormalne i przejście do najmniejszej liczby normalnej (2^-14).
+  assert_eq!(f32_to_f16_bits(2.0f32.powi(-25)), 0x0000);
+  assert_eq!(f32_to_f16_bits(2.0f32.powi(-25) + 2.0f32.powi(-37)), 0x0001);
+  assert_eq!(f32_to_f16_bits(3.0 * 2.0f32.powi(-25)), 0x0002);
+  assert_eq!(f32_to_f16_bits(1023.5 * 2.0f32.powi(-24)), 0x0400);
+  assert_eq!(f16_bits_to_f32(0x0001), 2.0f32.powi(-24));
+
+  // Maksymalna wartość skończona i przepełnienie.
+  assert_eq!(f32_to_f16_bits(65504.0), 0x7BFF);
+  assert_eq!(f16_bits_to_f32(0x7BFF), 65504.0);
+  assert_eq!(f32_to_f16_bits(65520.0), 0x7C00);
+  assert_eq!(f32_to_f16_bits(-65520.0), 0xFC00);
+}
+
+#[test]
+fn separation_only_pushes_close_neighbours_apart() {
+  let mut spec = isolated_spec(1);
+  spec.params.separation_radius = 10.0;
+  spec.params.separation_weight = 2.5;
+  let state = State::new(vec![
+    particle(0, [0.0, 0.0], [0.0, 0.0]),
+    particle(1, [4.0, 0.0], [0.0, 0.0]),
+    // Poza separation_radius, ale w INTERACTION_RADIUS.
+    particle(2, [60.0, 0.0], [0.0, 0.0]),
+    particle(3, [60.0, 15.0], [0.0, 0.0]),
+    // Bardzo blisko siebie (< 1e-3): ograniczenie max(dist, 1e-3) w nodes::separation.
+    particle(4, [0.0, 100.0], [0.0, 0.0]),
+    particle(5, [0.0002, 100.0], [0.0, 0.0]),
+    // Dwóch sąsiadów w separation_radius: accum.sep sumuje wkłady bez dzielenia przez ich liczbę.
+    particle(6, [-100.0, 0.0], [0.0, 0.0]),
+    particle(7, [-96.0, 0.0], [0.0, 0.0]),
+    particle(8, [-100.0, 4.0], [0.0, 0.0]),
+  ]);
+  let expected = reference_step(&spec, &state, WORLD);
+  let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+    return;
+  };
+  let actual = run_state(&mut harness, 1);
+  assert_close(&actual, &expected, "separacja");
+  assert!(actual.particles[0].vel[0] < 0.0 && actual.particles[1].vel[0] > 0.0);
+  assert_eq!(actual.particles[2].vel, [0.0, 0.0]);
+  assert_eq!(actual.particles[3].vel, [0.0, 0.0]);
+  assert!((actual.particles[4].vel[0] + 25.0).abs() < 1e-2);
+  assert!((actual.particles[6].vel[0] - actual.particles[0].vel[0]).abs() < 1e-4);
+}
+
+#[test]
+fn alignment_only_aligns_velocities_and_quantizes_neighbour_vel() {
+  let mut spec = isolated_spec(1);
+  spec.params.vision_radius = 25.0;
+  spec.params.alignment_weight = 20.0;
+  let state = State::new(vec![
+    // Cząstka 0 wyrównuje prędkość do średniej z (1, 2) dzięki align_w i view_n.
+    particle(0, [0.0, 0.0], [10.0, 0.0]),
+    particle(1, [10.0, 0.0], [10.0, 20.0]),
+    particle(2, [0.0, 10.0], [10.0, -4.0]),
+    // Para poza vision_radius = 25.0 (w INTERACTION_RADIUS = 40.0): brak wpływu.
+    particle(3, [100.0, 0.0], [5.0, 0.0]),
+    particle(4, [130.0, 0.0], [5.0, 50.0]),
+    // Identyczne prędkości wejściowe: różnica wynika wyłącznie z kwantyzacji f16 prędkości sąsiada.
+    particle(5, [-150.0, 0.0], [125.125, 123.456]),
+    particle(6, [-145.0, 0.0], [125.125, 123.456]),
+  ]);
+  let expected = reference_step(&spec, &state, WORLD);
+  let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+    return;
+  };
+  let actual = run_state(&mut harness, 1);
+  assert_close(&actual, &expected, "wyrównanie");
+  assert!(actual.particles[0].vel[1] > 1.0);
+  assert!((actual.particles[0].vel[0] - 10.0).abs() < 1e-4);
+  assert_eq!(actual.particles[3].vel, [5.0, 0.0]);
+  assert_eq!(actual.particles[4].vel, [5.0, 50.0]);
+  assert!(actual.particles[5].vel[1] - 123.456 < -2e-3);
+}
+
+#[test]
+fn alignment_uses_velocity_before_overlap_correction() {
+  let mut spec = isolated_spec(1);
+  spec.params.repulsion_radius = 1.0;
+  spec.params.vision_radius = 25.0;
+  spec.params.alignment_weight = 10.0;
+  let state = State::new(vec![
+    particle(0, [0.0, 0.0], [50.0, 0.0]),
+    particle(1, [0.5, 0.0], [0.0, 0.0]),
+  ]);
+  let expected = reference_step(&spec, &state, WORLD);
+  let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+    return;
+  };
+  let actual = run_state(&mut harness, 1);
+  assert_close(&actual, &expected, "wyrównanie przed rozsuwaniem");
+}
+
+#[test]
+fn cohesion_only_pulls_toward_neighbours_within_vision_radius() {
+  let mut spec = isolated_spec(1);
+  spec.params.vision_radius = 25.0;
+  spec.params.coherence_weight = 2.0;
+  let state = State::new(vec![
+    particle(0, [0.0, 0.0], [0.0, 0.0]),
+    particle(1, [10.0, 0.0], [0.0, 0.0]),
+    particle(2, [0.0, 20.0], [0.0, 0.0]),
+    // Poza vision_radius = 25.0, choć wewnątrz INTERACTION_RADIUS = 40.0.
+    particle(3, [100.0, 0.0], [0.0, 0.0]),
+    particle(4, [130.0, 0.0], [0.0, 0.0]),
+    // Para przez szew torusa (WORLD.x = 500): odległość 10.
+    particle(5, [-245.0, -100.0], [0.0, 0.0]),
+    particle(6, [245.0, -100.0], [0.0, 0.0]),
+  ]);
+  let expected = reference_step(&spec, &state, WORLD);
+  let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+    return;
+  };
+  let actual = run_state(&mut harness, 1);
+  assert_close(&actual, &expected, "spójność");
+  assert!(actual.particles[0].vel[0] > 0.0 && actual.particles[0].vel[1] > 0.0);
+  assert_eq!(actual.particles[3].vel, [0.0, 0.0]);
+  assert_eq!(actual.particles[4].vel, [0.0, 0.0]);
+  assert!(actual.particles[5].vel[0] < 0.0 && actual.particles[6].vel[0] > 0.0);
+}
+
+#[test]
+fn drive_only_scales_speed_toward_target_speed() {
+  let mut spec = isolated_spec(1);
+  spec.params.target_speed = 40.0;
+  spec.params.drive_rate = 5.0;
+  let state = State::new(vec![
+    particle(0, [-200.0, 0.0], [6.0, 8.0]),
+    particle(1, [-100.0, 0.0], [60.0, 0.0]),
+    particle(2, [0.0, 0.0], [40.0, 0.0]),
+    particle(3, [100.0, 0.0], [0.0, 0.0]),
+    // Prędkość poniżej 1e-3: drive nie działa.
+    particle(4, [200.0, 0.0], [0.0005, 0.0]),
+    particle(5, [0.0, 100.0], [-30.0, 40.0]),
+  ]);
+  let expected = reference_step(&spec, &state, WORLD);
+  let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+    return;
+  };
+  let actual = run_state(&mut harness, 1);
+  assert_close(&actual, &expected, "drive");
+
+  let speed = |p: &GpuParticle| (p.vel[0] * p.vel[0] + p.vel[1] * p.vel[1]).sqrt();
+  assert!(speed(&actual.particles[0]) > 10.0);
+  assert!((actual.particles[0].vel[1] / actual.particles[0].vel[0] - 8.0 / 6.0).abs() < 1e-5);
+  assert!(speed(&actual.particles[1]) < 60.0);
+  assert_eq!(actual.particles[1].vel[1], 0.0);
+  assert!((actual.particles[2].vel[0] - 40.0).abs() < 1e-5);
+  assert_eq!(actual.particles[3].vel, [0.0, 0.0]);
+  assert!((actual.particles[4].vel[0] - 0.0005).abs() < 1e-6);
+  assert!(speed(&actual.particles[5]) < 50.0);
+  assert!((actual.particles[5].vel[1] / actual.particles[5].vel[0] + 40.0 / 30.0).abs() < 1e-5);
+}
+
+#[test]
+fn zero_boid_weights_match_reference_and_ignore_boid_radii() {
+  let mut rng = StdRng::seed_from_u64(19);
+  let default_spec = spec(&mut rng, 4);
+  let mut zero_boids = default_spec.clone();
+  zero_boids.params.separation_weight = 0.0;
+  zero_boids.params.alignment_weight = 0.0;
+  zero_boids.params.coherence_weight = 0.0;
+  zero_boids.params.drive_rate = 0.0;
+
+  let state = State::new(random_particles(&mut rng, 700, 4));
+  let expected = reference_step(&zero_boids, &state, WORLD);
+  let Some(mut harness) = harness_for(SimOptions::default(), zero_boids.clone(), &state, WORLD)
+  else {
+    return;
+  };
+  let actual = run_state(&mut harness, 1);
+  assert_close(&actual, &expected, "wyzerowane wagi boidów");
+
+  let mut no_radii = zero_boids;
+  no_radii.params.separation_radius = 0.0;
+  no_radii.params.vision_radius = 0.0;
+  no_radii.params.target_speed = 0.0;
+  harness.set_spec(no_radii.clone());
+  reset(&mut harness, &state);
+  let actual_no_radii = run_state(&mut harness, 1);
+  assert_close(
+    &actual_no_radii,
+    &reference_step(&no_radii, &state, WORLD),
+    "wyzerowane wagi i promienie boidów",
+  );
+  assert_close(
+    &actual_no_radii,
+    &actual,
+    "promienie boidów przy zerowych wagach nie zmieniają wyniku",
+  );
+
+  let with_boids = reference_step(&default_spec, &state, WORLD);
+  assert!(
+    actual
+      .particles
+      .iter()
+      .zip(&with_boids.particles)
+      .any(|(a, b)| (a.vel[0] - b.vel[0]).abs() > 1e-3),
+    "wyzerowane wagi boidów powinny różnić się od domyślnych"
   );
 }
