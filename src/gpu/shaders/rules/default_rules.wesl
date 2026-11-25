@@ -140,7 +140,7 @@ fn integrate_particle(self_p: Particle, accum: RuleAccum) -> Particle {
   let a_coh = nd::mean2(accum.cohere, n);
   let boid = a_sep + a_align + a_coh;
  
-  let nw = max(0.05, accum.same_species_neighbours / max(1.0, accum.neighbours));
+  let nw = 0.1 + accum.same_species_neighbours / max(1.0, accum.neighbours);
   let vw = log2(2.0 + dot(p.vel, p.vel));
   let force = sqrt(nw * vw) * boid + attraction / sqrt(nw * vw);
 
