@@ -9,8 +9,9 @@ use std::collections::BTreeMap;
 
 use bevy::prelude::*;
 
-/// Klawisze zajęte przez aplikację (jakość rysowania, ekran, HUD); opcje reguł ich nie biorą.
-const RESERVED_KEYS: [char; 6] = ['A', 'B', 'C', 'F', 'H', 'S'];
+/// Klawisze zajęte przez aplikację (jakość rysowania, ekran, HUD, losowanie macierzy, cząstek i
+/// kolorów); opcje reguł ich nie biorą.
+const RESERVED_KEYS: [char; 9] = ['A', 'B', 'C', 'F', 'H', 'R', 'S', 'T', 'Y'];
 const DIRECTIVE: &str = "//@option";
 const FIELD_DIRECTIVE: &str = "//@field";
 /// Pola `shared` mieszczą się w jednym słowie 4 B dołączonym do sąsiada w pętli sił (większe wymagają

@@ -450,7 +450,10 @@ impl Harness {
   }
 
   /// Zawartość bufora `GpuSim` (wybranego przez `buffer`) z GPU.
-  fn read_buffer(&mut self, buffer: impl Fn(&GpuSim) -> Handle<ShaderBuffer>) -> Vec<u8> {
+  pub(super) fn read_buffer(
+    &mut self,
+    buffer: impl Fn(&GpuSim) -> Handle<ShaderBuffer>,
+  ) -> Vec<u8> {
     let deadline = Instant::now() + Duration::from_secs(120);
     let slot: Arc<Mutex<Option<Vec<u8>>>> = Arc::default();
     let handle = buffer(self.world().resource::<GpuSim>());

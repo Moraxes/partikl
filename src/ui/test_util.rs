@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use bevy::window::{CursorOptions, PrimaryWindow};
 
-use crate::gpu::{RenderQuality, SamplingCap, Substeps};
+use crate::gpu::{RenderQuality, RerollColors, RerollMatrix, RerollState, SamplingCap, Substeps};
 use crate::options::{RuleSchema, SimOptions, SimState};
 
 /// Aplikacja bez okna i bez `InputPlugin`: `ButtonInput` nie jest czyszczony między
@@ -21,7 +21,10 @@ pub fn input_app() -> App {
     .init_resource::<ButtonInput<KeyCode>>()
     .init_resource::<ButtonInput<MouseButton>>()
     .add_message::<MouseWheel>()
-    .add_message::<MouseMotion>();
+    .add_message::<MouseMotion>()
+    .add_message::<RerollMatrix>()
+    .add_message::<RerollState>()
+    .add_message::<RerollColors>();
   app
     .world_mut()
     .spawn((Window::default(), PrimaryWindow, CursorOptions::default()));

@@ -1,5 +1,5 @@
 use super::*;
-use crate::gpu::{DEFAULT_MAX_CANDIDATES, Substeps};
+use crate::gpu::{DEFAULT_MAX_CANDIDATES, RerollColors, RerollMatrix, RerollState, Substeps};
 use crate::ui::test_util::*;
 use bevy::camera::{OrthographicProjection, Projection};
 use bevy::input::mouse::MouseScrollUnit;
@@ -436,4 +436,58 @@ fn input_without_window_or_camera_does_not_panic() {
     .resource_mut::<ButtonInput<MouseButton>>()
     .release(MouseButton::Left);
   app.update();
+}
+
+/// Odebrane prośby o losowanie: [macierz, cząstki, kolory].
+#[derive(Resource, Default)]
+struct Rerolls([usize; 3]);
+
+fn count_rerolls(
+  mut matrix: MessageReader<RerollMatrix>,
+  mut state: MessageReader<RerollState>,
+  mut colors: MessageReader<RerollColors>,
+  mut seen: ResMut<Rerolls>,
+) {
+  let counts = [
+    matrix.read().count(),
+    state.read().count(),
+    colors.read().count(),
+  ];
+  for (total, count) in seen.0.iter_mut().zip(counts) {
+    *total += count;
+  }
+}
+
+#[test]
+fn r_t_and_y_request_rerolls() {
+  let mut app = input_app();
+  app
+    .init_resource::<Rerolls>()
+    .add_systems(Update, (handle_keyboard_input, count_rerolls).chain());
+  for (key, expected) in [
+    (KeyCode::KeyR, [1, 0, 0]),
+    (KeyCode::KeyT, [0, 1, 0]),
+    (KeyCode::KeyY, [0, 0, 1]),
+    (KeyCode::KeyB, [0, 0, 0]),
+  ] {
+    *app.world_mut().resource_mut::<Rerolls>() = Rerolls::default();
+    tap_key(&mut app, key);
+    assert_eq!(app.world().resource::<Rerolls>().0, expected, "{key:?}");
+  }
+}
+
+#[test]
+fn hud_lists_reroll_keys() {
+  let text = hud_text(
+    Some(60.0),
+    None,
+    &builtin_schema(),
+    &SimOptions::default(),
+    &RenderQuality::default(),
+    DEFAULT_MAX_CANDIDATES,
+    1,
+  );
+  assert!(text.contains("new matrix  R"), "{text}");
+  assert!(text.contains("new particles  T"), "{text}");
+  assert!(text.contains("new colors  Y"), "{text}");
 }

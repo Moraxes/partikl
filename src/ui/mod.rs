@@ -6,7 +6,9 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowMode};
 
 use crate::args::ProgramArgs;
-use crate::gpu::{RenderQuality, SIM_SPEED, SamplingCap, Substeps};
+use crate::gpu::{
+  RenderQuality, RerollColors, RerollMatrix, RerollState, SIM_SPEED, SamplingCap, Substeps,
+};
 use crate::options::{RuleSchema, SimOptions, SimState};
 
 pub struct UiPlugin;
@@ -65,8 +67,8 @@ pub fn init_ui(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
 }
 
 /// Treść napisów: FPS (`None`, dopóki nie ma średniej), prędkość symulacji w procentach czasu
-/// rzeczywistego (tylko gdy zwalnia poniżej 97%), opcje z klawiszami, próg próbkowania `candidates`
-/// i podkroki `substeps` (tylko gdy K > 1).
+/// rzeczywistego (tylko gdy zwalnia poniżej 97%), opcje z klawiszami, próg próbkowania `candidates`,
+/// podkroki `substeps` (tylko gdy K > 1) i klawisze losowania.
 pub fn hud_text(
   fps: Option<f64>,
   speed: Option<f64>,
@@ -100,7 +102,7 @@ pub fn hud_text(
     })
     .collect();
   format!(
-    "{fps} fps\n{speed}{rule_options}{substeps}candidates {candidates}  C\nhdr {}  B\nantialiasing {}  A\nhide  H",
+    "{fps} fps\n{speed}{rule_options}{substeps}candidates {candidates}  C\nhdr {}  B\nantialiasing {}  A\nnew matrix  R\nnew particles  T\nnew colors  Y\nhide  H",
     on_off(quality.hdr),
     on_off(quality.analytic_aa),
   )
@@ -178,6 +180,9 @@ pub fn handle_keyboard_input(
   mut substeps: ResMut<Substeps>,
   mut windows: Query<&mut Window, With<PrimaryWindow>>,
   mut hud: Query<&mut Visibility, With<Hud>>,
+  mut reroll_matrix: MessageWriter<RerollMatrix>,
+  mut reroll_state: MessageWriter<RerollState>,
+  mut reroll_colors: MessageWriter<RerollColors>,
 ) {
   if keyboard.just_pressed(KeyCode::Space) {
     let new_state = match state.get() {
@@ -211,6 +216,15 @@ pub fn handle_keyboard_input(
         _ => Visibility::Hidden,
       };
     }
+  }
+  if keyboard.just_pressed(KeyCode::KeyR) {
+    reroll_matrix.write(RerollMatrix);
+  }
+  if keyboard.just_pressed(KeyCode::KeyT) {
+    reroll_state.write(RerollState);
+  }
+  if keyboard.just_pressed(KeyCode::KeyY) {
+    reroll_colors.write(RerollColors);
   }
   if keyboard.just_pressed(KeyCode::KeyF) {
     let Ok(mut primary_window) = windows.single_mut() else {

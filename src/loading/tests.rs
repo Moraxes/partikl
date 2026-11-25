@@ -220,3 +220,41 @@ fn param_limits_are_enforced_on_load() {
     );
   }
 }
+
+/// Pusty katalog tymczasowy dla testu `name`.
+fn temp_dir(name: &str) -> PathBuf {
+  let dir = std::env::temp_dir().join(format!("partikl-loading-{}-{name}", std::process::id()));
+  let _ = std::fs::remove_dir_all(&dir);
+  std::fs::create_dir_all(&dir).unwrap();
+  dir
+}
+
+#[test]
+fn free_path_skips_existing_files() {
+  let dir = temp_dir("free-path");
+  let names: Vec<_> = (0..3)
+    .map(|_| {
+      let path = free_path(&dir, "spec");
+      std::fs::write(&path, "").unwrap();
+      path.file_name().unwrap().to_str().unwrap().to_owned()
+    })
+    .collect();
+  assert_eq!(names, ["spec.ron", "spec-2.ron", "spec-3.ron"]);
+  std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn timestamped_dumps_do_not_overwrite_each_other() {
+  let dir = temp_dir("timestamped");
+  let spec = |coeff: f32| {
+    ParticleSpec::new(vec![Interaction {
+      force_coeffs: vec![coeff],
+    }])
+  };
+  let first = dump_timestamped_spec(&dir, &spec(1.0)).unwrap();
+  let second = dump_timestamped_spec(&dir, &spec(2.0)).unwrap();
+  assert_ne!(first, second);
+  assert_eq!(load_spec(&first).unwrap().flat_matrix(), [1.0]);
+  assert_eq!(load_spec(&second).unwrap().flat_matrix(), [2.0]);
+  std::fs::remove_dir_all(&dir).unwrap();
+}

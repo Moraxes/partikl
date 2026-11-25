@@ -216,6 +216,113 @@ fn set_state_replaces_particles_on_gpu() {
   assert_eq!(harness.run(0), second);
 }
 
+/// Harness z regułami diagnostycznymi po dwóch krokach (model jest już niezerowy), z macierzą,
+/// stanem i modelem.
+fn stepped_diagnostic_harness(
+  seed: u64,
+) -> Option<(
+  Harness,
+  ParticleSpec,
+  Vec<GpuParticle>,
+  Vec<DiagnosticModel>,
+)> {
+  let mut rng = StdRng::seed_from_u64(seed);
+  let spec = spec(&mut rng, 3);
+  let particles = random_particles(&mut rng, 700, 3);
+  let mut harness = Harness::with_rules(
+    RuleSource::Diagnostic,
+    SimOptions::default(),
+    spec.clone(),
+    particles,
+    WORLD,
+  )?;
+  let (particles, model) = harness.run_with_model::<DiagnosticModel>(2);
+  assert!(
+    model.iter().any(|m| m.count > 0.0),
+    "model pusty po krokach"
+  );
+  Some((harness, spec, particles, model))
+}
+
+#[test]
+fn reroll_state_replaces_particles_and_recounts_grid() {
+  let Some((mut harness, spec, before, _)) = stepped_diagnostic_harness(51) else {
+    return;
+  };
+  let epoch = harness.world().resource::<GpuSim>().state_epoch;
+  harness.world().write_message(RerollState);
+  // `run(0)` nie zleca kroku: czyta stan po klatce, która wylosowała nowy.
+  let after = harness.run(0);
+  assert!(harness.world().resource::<GpuSim>().state_epoch > epoch);
+  assert_ne!(after, before);
+  assert_invariants(&after, WORLD, "po losowaniu stanu");
+  assert!(after.iter().all(|p| p.species < 3));
+  let model = harness.read_buffer(|sim| sim.model.clone());
+  assert!(model.iter().all(|&byte| byte == 0), "model niewyzerowany");
+  let colors = harness.read_buffer(|sim| sim.colors.clone());
+  let colors: &[f32] = bytemuck::cast_slice(&colors);
+  assert!(colors.iter().any(|&c| c != 1.0), "kolory bez zmian");
+
+  // Krok na nowym stanie widzi właściwych sąsiadów, więc siatka została przeliczona.
+  let expected = brute_force_neighbourhoods(&spec, &after, WORLD);
+  let (particles, model) = harness.run_with_model::<DiagnosticModel>(1);
+  assert_neighbourhoods(
+    &diagnostic_results(&particles, &model),
+    &expected,
+    "po losowaniu stanu",
+  );
+}
+
+#[test]
+fn reroll_matrix_keeps_particles() {
+  let Some((mut harness, spec, before, model)) = stepped_diagnostic_harness(52) else {
+    return;
+  };
+  let epoch = harness.world().resource::<GpuSim>().state_epoch;
+  let colors = harness.read_buffer(|sim| sim.colors.clone());
+  harness.world().write_message(RerollMatrix);
+  // Odczyty buforów same wykonują klatki, więc przejście macierzy rusza.
+  let (after, after_model) = harness.run_with_model::<DiagnosticModel>(0);
+  assert_eq!(after, before);
+  assert!(
+    model
+      .iter()
+      .zip(&after_model)
+      .all(|(a, b)| a.count == b.count && a.coeff == b.coeff),
+    "model zmieniony"
+  );
+  assert_eq!(harness.read_buffer(|sim| sim.colors.clone()), colors);
+  assert_eq!(harness.world().resource::<GpuSim>().state_epoch, epoch);
+  let rolled = harness.world().resource::<ParticleSpec>();
+  assert_ne!(rolled.flat_matrix(), spec.flat_matrix());
+  assert_eq!(rolled.params, spec.params);
+}
+
+#[test]
+fn reroll_colors_changes_only_colors_until_new_state_ends_it() {
+  let Some((mut harness, _, before, _)) = stepped_diagnostic_harness(53) else {
+    return;
+  };
+  let colors = |harness: &mut Harness| harness.read_buffer(|sim| sim.colors.clone());
+  let epoch = harness.world().resource::<GpuSim>().state_epoch;
+  let initial = colors(&mut harness);
+  harness.world().write_message(RerollColors);
+  // Pierwsza klatka zaczyna przejście, następna je przesuwa.
+  harness.update();
+  harness.update();
+  assert_ne!(colors(&mut harness), initial);
+  assert_eq!(harness.run(0), before);
+  assert_eq!(harness.world().resource::<GpuSim>().state_epoch, epoch);
+
+  // Nowy stan w trakcie przejścia ustawia swoją paletę i ona zostaje.
+  harness.world().write_message(RerollState);
+  harness.update();
+  let rolled = colors(&mut harness);
+  harness.update();
+  harness.update();
+  assert_eq!(colors(&mut harness), rolled);
+}
+
 #[test]
 fn timed_step_reports_every_pass() {
   let mut rng = StdRng::seed_from_u64(13);
@@ -327,17 +434,20 @@ fn diagnostic_step(
     world,
   )?;
   let (particles, model) = harness.run_with_model::<DiagnosticModel>(1);
-  Some(
-    particles
-      .iter()
-      .zip(&model)
-      .map(|(p, m)| Neighbourhood {
-        count: m.count as f64,
-        delta: [p.vel[0] as f64, p.vel[1] as f64],
-        coeff: m.coeff as f64,
-      })
-      .collect(),
-  )
+  Some(diagnostic_results(&particles, &model))
+}
+
+/// Wynik kroku reguł diagnostycznych odczytany z `vel` cząstek i z modelu.
+fn diagnostic_results(particles: &[GpuParticle], model: &[DiagnosticModel]) -> Vec<Neighbourhood> {
+  particles
+    .iter()
+    .zip(model)
+    .map(|(p, m)| Neighbourhood {
+      count: m.count as f64,
+      delta: [p.vel[0] as f64, p.vel[1] as f64],
+      coeff: m.coeff as f64,
+    })
+    .collect()
 }
 
 /// `Model` reguł diagnostycznych (`//@field count`, `coeff`).

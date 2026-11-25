@@ -19,10 +19,12 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
 mod compute;
+mod reset;
 mod step_budget;
 pub use compute::RuleParams;
 pub use compute::stats::{GpuStats, SimStats};
 pub use compute::timing::{GpuTimings, PassTimes, entries as timing_entries};
+pub use reset::{RerollColors, RerollMatrix, RerollState};
 use step_budget::StepBudgetPlugin;
 pub use step_budget::{SIM_SPEED, StepBudget, count_step};
 pub mod headless;
@@ -148,6 +150,17 @@ pub fn random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
     .collect()
 }
 
+/// Bieżące kolory typów cząstek: z nich powstaje bufor `GpuSim::colors`, którego świat główny
+/// nie odczyta.
+#[derive(Resource)]
+struct Palette(Vec<LinearRgba>);
+
+impl Palette {
+  fn new(colors: Vec<Color>) -> Self {
+    Palette(colors.into_iter().map(LinearRgba::from).collect())
+  }
+}
+
 /// Opis symulacji przekazywany do świata renderowania.
 #[derive(Resource, Clone, ExtractResource)]
 #[extract_app(RenderApp)]
@@ -157,6 +170,8 @@ pub struct GpuSim {
   /// `model_stride == 0` bufor dummy 4 B dla wspólnego układu bind group).
   pub model: Handle<ShaderBuffer>,
   pub model_stride: u32,
+  /// Kolory typów cząstek (wspólny z materiałem).
+  pub colors: Handle<ShaderBuffer>,
   pub num_particles: u32,
   pub num_types: u32,
   pub geometry: Geometry,
@@ -317,7 +332,7 @@ impl Plugin for GpuPlugin {
         Update,
         update_interpolation.run_if(resource_exists::<GpuSim>),
       )
-      .add_plugins(StepBudgetPlugin)
+      .add_plugins((StepBudgetPlugin, reset::ResetPlugin))
       .add_systems(FixedUpdate, count_step.run_if(in_state(SimState::Running)));
   }
 }
@@ -513,6 +528,24 @@ pub fn spawn_camera(
   }
 }
 
+/// Bufor stanu cząstek.
+fn state_buffer(particles: Vec<GpuParticle>) -> ShaderBuffer {
+  ShaderBuffer::new(particles, RenderAssetUsages::RENDER_WORLD)
+}
+
+/// Wyzerowany model `n` cząstek. Przy pustym modelu (`stride == 0`) to bufor dummy 4 B dla
+/// wspólnego układu bind group.
+fn model_buffer(n: usize, stride: u32) -> ShaderBuffer {
+  let words = (n * stride as usize / 4).max(1);
+  ShaderBuffer::new(vec![0u32; words], RenderAssetUsages::RENDER_WORLD)
+}
+
+/// Bufor kolorów typów (liniowe RGBA).
+fn color_buffer(colors: &[LinearRgba]) -> ShaderBuffer {
+  let colors: Vec<[f32; 4]> = colors.iter().map(|color| color.to_f32_array()).collect();
+  ShaderBuffer::new(colors, RenderAssetUsages::RENDER_WORLD)
+}
+
 /// Wysyła `particles` na GPU, tworzy encję do rysowania i zasób `GpuSim`; zwraca uchwyt bufora
 /// stanu (do readbacku).
 #[allow(clippy::too_many_arguments)]
@@ -528,23 +561,11 @@ pub fn spawn_sim(
   look: ParticleLook,
 ) -> Handle<ShaderBuffer> {
   let n = particles.len();
-  let colors: Vec<[f32; 4]> = look
-    .colors
-    .into_iter()
-    .map(|color| LinearRgba::from(color).to_f32_array())
-    .collect();
-  let state = buffers.add(ShaderBuffer::new(
-    particles,
-    RenderAssetUsages::RENDER_WORLD,
-  ));
+  let state = buffers.add(state_buffer(particles));
   let model_stride = schema.model_stride();
-  // Przy pustym modelu (`model_stride == 0`) zachowujemy bufor dummy 4 B dla wspólnego bind group.
-  let model_words = (n * model_stride as usize / 4).max(1);
-  let model = buffers.add(ShaderBuffer::new(
-    vec![0u32; model_words],
-    RenderAssetUsages::RENDER_WORLD,
-  ));
-  let colors = buffers.add(ShaderBuffer::new(colors, RenderAssetUsages::RENDER_WORLD));
+  let model = buffers.add(model_buffer(n, model_stride));
+  let palette = Palette::new(look.colors);
+  let colors = buffers.add(color_buffer(&palette.0));
 
   let mut mesh = Mesh::new(
     PrimitiveTopology::TriangleList,
@@ -553,7 +574,7 @@ pub fn spawn_sim(
   mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, particle_quads(n));
   let material = materials.add(ParticleMaterial {
     particles: state.clone(),
-    colors,
+    colors: colors.clone(),
     params: RenderParams {
       radius: look.size,
       velocity_threshold: VELOCITY_THRESHOLD,
@@ -573,11 +594,13 @@ pub fn spawn_sim(
     state: state.clone(),
     model,
     model_stride,
+    colors,
     num_particles: n as u32,
     num_types: spec.interactions.len() as u32,
     geometry: Geometry::new(world),
     state_epoch: 0,
   });
+  commands.insert_resource(palette);
   state
 }
 

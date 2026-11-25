@@ -111,8 +111,7 @@ pub fn get_particle_spec(program_args: &args::ProgramArgs) -> Result<ParticleSpe
     // Zapis po nadpisaniach: plik odtwarza dokładnie tę symulację.
     let particle_spec = apply_overrides(generate_particle_spec(&mut rng, type_count), &overrides)?;
     if !program_args.no_dump_interaction_spec {
-      let path = PathBuf::from(format!("spec-{}.ron", Utc::now().format("%F-%H-%M-%S")));
-      dump_spec(&path, &particle_spec)?;
+      dump_timestamped_spec(Path::new(""), &particle_spec)?;
     }
     Ok(particle_spec)
   }
@@ -232,6 +231,24 @@ pub fn dump_spec(path: &Path, spec: &ParticleSpec) -> Result<(), LoadError> {
     })
 }
 
+/// Zapisuje `spec` w `dir` jako `spec-<czas UTC>.ron`, bez nadpisywania istniejących plików, i
+/// zwraca ścieżkę.
+pub fn dump_timestamped_spec(dir: &Path, spec: &ParticleSpec) -> Result<PathBuf, LoadError> {
+  let stem = format!("spec-{}", Utc::now().format("%F-%H-%M-%S"));
+  let path = free_path(dir, &stem);
+  dump_spec(&path, spec)?;
+  Ok(path)
+}
+
+/// `<stem>.ron` w `dir`, a gdy zajęte: `<stem>-2.ron`, `<stem>-3.ron`, …
+fn free_path(dir: &Path, stem: &str) -> PathBuf {
+  std::iter::once(format!("{stem}.ron"))
+    .chain((2..).map(|n| format!("{stem}-{n}.ron")))
+    .map(|name| dir.join(name))
+    .find(|path| !path.exists())
+    .expect("nieskończony ciąg nazw")
+}
+
 fn validate_spec(spec: &ParticleSpec) -> Result<(), String> {
   if spec.interactions.is_empty() {
     return Err("brak typów cząstek".into());
@@ -264,7 +281,7 @@ fn validate_single_interaction(
   }
 }
 
-fn generate_particle_spec(rng: &mut impl Rng, type_count: usize) -> ParticleSpec {
+pub(crate) fn generate_particle_spec(rng: &mut impl Rng, type_count: usize) -> ParticleSpec {
   let interactions = (0..type_count)
     .map(|_| generate_single_interaction(rng, type_count))
     .collect();

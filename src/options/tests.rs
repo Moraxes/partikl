@@ -97,6 +97,9 @@ fn malformed_declarations_are_errors() {
   for bad in [
     "//@option x: only_one",
     "//@option x key=H: a, b",
+    "//@option x key=R: a, b",
+    "//@option x key=T: a, b",
+    "//@option x key=Y: a, b",
     "//@option x key=n: a, b",
     "//@option x: a=F, b=F",
     "//@option x: a, b\n//@option x: c, d",

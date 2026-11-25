@@ -18,7 +18,8 @@ pub struct ProgramArgs {
   /// By default, the interaction specification is saved to a timestamped file
   /// after being generated (i.e. on every startup), to avoid interesting
   /// simulations being lost. If you wish to prevent this behaviour, use
-  /// --no-dump-interaction-spec.
+  /// --no-dump-interaction-spec. The seed only affects the startup matrix, not
+  /// the ones rolled at runtime with R.
   ///
   /// Note that it's usually more convenient to use the <interaction-spec> arg.
   #[arg(long)]
@@ -31,8 +32,9 @@ pub struct ProgramArgs {
   /// large-scale patterns that emerge during the simulation. Particle color,
   /// arrangement, initial velocity, and dish size are not configurable yet.
   ///
-  /// If present, --no-dump-interaction-spec is assumed, and --num-types is
-  /// ignored.
+  /// If present, the spec is not saved again on startup and --num-types is
+  /// ignored. Matrices rolled at runtime with R are still saved, unless
+  /// --no-dump-interaction-spec is given.
   ///
   /// Any number of PATH=VALUE arguments override fields of the spec (loaded or
   /// generated), e.g. `params.repulsion_radius=1` or
@@ -57,7 +59,8 @@ pub struct ProgramArgs {
   #[arg(short = 'n', long, default_value_t = 100000, value_parser = parse_nonzero_usize)]
   pub num_particles: usize,
 
-  /// Prevents the interaction spec from being dumped.
+  /// Prevents the interaction spec from being dumped, both on startup and when a
+  /// new matrix is rolled with R.
   #[arg(long)]
   pub no_dump_interaction_spec: bool,
 
