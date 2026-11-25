@@ -42,7 +42,7 @@ const WORKGROUP: u32 = 64;
 const SCAN_BLOCK: u32 = 256;
 
 /// Stałe i geometria kroku (silnik siatki); układ jak `EngineUniforms` w `engine/types.wesl`.
-/// Różni się między krokami klatki tylko `step_index` (i `dt_ratio` w pierwszym kroku po zmianie `Substeps`).
+/// Różni się między krokami klatki tylko `step_index`.
 #[derive(ShaderType, Clone, Copy, Debug)]
 pub struct EngineUniforms {
   pub world: Vec2,

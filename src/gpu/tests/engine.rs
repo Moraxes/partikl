@@ -100,7 +100,7 @@ fn real_time_loop_runs_the_fixed_step_clock() {
   assert!(speed > 0.5, "prędkość {speed}");
 }
 
-/// Średnia prędkość `|v| / dt`
+/// Średnia prędkość `|v|`
 fn mean_speed(particles: &[GpuParticle]) -> f32 {
   let sum: f32 = particles.iter().map(|p| Vec2::from(p.vel).length()).sum();
   sum / particles.len() as f32
@@ -219,8 +219,8 @@ fn timed_step_reports_every_pass() {
   assert_eq!(times.steps, 1);
   for (entry, ns) in &times.per_step_ns {
     // `sort_cells` działa tylko w trybie deterministycznym, a `count` tylko w pierwszym kroku po
-    // wgraniu stanu (potem histogram liczą siły), `rescale` tylko po zmianie `Substeps`.
-    if matches!(*entry, "sort_cells" | "count" | "rescale") {
+    // wgraniu stanu (potem histogram liczą siły).
+    if matches!(*entry, "sort_cells" | "count") {
       assert_eq!(*ns, 0.0);
     } else {
       assert!(*ns > 0.0, "{entry}: {ns}");

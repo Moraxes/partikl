@@ -349,8 +349,12 @@ fn main() {
         }
         let samples = &times[args.warmup..];
         let gpu = &gpu[args.warmup..];
-        // Nazwy wariantów jak dawniej (wyniki z poprzednich rewizji): nakładanie i `+average`.
-        let variant = format!("resolve+average{}", args.sim.label());
+        // Nazwa wariantu z opcji lub domyślny opis.
+        let variant = if options == &SimOptions::default() {
+          "resolve+average".to_string()
+        } else {
+          format!("{:?}", options)
+        };
         let rows = samples.len();
         let batch = RecordBatch::try_new(
           schema.clone(),

@@ -1,6 +1,6 @@
 //! Symulacja na GPU: stan cząstek w buforach, siatka (counting sort) i siły w compute
 //! shaderach (`src/gpu/shaders`), rysowanie wprost z bufora stanu. W testach wyrocznią jest
-//! skalarna implementacja f64 (`tests.rs`).
+//! skalarna implementacja f64 (`tests/`).
 
 use bevy::asset::{RenderAssetUsages, embedded_asset, load_embedded_asset};
 use bevy::camera::visibility::NoFrustumCulling;
