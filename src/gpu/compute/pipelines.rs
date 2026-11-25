@@ -231,25 +231,29 @@ impl TypeClass {
   }
 }
 
-/// Wariant pipeline'u sił: flagi zadeklarowane przez reguły (`gpu::rules`) i klasa liczby typów
-/// (flagi silnika dla `rules/matrix.wesl`). Kod reguł to osobny moduł, podmieniany bez nowego wariantu.
+/// Wariant pipeline'u sił: flagi zadeklarowane przez reguły (`gpu::rules`), klasa liczby typów
+/// (flagi silnika dla `rules/matrix.wesl`) i obecność pól `Model` (`HAS_MODEL`). Kod reguł to osobny
+/// moduł, podmieniany bez nowego wariantu.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ForcesVariant {
   pub flags: Vec<(String, bool)>,
   pub types: TypeClass,
+  pub has_model: bool,
 }
 
 impl ForcesVariant {
-  pub fn new(flags: &RuleFlags, num_types: u32) -> Self {
+  pub fn new(flags: &RuleFlags, num_types: u32, has_model: bool) -> Self {
     ForcesVariant {
       flags: flags.0.clone(),
       types: TypeClass::of(num_types),
+      has_model,
     }
   }
 }
 
-/// Kolejkuje pipeline'y siatki (raz) i kompilację wariantu sił dla bieżących opcji i liczby
-/// typów, jeśli jeszcze go nie ma. Nic nie robi, dopóki nie załadują się moduły shaderów.
+/// Kolejkuje pipeline'y siatki (raz) i kompilację wariantu sił dla bieżących opcji, liczby typów i
+/// obecności modelu (`HAS_MODEL`), jeśli jeszcze go nie ma. Nic nie robi przed załadowaniem modułów
+/// shaderów i powstaniem `GpuSim`.
 pub fn queue_forces(
   library: Res<ShaderLibrary>,
   assets: Res<AssetServer>,
@@ -262,26 +266,29 @@ pub fn queue_forces(
   if !library.loaded(&assets) {
     return;
   }
+  let Some(sim) = sim else { return };
+  let has_model = sim.model_stride > 0;
+  let model_defs = vec![ShaderDefVal::Bool("HAS_MODEL".into(), has_model)];
   if pipelines.grid.is_empty() {
     let grid = GRID_PASSES
       .iter()
-      .map(|pass| pipelines.queue(&cache, pass, vec![]))
+      .map(|pass| pipelines.queue(&cache, pass, model_defs.clone()))
       .collect();
     pipelines.grid = grid;
   }
   if gpu_stats.enabled && pipelines.stats.is_none() {
-    let id = pipelines.queue(&cache, &STATS, vec![]);
+    let id = pipelines.queue(&cache, &STATS, model_defs);
     pipelines.stats = Some(id);
   }
-  let Some(sim) = sim else { return };
-  let variant = ForcesVariant::new(&flags, sim.num_types);
+  let variant = ForcesVariant::new(&flags, sim.num_types, has_model);
   if !pipelines.forces.contains_key(&variant) {
     let id = pipelines.queue(&cache, &FORCES, forces_defs(&variant));
     pipelines.forces.insert(variant, id);
   }
 }
 
-/// Wariant jako flagi shadera: te z reguł (`//@option` w ich nagłówku) i dwie silnika (klasa typów).
+/// Wariant jako flagi shadera: te z reguł (`//@option` w ich nagłówku) i flagi silnika (klasa
+/// typów oraz `HAS_MODEL`).
 fn forces_defs(variant: &ForcesVariant) -> Vec<ShaderDefVal> {
   variant
     .flags
@@ -296,6 +303,7 @@ fn forces_defs(variant: &ForcesVariant) -> Vec<ShaderDefVal> {
         "TYPES_AT_MOST_8".into(),
         variant.types == TypeClass::AtMost8,
       ),
+      ShaderDefVal::Bool("HAS_MODEL".into(), variant.has_model),
     ])
     .collect()
 }

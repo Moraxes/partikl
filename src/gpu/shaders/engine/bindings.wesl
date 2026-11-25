@@ -3,7 +3,9 @@
 // a dane reguł (7, 8) w `rules/bindings.wesl`.
 
 import super::types::Particle;
-import super::super::rules::model::{Model, Neighbour, pack_neighbour, unpack_neighbour};
+import super::super::rules::model::{Neighbour, pack_neighbour, unpack_neighbour};
+@if(HAS_MODEL)
+import super::super::rules::model::Model;
 
 // Trwały stan cząstek (czytany też przez render). Po kroku leży w kolejności siatki (patrz
 // `sorted_state`), więc render widzi cząstki spójnie przestrzennie; `Particle::id` jest
@@ -22,16 +24,24 @@ import super::super::rules::model::{Model, Neighbour, pack_neighbour, unpack_nei
 @group(0) @binding(6) var<storage, read_write> next_counts: array<atomic<u32>>;
 // Sumy bloków sumy prefiksowej leżą w `cell_offsets` od indeksu `num_cells`.
 // Model cząstek (`Model` z reguł) równolegle do `state`, a `sorted_model` do `sorted_state`:
-// silnik przenosi je razem z cząstką i nie zna ich pól.
+// silnik przenosi je razem z cząstką i nie zna ich pól; bez pól reguł buforów nie ma w shaderze
+// (bind group ma dummy 4 B dla wspólnego układu).
+@if(HAS_MODEL)
 @group(0) @binding(9) var<storage, read_write> model: array<Model>;
+@if(HAS_MODEL)
 @group(0) @binding(10) var<storage, read_write> sorted_model: array<Model>;
 // Ranga `state[i]` w jej komórce (wynik `atomicAdd` na histogramie): miejsce w komórce przy scatterze.
 @group(0) @binding(11) var<storage, read_write> cell_ranks: array<u32>;
 // Wynik statystyk kroku (`stats.wesl`): licznik nie-skończonych, maksimum prędkości i sumy grup (bity f32).
 @group(0) @binding(12) var<storage, read_write> stats: array<atomic<u32>>;
 
+@if(HAS_MODEL)
 fn store_neighbour(slot: u32, p: Particle, m: Model) {
   sorted_hot[slot] = pack_neighbour(p, m);
+}
+@else
+fn store_neighbour(slot: u32, p: Particle) {
+  sorted_hot[slot] = pack_neighbour(p);
 }
 
 fn load_neighbour(slot: u32) -> Neighbour {

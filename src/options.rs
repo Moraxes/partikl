@@ -201,8 +201,9 @@ impl RuleSchema {
     })
   }
 
-  /// Rozmiar struktury modelu cząstki w bajtach (układ WGSL: pola po kolei, wyrównane, rozmiar
-  /// zaokrąglony do największego wyrównania); tyle bajtów na cząstkę mają bufory modelu.
+  /// Rozmiar struktury modelu cząstki w bajtach (0 bez pól `//@field`, inaczej układ WGSL: pola po
+  /// kolei, wyrównane, rozmiar zaokrąglony do największego wyrównania); tyle bajtów na cząstkę mają
+  /// bufory modelu.
   pub fn model_stride(&self) -> u32 {
     let mut offset = 0u32;
     let mut align = 4u32;
@@ -223,14 +224,9 @@ impl RuleSchema {
       .sum()
   }
 
-  /// Czy pola modelu da się zaalokować i skopiować silnikiem: co najmniej jedno pole (pusta struktura
-  /// jest w WGSL błędem) i `shared` w granicy [`MAX_SHARED_BYTES`].
+  /// Czy pola modelu da się zaalokować i skopiować silnikiem: brak pól (`model_stride == 0`) jest
+  /// poprawny, a `shared` mieści się w granicy [`MAX_SHARED_BYTES`].
   pub fn validate_model(&self) -> Result<(), String> {
-    if self.fields.is_empty() {
-      return Err(format!(
-        "reguły muszą zadeklarować co najmniej jedno pole modelu (`{FIELD_DIRECTIVE} nazwa: f32`)"
-      ));
-    }
     if self.shared_bytes() > MAX_SHARED_BYTES {
       return Err(format!(
         "pola shared mają {} B, a dane sąsiada mieszczą {MAX_SHARED_BYTES} B (więcej wymaga planera pamięci z M3)",

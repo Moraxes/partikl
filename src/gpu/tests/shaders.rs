@@ -14,9 +14,10 @@ use wesl::{CompileOptions, Feature, Features};
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/src/gpu/shaders");
 
 /// Zestawy flag: oba progi liczby typów (`matrix.wesl`).
-const FLAG_SETS: &[&[&str]] = &[&[], &["TYPES_AT_MOST_4"], &["TYPES_AT_MOST_8"]];
+const TYPE_SETS: &[&[&str]] = &[&[], &["TYPES_AT_MOST_4"], &["TYPES_AT_MOST_8"]];
 
-const MODELS: &[&str] = &["default_rules", "diagnostic_rules"];
+/// Moduły reguł testowane z plikami silnika i czy włączają `HAS_MODEL`.
+const MODELS: &[(&str, bool)] = &[("default_rules", false), ("diagnostic_rules", true)];
 
 fn shader_files() -> Vec<PathBuf> {
   let mut files = Vec::new();
@@ -97,9 +98,13 @@ fn every_shader_file_compiles_with_every_flag_set() {
   // Ten sam błąd (np. w module importowanym przez wiele plików) raz, z listą miejsc, gdzie wystąpił.
   let mut failures: std::collections::BTreeMap<String, Vec<String>> = Default::default();
   for file in &files {
-    for model in MODELS {
-      for flags in FLAG_SETS {
-        if let Err(error) = compile(file, model, flags) {
+    for &(model, has_model) in MODELS {
+      for type_flags in TYPE_SETS {
+        let mut flags = type_flags.to_vec();
+        if has_model {
+          flags.push("HAS_MODEL");
+        }
+        if let Err(error) = compile(file, model, &flags) {
           let context = format!(
             "{} (model {model}, flagi {flags:?})",
             file.strip_prefix(ROOT).unwrap().display()

@@ -550,23 +550,109 @@ fn state_invariants_hold_for_the_diagnostic_rules() {
   assert_invariants(&harness.run(10), WORLD, "reguły diagnostyczne, 10 kroków");
 }
 
+struct TempRules(std::path::PathBuf);
+
+impl TempRules {
+  fn new(name: &str, source: &str) -> Self {
+    let path = std::env::temp_dir().join(format!(
+      "partikl-engine-rules-{}-{name}.wesl",
+      std::process::id()
+    ));
+    std::fs::write(&path, source).unwrap();
+    Self(path)
+  }
+}
+
+impl Drop for TempRules {
+  fn drop(&mut self) {
+    let _ = std::fs::remove_file(&self.0);
+  }
+}
+
+#[test]
+fn default_rules_have_empty_model() {
+  let mut rng = StdRng::seed_from_u64(94);
+  let spec = spec(&mut rng, 3);
+  let particles = random_particles(&mut rng, 100, 3);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
+    return;
+  };
+  assert_invariants(&harness.run(2), WORLD, "domyślne reguły bez modelu");
+  assert_eq!(harness.world().resource::<GpuSim>().model_stride, 0);
+}
+
 /// Model cząstki (pola reguł) przenosi się razem z nią przez scatter (i sortowanie komórek w
 /// trybie deterministycznym): reguły nie zmieniają modelu, więc po wielu krokach każda cząstka
 /// ma nadal swoją wartość.
 #[test]
 fn model_stays_with_its_particle() {
+  const TAGGED_RULES: &str = "
+import super::super::engine::types::Particle;
+import super::bindings::rule_params;
+
+//@field tag: f32
+struct Model {
+  tag: f32,
+}
+
+struct Neighbour {
+  pos: vec2<f32>,
+}
+
+fn pack_neighbour(p: Particle, m: Model) -> vec4<f32> {
+  return vec4<f32>(p.pos, 0.0, 0.0);
+}
+
+fn unpack_neighbour(v: vec4<f32>) -> Neighbour {
+  return Neighbour(v.xy);
+}
+
+struct RuleSelf {
+  unused: u32,
+}
+
+fn prepare_self(p: Particle, m: Model) -> RuleSelf {
+  return RuleSelf(0u);
+}
+
+struct RuleAccum {
+  unused: u32,
+}
+
+fn accum_init() -> RuleAccum {
+  return RuleAccum(0u);
+}
+
+fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: f32, rule_self: RuleSelf, weight: f32, accum: ptr<function, RuleAccum>) {
+}
+
+fn integrate_particle(self_p: Particle, m: ptr<function, Model>, accum: RuleAccum) -> Particle {
+  var p = self_p;
+  p.pos += p.vel * rule_params.dt;
+  return p;
+}
+";
+  let rules = TempRules::new("model-stays", TAGGED_RULES);
   for deterministic in [false, true] {
     let mut rng = StdRng::seed_from_u64(95);
     let spec = spec(&mut rng, 3);
-    let mut state = State::new(random_particles(&mut rng, 6_000, 3));
-    state.model = (0..state.particles.len()).map(|id| id as f32).collect();
-    let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+    let particles = random_particles(&mut rng, 6_000, 3);
+    let tags: Vec<f32> = (0..particles.len()).map(|id| id as f32).collect();
+    let Some(mut harness) = Harness::with_rules(
+      RuleSource::File(rules.0.clone()),
+      SimOptions::default(),
+      spec,
+      particles,
+      WORLD,
+    ) else {
       return;
     };
+    harness.set_model(tags.clone());
+    assert_eq!(harness.world().resource::<GpuSim>().model_stride, 4);
     harness.set_deterministic(deterministic);
-    let after = run_state(&mut harness, 20);
+    let (_, after_model) = harness.run_with_model::<f32>(20);
     assert_eq!(
-      after.model, state.model,
+      after_model, tags,
       "model rozjechał się z cząstkami (deterministic = {deterministic})"
     );
   }

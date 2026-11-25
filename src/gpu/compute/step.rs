@@ -82,7 +82,7 @@ pub fn plan(
   else {
     return;
   };
-  plan.variant = ForcesVariant::new(&flags, sim.num_types);
+  plan.variant = ForcesVariant::new(&flags, sim.num_types, sim.model_stride > 0);
   plan.deterministic = params.deterministic;
   // Histogram następnego kroku liczą siły, więc nowe bufory i podmieniony stan (cząstki wskakują w
   // inne komórki bez przebiegu sił) wymagają przeliczenia od zera. Zapis do istniejącego bufora

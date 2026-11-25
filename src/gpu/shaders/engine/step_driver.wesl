@@ -3,7 +3,9 @@
 
 import super::types::{Particle, cell_xy, cell_index};
 import super::uniforms::uniforms;
-import super::bindings::{state, model, sorted_state, sorted_model, cell_counts, cell_offsets, next_counts, cell_ranks, load_neighbour};
+import super::bindings::{state, sorted_state, cell_counts, cell_offsets, next_counts, cell_ranks, load_neighbour};
+@if(HAS_MODEL)
+import super::bindings::{model, sorted_model};
 // Reguły: zawsze ten sam moduł `rules::model`; jego źródło wybiera Rust (`RuleSource`: wbudowane,
 // diagnostyczne albo plik `--rules`). Kontrakt w nagłówku `rules/default_rules.wesl`.
 import super::super::rules::model::{Neighbour, RuleAccum, RuleSelf, accum_init, prepare_self, pair_interact, integrate_particle};
@@ -92,6 +94,7 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
     return;
   }
   let me = sorted_state[j];
+  @if(HAS_MODEL)
   var my_model = sorted_model[j];
   let cell = cell_xy(me.pos, uniforms);
 
@@ -109,7 +112,10 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
   let radius_sq = uniforms.interaction_radius * uniforms.interaction_radius;
   let weight = f32(every);
 
+  @if(HAS_MODEL)
   let rule_self = prepare_self(me, my_model);
+  @else
+  let rule_self = prepare_self(me);
   var accum = accum_init();
   var k = 0u;
   for (var dy = -REACH; dy <= REACH; dy++) {
@@ -142,9 +148,13 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
   }
   // Wynik na miejsce `j`: stan zostaje w kolejności siatki.
+  @if(HAS_MODEL)
   let next = wrap(integrate_particle(me, &my_model, accum));
+  @else
+  let next = wrap(integrate_particle(me, accum));
   state[j] = next;
   // Histogram następnego kroku z nowej pozycji; ranga wskaże miejsce w komórce przy scatterze.
   cell_ranks[j] = atomicAdd(&next_counts[cell_index(next.pos, uniforms)], 1u);
+  @if(HAS_MODEL)
   model[j] = my_model;
 }

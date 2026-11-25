@@ -38,51 +38,9 @@ fn random_particles(rng: &mut StdRng, n: usize, types: usize) -> Vec<GpuParticle
   initial_particles(n, types, WORLD, rng)
 }
 
-/// Stan cząstek razem z modelem wbudowanych reguł (jedna wartość `f32` na cząstkę, indeksowane jak cząstki
-/// po id); wyrocznia f64 i `assert_close` porównują oba.
-#[derive(Clone, Debug)]
-struct State {
-  particles: Vec<GpuParticle>,
-  model: Vec<f32>,
-}
-
-impl State {
-  /// Z zerowym modelem, jak na starcie aplikacji.
-  fn new(particles: Vec<GpuParticle>) -> State {
-    let model = vec![0.0; particles.len()];
-    State { particles, model }
-  }
-}
-
-/// Harness z wbudowanymi regułami i zadanym stanem startowym (z modelem).
-fn harness_for(
-  options: SimOptions,
-  spec: ParticleSpec,
-  state: &State,
-  world: Vec2,
-) -> Option<Harness> {
-  let mut harness = Harness::new(options, spec, state.particles.clone(), world)?;
-  if state.model.iter().any(|&c| c != 0.0) {
-    harness.set_model(state.model.clone());
-  }
-  Some(harness)
-}
-
-/// Wraca do stanu `state` (cząstki i model), bez kroku symulacji.
-fn reset(harness: &mut Harness, state: &State) {
-  harness.set_state(state.particles.clone());
-  harness.set_model(state.model.clone());
-}
-
-/// Wykonuje kroki i zwraca stan z modelem.
-fn run_state(harness: &mut Harness, steps: u64) -> State {
-  let (particles, model) = harness.run_with_model::<f32>(steps);
-  State { particles, model }
-}
-
-fn assert_close(actual: &State, expected: &State, context: &str) {
-  assert_eq!(actual.particles.len(), expected.particles.len());
-  for (i, (a, e)) in actual.particles.iter().zip(&expected.particles).enumerate() {
+fn assert_close(actual: &[GpuParticle], expected: &[GpuParticle], context: &str) {
+  assert_eq!(actual.len(), expected.len());
+  for (i, (a, e)) in actual.iter().zip(expected).enumerate() {
     assert_eq!(a.id, i as u32, "{context}");
     assert_eq!(a.species, e.species);
     for k in 0..2 {
@@ -99,11 +57,6 @@ fn assert_close(actual: &State, expected: &State, context: &str) {
         e.vel
       );
     }
-    let (ac, ec) = (actual.model[i], expected.model[i]);
-    assert!(
-      (ac - ec).abs() < 1e-3,
-      "{context} cząstka {i}: model {ac} vs {ec}"
-    );
   }
 }
 

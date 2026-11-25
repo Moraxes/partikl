@@ -1,9 +1,11 @@
 // Reguły modelu (fizyka) wymienne bez ruszania silnika siatki.
 // Silnik podaje jeszcze flagi TYPES_AT_MOST_4 / TYPES_AT_MOST_8 (liczba typów, dla `matrix.wesl`).
 // Kontrakt (silnik tylko to woła):
-//  - `Model`: pola modelu cząstki w osobnych buforach (silnik przenosi je z cząstką w scatterze i nie
-//    zna ich pól); deklaracja `//@field` mówi Rustowi, ile to bajtów (WGSL musi mieć te same pola w
-//    tej samej kolejności). Pola `shared` czytają też sąsiedzi, `private` tylko cząstka w całkowaniu.
+//  - Opcjonalnie `Model`: pola modelu cząstki w osobnych buforach (silnik przenosi je z cząstką w
+//    scatterze i nie zna ich pól); deklaracja `//@field` mówi Rustowi, ile to bajtów (WGSL musi mieć
+//    te same pola w tej samej kolejności). Pola `shared` czytają też sąsiedzi, `private` tylko
+//    cząstka w całkowaniu. Gdy reguły nie mają `//@field`, nie definiują `Model`, a `pack_neighbour`,
+//    `prepare_self` i `integrate_particle` pomijają parametr modelu.
 //  - `Neighbour` (musi mieć `pos`), `pack_neighbour`, `unpack_neighbour`: co reguły widzą o sąsiedzie
 //    w pętli sił; w pamięci jeden `vec4` na sąsiada, a pola `shared` mieszczą się w jednym słowie 4 B.
 //  - `RuleAccum`, `accum_init`, `RuleSelf`, `prepare_self`, `pair_interact`, `integrate_particle`.
@@ -34,11 +36,6 @@ fn pair_weight(rule: u32, self_species: u32, other_species: u32) -> f32 {
   }
 }
 
-//@field phantom_: f32
-struct Model {
-  phantom_: f32,
-}
-
 struct Neighbour {
   pos: vec2<f32>,
   vel: vec2<f32>,
@@ -46,7 +43,7 @@ struct Neighbour {
 }
 
 // Układ `sorted_hot[slot]`: (pos.x, pos.y, vel.xy, species).
-fn pack_neighbour(p: Particle, m: Model) -> vec4<f32> {
+fn pack_neighbour(p: Particle) -> vec4<f32> {
   // Zakres binary16 to [-65504, 65504]; większe składowe dają ±Inf i propagują NaN u sąsiadów.
   let vel = clamp(p.vel, vec2(-F16_MAX), vec2(F16_MAX));
   return vec4<f32>(p.pos, bitcast<f32>(pack2x16float(vel)), bitcast<f32>(p.species));
@@ -61,7 +58,7 @@ struct RuleSelf {
   coeffs: Coeffs,
 }
 
-fn prepare_self(p: Particle, m: Model) -> RuleSelf {
+fn prepare_self(p: Particle) -> RuleSelf {
   return RuleSelf(load_coeffs(p.species));
 }
 
@@ -127,7 +124,7 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
 
 // Poprawka pozycji (rozsuwanie), tarcie kwadratowe i krok półjawnego Eulera (v, potem pos).
 // Zawijanie robi silnik.
-fn integrate_particle(self_p: Particle, m: ptr<function, Model>, accum: RuleAccum) -> Particle {
+fn integrate_particle(self_p: Particle, accum: RuleAccum) -> Particle {
   let u = rule_params;
   var p = self_p;
 

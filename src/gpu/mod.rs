@@ -153,7 +153,8 @@ pub fn random_colors(n: usize, rng: &mut impl Rng) -> Vec<Color> {
 #[extract_app(RenderApp)]
 pub struct GpuSim {
   pub state: Handle<ShaderBuffer>,
-  /// Model cząstek (pola z reguł) równolegle do `state`: `model_stride` bajtów na cząstkę.
+  /// Model cząstek (pola z reguł) równolegle do `state`: `model_stride` bajtów na cząstkę (przy
+  /// `model_stride == 0` bufor dummy 4 B dla wspólnego układu bind group).
   pub model: Handle<ShaderBuffer>,
   pub model_stride: u32,
   pub num_particles: u32,
@@ -531,8 +532,10 @@ pub fn spawn_sim(
     RenderAssetUsages::RENDER_WORLD,
   ));
   let model_stride = schema.model_stride();
+  // Przy pustym modelu (`model_stride == 0`) zachowujemy bufor dummy 4 B dla wspólnego bind group.
+  let model_words = (n * model_stride as usize / 4).max(1);
   let model = buffers.add(ShaderBuffer::new(
-    vec![0u32; n * model_stride as usize / 4],
+    vec![0u32; model_words],
     RenderAssetUsages::RENDER_WORLD,
   ));
   let colors = buffers.add(ShaderBuffer::new(colors, RenderAssetUsages::RENDER_WORLD));

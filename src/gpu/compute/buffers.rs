@@ -58,6 +58,7 @@ pub fn create(
     // vec4<f32> na cząstkę
     sorted_hot: storage("sorted_hot", n * 16),
     sorted_state: storage("sorted_state", n * size_of::<GpuParticle>() as u64),
+    // Przy `model_stride == 0` tworzy bufor dummy 4 B dla wspólnego bind group (`size.max(4)`).
     sorted_model: storage("sorted_model", n * sim.model_stride as u64),
     cell_counts: storage("cell_counts", cells * 4),
     // Za komórkami sumy bloków sumy prefiksowej.

@@ -79,8 +79,7 @@ fn quantize_f16(x: f32) -> f64 {
 /// Ta sama fizyka co `rules/default_rules.wesl` i `rules/nodes.wesl`, bez próbkowania sąsiadów;
 /// parametry z `spec.params`, z ograniczeniem składowych prędkości sąsiada do `[-65504, 65504]`
 /// i kwantyzacją f16 (`pack2x16float`/`unpack2x16float`).
-fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
-  let particles = &state.particles;
+fn reference_step(spec: &ParticleSpec, particles: &[GpuParticle], world: Vec2) -> Vec<GpuParticle> {
   let u = &spec.params;
   let wrap = |d: f64, size: f64| {
     if d > size / 2.0 {
@@ -92,7 +91,7 @@ fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
     }
   };
   let dt = u.dt as f64;
-  let (next, next_model): (Vec<_>, Vec<_>) = particles
+  particles
     .iter()
     .enumerate()
     .map(|(i, me)| {
@@ -192,21 +191,14 @@ fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
         }
       }
 
-      (
-        GpuParticle {
-          pos: [nx as f32, ny as f32],
-          vel: [vx as f32, vy as f32],
-          species: me.species,
-          id: me.id,
-        },
-        state.model[i],
-      )
+      GpuParticle {
+        pos: [nx as f32, ny as f32],
+        vel: [vx as f32, vy as f32],
+        species: me.species,
+        id: me.id,
+      }
     })
-    .unzip();
-  State {
-    particles: next,
-    model: next_model,
-  }
+    .collect()
 }
 
 #[test]
@@ -215,12 +207,12 @@ fn one_step_matches_reference() {
     let mut rng = StdRng::seed_from_u64(7);
     let spec = spec(&mut rng, 4);
     // Mało kandydatów w sąsiedztwie (poniżej progu próbkowania), ale dość gęsto na pary.
-    let state = State::new(random_particles(&mut rng, 700, 4));
-    let expected = reference_step(&spec, &state, WORLD);
-    let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+    let particles = random_particles(&mut rng, 700, 4);
+    let expected = reference_step(&spec, &particles, WORLD);
+    let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
       return;
     };
-    assert_close(&run_state(&mut harness, 1), &expected, "jeden krok");
+    assert_close(&harness.run(1), &expected, "jeden krok");
   }
 }
 
@@ -237,12 +229,11 @@ fn large_world_matches_reference() {
     p.pos[1] *= 0.02;
     p.vel[1] = 0.0;
   }
-  let state = State::new(particles);
-  let expected = reference_step(&spec, &state, world);
-  let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, world) else {
+  let expected = reference_step(&spec, &particles, world);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, world) else {
     return;
   };
-  assert_close(&run_state(&mut harness, 1), &expected, "duży świat");
+  assert_close(&harness.run(1), &expected, "duży świat");
 }
 
 /// Krok zgodny z wyrocznią dla różnej liczby typów: shader czyta współczynniki sił inaczej dla
@@ -252,16 +243,12 @@ fn one_step_matches_reference_for_any_number_of_types() {
   for types in [1, 2, 4, 5, 8, 9, 13] {
     let mut rng = StdRng::seed_from_u64(40 + types as u64);
     let spec = spec(&mut rng, types);
-    let state = State::new(random_particles(&mut rng, 700, types));
-    let expected = reference_step(&spec, &state, WORLD);
-    let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+    let particles = random_particles(&mut rng, 700, types);
+    let expected = reference_step(&spec, &particles, WORLD);
+    let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
       return;
     };
-    assert_close(
-      &run_state(&mut harness, 1),
-      &expected,
-      &format!("{types} typów"),
-    );
+    assert_close(&harness.run(1), &expected, &format!("{types} typów"));
   }
 }
 
@@ -270,12 +257,12 @@ fn many_steps_keep_invariants() {
   let mut rng = StdRng::seed_from_u64(11);
   let spec = spec(&mut rng, 3);
   // Gęsty stan: ponad 512 kandydatów w sąsiedztwie, więc działa próbkowanie.
-  let state = State::new(random_particles(&mut rng, 20_000, 3));
-  let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+  let particles = random_particles(&mut rng, 20_000, 3);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
     return;
   };
-  let after = run_state(&mut harness, 40);
-  assert_invariants(&after.particles, WORLD, "reguły domyślne, 40 kroków");
+  let after = harness.run(40);
+  assert_invariants(&after, WORLD, "reguły domyślne, 40 kroków");
 }
 
 /// Histogram następnego kroku liczą siły poprzedniego kroku, więc podmiana stanu między krokami
@@ -284,23 +271,15 @@ fn many_steps_keep_invariants() {
 fn swapping_state_between_steps_keeps_every_particle() {
   let mut rng = StdRng::seed_from_u64(41);
   let spec = spec(&mut rng, 3);
-  let first = State::new(random_particles(&mut rng, 5_000, 3));
-  let Some(mut harness) = harness_for(SimOptions::default(), spec, &first, WORLD) else {
+  let first = random_particles(&mut rng, 5_000, 3);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, first, WORLD) else {
     return;
   };
-  assert_invariants(
-    &run_state(&mut harness, 3).particles,
-    WORLD,
-    "przed podmianą",
-  );
+  assert_invariants(&harness.run(3), WORLD, "przed podmianą");
   for round in 0..3 {
-    let next = State::new(random_particles(&mut rng, 5_000, 3));
-    reset(&mut harness, &next);
-    assert_invariants(
-      &run_state(&mut harness, 2).particles,
-      WORLD,
-      &format!("po podmianie {round}"),
-    );
+    let next = random_particles(&mut rng, 5_000, 3);
+    harness.set_state(next);
+    assert_invariants(&harness.run(2), WORLD, &format!("po podmianie {round}"));
   }
 }
 
@@ -310,13 +289,18 @@ fn swapping_state_between_steps_keeps_every_particle() {
 fn spec_changes_at_runtime() {
   let mut rng = StdRng::seed_from_u64(31);
   let first = spec(&mut rng, 4);
-  let state = State::new(random_particles(&mut rng, 700, 4));
-  let Some(mut harness) = harness_for(SimOptions::default(), first.clone(), &state, WORLD) else {
+  let particles = random_particles(&mut rng, 700, 4);
+  let Some(mut harness) = Harness::new(
+    SimOptions::default(),
+    first.clone(),
+    particles.clone(),
+    WORLD,
+  ) else {
     return;
   };
   assert_close(
-    &run_state(&mut harness, 1),
-    &reference_step(&first, &state, WORLD),
+    &harness.run(1),
+    &reference_step(&first, &particles, WORLD),
     "start",
   );
 
@@ -326,16 +310,16 @@ fn spec_changes_at_runtime() {
   second.params.kernel_middle = 25.0;
   second.params.kernel_width = 8.0;
   harness.set_spec(second.clone());
-  reset(&mut harness, &state);
-  let actual = run_state(&mut harness, 1);
+  harness.set_state(particles.clone());
+  let actual = harness.run(1);
   assert_close(
     &actual,
-    &reference_step(&second, &state, WORLD),
+    &reference_step(&second, &particles, WORLD),
     "po zmianie spec",
   );
   assert_ne!(
-    actual.particles[0].pos,
-    reference_step(&first, &state, WORLD).particles[0].pos,
+    actual[0].pos,
+    reference_step(&first, &particles, WORLD)[0].pos,
     "zmiana powinna mieć wpływ na wynik"
   );
 }
@@ -398,7 +382,7 @@ fn separation_only_pushes_close_neighbours_apart() {
   let mut spec = isolated_spec(1);
   spec.params.separation_radius = 10.0;
   spec.params.separation_weight = 2.5;
-  let state = State::new(vec![
+  let particles = vec![
     particle(0, [0.0, 0.0], [0.0, 0.0]),
     particle(1, [4.0, 0.0], [0.0, 0.0]),
     // Poza separation_radius, ale w INTERACTION_RADIUS.
@@ -411,19 +395,19 @@ fn separation_only_pushes_close_neighbours_apart() {
     particle(6, [-100.0, 0.0], [0.0, 0.0]),
     particle(7, [-96.0, 0.0], [0.0, 0.0]),
     particle(8, [-100.0, 4.0], [0.0, 0.0]),
-  ]);
-  let expected = reference_step(&spec, &state, WORLD);
-  let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+  ];
+  let expected = reference_step(&spec, &particles, WORLD);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
     return;
   };
-  let actual = run_state(&mut harness, 1);
+  let actual = harness.run(1);
   assert_close(&actual, &expected, "separacja");
-  assert!(actual.particles[0].vel[0] < 0.0 && actual.particles[1].vel[0] > 0.0);
-  assert_eq!(actual.particles[2].vel, [0.0, 0.0]);
-  assert_eq!(actual.particles[3].vel, [0.0, 0.0]);
-  assert!((actual.particles[4].vel[0] + 25.0).abs() < 1e-2);
-  assert!((actual.particles[6].vel[0] - 0.5 * actual.particles[0].vel[0]).abs() < 1e-4);
-  assert!((actual.particles[6].vel[0] - actual.particles[6].vel[1]).abs() < 1e-4);
+  assert!(actual[0].vel[0] < 0.0 && actual[1].vel[0] > 0.0);
+  assert_eq!(actual[2].vel, [0.0, 0.0]);
+  assert_eq!(actual[3].vel, [0.0, 0.0]);
+  assert!((actual[4].vel[0] + 25.0).abs() < 1e-2);
+  assert!((actual[6].vel[0] - 0.5 * actual[0].vel[0]).abs() < 1e-4);
+  assert!((actual[6].vel[0] - actual[6].vel[1]).abs() < 1e-4);
 }
 
 #[test]
@@ -431,7 +415,7 @@ fn alignment_only_aligns_velocities_and_quantizes_neighbour_vel() {
   let mut spec = isolated_spec(1);
   spec.params.vision_radius = 25.0;
   spec.params.alignment_weight = 20.0;
-  let state = State::new(vec![
+  let particles = vec![
     // Cząstka 0 wyrównuje prędkość do średniej z (1, 2) dzięki align_w i view_n.
     particle(0, [0.0, 0.0], [10.0, 0.0]),
     particle(1, [10.0, 0.0], [10.0, 20.0]),
@@ -442,18 +426,18 @@ fn alignment_only_aligns_velocities_and_quantizes_neighbour_vel() {
     // Identyczne prędkości wejściowe: różnica wynika wyłącznie z kwantyzacji f16 prędkości sąsiada.
     particle(5, [-150.0, 0.0], [125.125, 123.456]),
     particle(6, [-145.0, 0.0], [125.125, 123.456]),
-  ]);
-  let expected = reference_step(&spec, &state, WORLD);
-  let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+  ];
+  let expected = reference_step(&spec, &particles, WORLD);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
     return;
   };
-  let actual = run_state(&mut harness, 1);
+  let actual = harness.run(1);
   assert_close(&actual, &expected, "wyrównanie");
-  assert!(actual.particles[0].vel[1] > 1.0);
-  assert!((actual.particles[0].vel[0] - 10.0).abs() < 1e-4);
-  assert_eq!(actual.particles[3].vel, [5.0, 0.0]);
-  assert_eq!(actual.particles[4].vel, [5.0, 50.0]);
-  assert!(actual.particles[5].vel[1] - 123.456 < -2e-3);
+  assert!(actual[0].vel[1] > 1.0);
+  assert!((actual[0].vel[0] - 10.0).abs() < 1e-4);
+  assert_eq!(actual[3].vel, [5.0, 0.0]);
+  assert_eq!(actual[4].vel, [5.0, 50.0]);
+  assert!(actual[5].vel[1] - 123.456 < -2e-3);
 }
 
 #[test]
@@ -462,15 +446,15 @@ fn alignment_uses_velocity_before_overlap_correction() {
   spec.params.repulsion_radius = 1.0;
   spec.params.vision_radius = 25.0;
   spec.params.alignment_weight = 10.0;
-  let state = State::new(vec![
+  let particles = vec![
     particle(0, [0.0, 0.0], [50.0, 0.0]),
     particle(1, [0.5, 0.0], [0.0, 0.0]),
-  ]);
-  let expected = reference_step(&spec, &state, WORLD);
-  let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+  ];
+  let expected = reference_step(&spec, &particles, WORLD);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
     return;
   };
-  let actual = run_state(&mut harness, 1);
+  let actual = harness.run(1);
   assert_close(&actual, &expected, "wyrównanie przed rozsuwaniem");
 }
 
@@ -479,7 +463,7 @@ fn cohesion_only_pulls_toward_neighbours_within_vision_radius() {
   let mut spec = isolated_spec(1);
   spec.params.vision_radius = 25.0;
   spec.params.coherence_weight = 2.0;
-  let state = State::new(vec![
+  let particles = vec![
     particle(0, [0.0, 0.0], [0.0, 0.0]),
     particle(1, [10.0, 0.0], [0.0, 0.0]),
     particle(2, [0.0, 20.0], [0.0, 0.0]),
@@ -489,17 +473,17 @@ fn cohesion_only_pulls_toward_neighbours_within_vision_radius() {
     // Para przez szew torusa (WORLD.x = 500): odległość 10.
     particle(5, [-245.0, -100.0], [0.0, 0.0]),
     particle(6, [245.0, -100.0], [0.0, 0.0]),
-  ]);
-  let expected = reference_step(&spec, &state, WORLD);
-  let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+  ];
+  let expected = reference_step(&spec, &particles, WORLD);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
     return;
   };
-  let actual = run_state(&mut harness, 1);
+  let actual = harness.run(1);
   assert_close(&actual, &expected, "spójność");
-  assert!(actual.particles[0].vel[0] > 0.0 && actual.particles[0].vel[1] > 0.0);
-  assert_eq!(actual.particles[3].vel, [0.0, 0.0]);
-  assert_eq!(actual.particles[4].vel, [0.0, 0.0]);
-  assert!(actual.particles[5].vel[0] < 0.0 && actual.particles[6].vel[0] > 0.0);
+  assert!(actual[0].vel[0] > 0.0 && actual[0].vel[1] > 0.0);
+  assert_eq!(actual[3].vel, [0.0, 0.0]);
+  assert_eq!(actual[4].vel, [0.0, 0.0]);
+  assert!(actual[5].vel[0] < 0.0 && actual[6].vel[0] > 0.0);
 }
 
 #[test]
@@ -507,7 +491,7 @@ fn drive_only_scales_speed_toward_target_speed() {
   let mut spec = isolated_spec(1);
   spec.params.target_speed = 40.0;
   spec.params.drive_rate = 5.0;
-  let state = State::new(vec![
+  let particles = vec![
     particle(0, [-200.0, 0.0], [6.0, 8.0]),
     particle(1, [-100.0, 0.0], [60.0, 0.0]),
     particle(2, [0.0, 0.0], [40.0, 0.0]),
@@ -515,24 +499,24 @@ fn drive_only_scales_speed_toward_target_speed() {
     // Prędkość poniżej 1e-3: drive nie działa.
     particle(4, [200.0, 0.0], [0.0005, 0.0]),
     particle(5, [0.0, 100.0], [-30.0, 40.0]),
-  ]);
-  let expected = reference_step(&spec, &state, WORLD);
-  let Some(mut harness) = harness_for(SimOptions::default(), spec, &state, WORLD) else {
+  ];
+  let expected = reference_step(&spec, &particles, WORLD);
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles, WORLD) else {
     return;
   };
-  let actual = run_state(&mut harness, 1);
+  let actual = harness.run(1);
   assert_close(&actual, &expected, "drive");
 
   let speed = |p: &GpuParticle| (p.vel[0] * p.vel[0] + p.vel[1] * p.vel[1]).sqrt();
-  assert!(speed(&actual.particles[0]) > 10.0);
-  assert!((actual.particles[0].vel[1] / actual.particles[0].vel[0] - 8.0 / 6.0).abs() < 1e-5);
-  assert!(speed(&actual.particles[1]) < 60.0);
-  assert_eq!(actual.particles[1].vel[1], 0.0);
-  assert!((actual.particles[2].vel[0] - 40.0).abs() < 1e-5);
-  assert_eq!(actual.particles[3].vel, [0.0, 0.0]);
-  assert!((actual.particles[4].vel[0] - 0.0005).abs() < 1e-6);
-  assert!(speed(&actual.particles[5]) < 50.0);
-  assert!((actual.particles[5].vel[1] / actual.particles[5].vel[0] + 40.0 / 30.0).abs() < 1e-5);
+  assert!(speed(&actual[0]) > 10.0);
+  assert!((actual[0].vel[1] / actual[0].vel[0] - 8.0 / 6.0).abs() < 1e-5);
+  assert!(speed(&actual[1]) < 60.0);
+  assert_eq!(actual[1].vel[1], 0.0);
+  assert!((actual[2].vel[0] - 40.0).abs() < 1e-5);
+  assert_eq!(actual[3].vel, [0.0, 0.0]);
+  assert!((actual[4].vel[0] - 0.0005).abs() < 1e-6);
+  assert!(speed(&actual[5]) < 50.0);
+  assert!((actual[5].vel[1] / actual[5].vel[0] + 40.0 / 30.0).abs() < 1e-5);
 }
 
 #[test]
@@ -545,13 +529,17 @@ fn zero_boid_weights_match_reference_and_ignore_boid_radii() {
   zero_boids.params.coherence_weight = 0.0;
   zero_boids.params.drive_rate = 0.0;
 
-  let state = State::new(random_particles(&mut rng, 700, 4));
-  let expected = reference_step(&zero_boids, &state, WORLD);
-  let Some(mut harness) = harness_for(SimOptions::default(), zero_boids.clone(), &state, WORLD)
-  else {
+  let particles = random_particles(&mut rng, 700, 4);
+  let expected = reference_step(&zero_boids, &particles, WORLD);
+  let Some(mut harness) = Harness::new(
+    SimOptions::default(),
+    zero_boids.clone(),
+    particles.clone(),
+    WORLD,
+  ) else {
     return;
   };
-  let actual = run_state(&mut harness, 1);
+  let actual = harness.run(1);
   assert_close(&actual, &expected, "wyzerowane wagi boidów");
 
   let mut no_radii = zero_boids;
@@ -559,11 +547,11 @@ fn zero_boid_weights_match_reference_and_ignore_boid_radii() {
   no_radii.params.vision_radius = 0.0;
   no_radii.params.target_speed = 0.0;
   harness.set_spec(no_radii.clone());
-  reset(&mut harness, &state);
-  let actual_no_radii = run_state(&mut harness, 1);
+  harness.set_state(particles.clone());
+  let actual_no_radii = harness.run(1);
   assert_close(
     &actual_no_radii,
-    &reference_step(&no_radii, &state, WORLD),
+    &reference_step(&no_radii, &particles, WORLD),
     "wyzerowane wagi i promienie boidów",
   );
   assert_close(
@@ -572,12 +560,11 @@ fn zero_boid_weights_match_reference_and_ignore_boid_radii() {
     "promienie boidów przy zerowych wagach nie zmieniają wyniku",
   );
 
-  let with_boids = reference_step(&default_spec, &state, WORLD);
+  let with_boids = reference_step(&default_spec, &particles, WORLD);
   assert!(
     actual
-      .particles
       .iter()
-      .zip(&with_boids.particles)
+      .zip(&with_boids)
       .any(|(a, b)| (a.vel[0] - b.vel[0]).abs() > 1e-3),
     "wyzerowane wagi boidów powinny różnić się od domyślnych"
   );
@@ -590,14 +577,14 @@ fn velocity_above_f16_max_does_not_propagate_nan() {
   let mut isolated = isolated_spec(1);
   isolated.params.vision_radius = 40.0;
   isolated.params.alignment_weight = 1.0;
-  let state_one_step = State::new(vec![
+  let one_step = vec![
     particle(0, [0.0, 0.0], [100_000.0, -90_000.0]),
     particle(1, [-10.0, 0.0], [-100_000.0, 90_000.0]),
     particle(2, [5.0, 0.0], [0.0, 0.0]),
     particle(3, [-5.0, 0.0], [10.0, -5.0]),
-  ]);
-  let expected = reference_step(&isolated, &state_one_step, WORLD);
-  let Some(mut harness) = harness_for(SimOptions::default(), isolated, &state_one_step, WORLD)
+  ];
+  let expected = reference_step(&isolated, &one_step, WORLD);
+  let Some(mut harness) = Harness::new(SimOptions::default(), isolated, one_step.clone(), WORLD)
   else {
     return;
   };
@@ -605,8 +592,8 @@ fn velocity_above_f16_max_does_not_propagate_nan() {
   // Rozgrzewka kompilacji przebiegu statystyk przed właściwym krokiem.
   harness.step(1);
   harness.take_stats();
-  reset(&mut harness, &state_one_step);
-  let actual = run_state(&mut harness, 1);
+  harness.set_state(one_step);
+  let actual = harness.run(1);
   let stats = harness.take_stats().expect("statystyki po kroku");
   assert_eq!(stats.nan_count, 0);
   assert_close(&actual, &expected, "prędkość > 65504 w jednym kroku");
@@ -622,21 +609,21 @@ fn velocity_above_f16_max_does_not_propagate_nan() {
   particles[1].vel = [-80_000.0, 80_000.0];
   particles[2].pos = [1.5, 1.0];
   particles[2].vel = [0.0, 0.0];
-  let multi_state = State::new(particles);
-  let Some(mut multi_harness) = harness_for(SimOptions::default(), full_spec, &multi_state, WORLD)
+  let Some(mut multi_harness) =
+    Harness::new(SimOptions::default(), full_spec, particles.clone(), WORLD)
   else {
     return;
   };
   multi_harness.set_stats(true);
   multi_harness.step(1);
   multi_harness.take_stats();
-  reset(&mut multi_harness, &multi_state);
-  let after = run_state(&mut multi_harness, 30);
+  multi_harness.set_state(particles);
+  let after = multi_harness.run(30);
   let stats = multi_harness
     .take_stats()
     .expect("statystyki po 30 krokach");
   assert_eq!(stats.nan_count, 0);
-  assert_invariants(&after.particles, WORLD, "prędkość > 65504, 30 kroków");
+  assert_invariants(&after, WORLD, "prędkość > 65504, 30 kroków");
 }
 
 #[test]
@@ -659,15 +646,15 @@ fn dense_cluster_keeps_zero_nans_for_many_steps() {
       }
     })
     .collect();
-  let dense = State::new(particles);
-  let Some(mut harness) = harness_for(SimOptions::default(), spec, &dense, WORLD) else {
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles.clone(), WORLD)
+  else {
     return;
   };
   harness.set_stats(true);
   harness.step(1);
   harness.take_stats();
-  reset(&mut harness, &dense);
-  let after = run_state(&mut harness, 60);
+  harness.set_state(particles);
+  let after = harness.run(60);
   let stats = harness.take_stats().expect("statystyki gęstego skupiska");
   assert_eq!(stats.nan_count, 0);
   assert!(
@@ -680,5 +667,5 @@ fn dense_cluster_keeps_zero_nans_for_many_steps() {
     "energia niefinite: {}",
     stats.kinetic_energy
   );
-  assert_invariants(&after.particles, WORLD, "gęste skupisko, 60 kroków");
+  assert_invariants(&after, WORLD, "gęste skupisko, 60 kroków");
 }

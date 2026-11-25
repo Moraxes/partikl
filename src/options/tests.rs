@@ -136,10 +136,9 @@ fn model_fields_have_wgsl_layout_and_limits() {
   assert_eq!(mixed.model_stride(), 24);
   assert_eq!(mixed.shared_bytes(), 4);
 
-  assert!(
-    RuleSchema::default().validate_model().is_err(),
-    "pusty model"
-  );
+  let empty = RuleSchema::default();
+  assert_eq!((empty.model_stride(), empty.shared_bytes()), (0, 0));
+  assert!(empty.validate_model().is_ok(), "pusty model jest dozwolony");
   let too_much = RuleSchema::parse("//@field a: f32 shared\n//@field b: f32 shared").unwrap();
   assert!(too_much.validate_model().unwrap_err().contains("M3"));
   for bad in [
