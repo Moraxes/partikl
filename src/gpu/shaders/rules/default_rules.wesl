@@ -142,7 +142,7 @@ fn integrate_particle(self_p: Particle, accum: RuleAccum) -> Particle {
  
   let nw = max(0.05, accum.same_species_neighbours / max(1.0, accum.neighbours));
   let vw = log2(2.0 + dot(p.vel, p.vel));
-  let force = nw * vw * boid + attraction / (nw * vw);
+  let force = sqrt(nw * vw) * boid + attraction / sqrt(nw * vw);
 
   // Poprawka tylko w prędkości ; pozycja idzie za nią w tym samym kroku (p.pos += v * dt).
   let corr = nd::mean2(accum.overlap_corr, accum.overlap_count);
