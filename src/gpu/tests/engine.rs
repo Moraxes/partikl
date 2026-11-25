@@ -8,6 +8,24 @@ fn layout_matches_wgsl() {
 }
 
 #[test]
+fn reach_matches_grid_reach() {
+  let source = include_str!("../shaders/engine/step_driver.wesl");
+  let reach: i32 = source
+    .lines()
+    .find_map(|line| {
+      let rest = line.trim().strip_prefix("const REACH")?;
+      if !rest.starts_with([':', ' ', '\t']) {
+        return None;
+      }
+      let (_, rhs) = rest.split_once('=')?;
+      let (value, _) = rhs.split_once(';')?;
+      Some(value.trim().parse().expect("poprawny i32 w `const REACH`"))
+    })
+    .expect("brak `const REACH` w `step_driver.wesl`");
+  assert_eq!(reach, crate::config::GRID_REACH);
+}
+
+#[test]
 fn geometry_covers_interaction_radius() {
   let worlds = [
     Vec2::new(500.0, 330.0),
@@ -550,6 +568,116 @@ fn model_stays_with_its_particle() {
     assert_eq!(
       after.model, state.model,
       "model rozjechał się z cząstkami (deterministic = {deterministic})"
+    );
+  }
+}
+
+/// Cząstka o dużej prędkości (przemieszczenie > 1.5 rozmiaru świata w jednym kroku) zawija się w
+/// pełni do `[-half, half]`, a standardowe i minimalne przekroczenia granicy zachowują dokładność.
+#[test]
+fn wrap_handles_displacements_over_one_and_a_half_world() {
+  let mut spec = ParticleSpec::new(vec![Interaction {
+    force_coeffs: vec![0.0],
+  }]);
+  spec.params.repulsion_radius = 0.0;
+  spec.params.friction = 0.0;
+  spec.params.velocity_threshold = 0.0;
+  spec.params.separation_weight = 0.0;
+  spec.params.alignment_weight = 0.0;
+  spec.params.coherence_weight = 0.0;
+  spec.params.drive_rate = 0.0;
+
+  let particles = vec![
+    GpuParticle {
+      pos: [10.0, -20.0],
+      vel: [85_000.0, -60_000.0],
+      species: 0,
+      id: 0,
+    },
+    GpuParticle {
+      pos: [-100.0, 50.0],
+      vel: [-130_000.0, 110_000.0],
+      species: 0,
+      id: 1,
+    },
+    GpuParticle {
+      pos: [240.0, -160.0],
+      vel: [80_000.0, -55_000.0],
+      species: 0,
+      id: 2,
+    },
+    GpuParticle {
+      pos: [0.001, -0.001],
+      vel: [0.02, -0.03],
+      species: 0,
+      id: 3,
+    },
+    GpuParticle {
+      pos: [250.0, -165.0],
+      vel: [1.0, -1.0],
+      species: 0,
+      id: 4,
+    },
+    GpuParticle {
+      pos: [250.0f32.next_up(), (-165.0f32).next_down()],
+      vel: [0.0, 0.0],
+      species: 0,
+      id: 5,
+    },
+  ];
+
+  let half = WORLD * 0.5;
+  let wrap_f64 = |v: f64, size: f64| v - size * (v / size).round();
+  let dt = spec.params.dt as f64;
+  let expected_after = |steps: u64| -> Vec<[f32; 2]> {
+    particles
+      .iter()
+      .map(|p| {
+        let x = p.pos[0] as f64 + steps as f64 * (p.vel[0] as f64 * dt);
+        let y = p.pos[1] as f64 + steps as f64 * (p.vel[1] as f64 * dt);
+        [
+          wrap_f64(x, WORLD.x as f64) as f32,
+          wrap_f64(y, WORLD.y as f64) as f32,
+        ]
+      })
+      .collect()
+  };
+
+  let Some(mut harness) = Harness::new(SimOptions::default(), spec, particles.clone(), WORLD)
+  else {
+    return;
+  };
+  let after_one = harness.run(1);
+  assert_invariants(&after_one, WORLD, "duża prędkość, 1 krok");
+  for (p, exp) in after_one.iter().zip(expected_after(1)) {
+    assert!(
+      p.pos[0].abs() <= half.x && p.pos[1].abs() <= half.y,
+      "poza [-half, half] po 1 kroku: {:?}",
+      p.pos
+    );
+    assert!(
+      (p.pos[0] - exp[0]).abs() < 1e-3 && (p.pos[1] - exp[1]).abs() < 1e-3,
+      "cząstka {}: pos {:?} wobec {:?}",
+      p.id,
+      p.pos,
+      exp
+    );
+  }
+
+  let after_five = harness.run(4);
+  assert_invariants(&after_five, WORLD, "duża prędkość, 5 kroków");
+  for (p, exp) in after_five.iter().zip(expected_after(5)) {
+    assert!(
+      p.pos[0].abs() <= half.x && p.pos[1].abs() <= half.y,
+      "poza [-half, half] po 5 krokach: {:?}",
+      p.pos
+    );
+    assert!(
+      (p.pos[0] - exp[0]).abs() < 1e-3 && (p.pos[1] - exp[1]).abs() < 1e-3,
+      "cząstka {} po 5 krokach: pos {:?} wobec {:?}",
+      p.id,
+      p.pos,
+      exp
     );
   }
 }

@@ -58,14 +58,16 @@ fn run_at(cell: vec2<i32>, dy: i32, seg: u32) -> Run {
   return Run(cell_offsets[first], cell_offsets[last] + atomicLoad(&cell_counts[last]), shift, true);
 }
 
-// Zawinięcie pozycji o jeden rozmiar świata (najwyżej jedno zawinięcie na krok).
+// Zawinięcie pozycji na torusie do `[-half, half]` dla dowolnego przemieszczenia.
 fn wrap(p: Particle) -> Particle {
   var q = p;
   let half = uniforms.world * 0.5;
-  var adjust = vec2<f32>(0.0);
-  if q.pos.x > half.x { adjust.x = -uniforms.world.x; } else if q.pos.x < -half.x { adjust.x = uniforms.world.x; }
-  if q.pos.y > half.y { adjust.y = -uniforms.world.y; } else if q.pos.y < -half.y { adjust.y = uniforms.world.y; }
-  q.pos += adjust;
+  if abs(q.pos.x) > half.x {
+    q.pos.x -= uniforms.world.x * round(q.pos.x / uniforms.world.x);
+  }
+  if abs(q.pos.y) > half.y {
+    q.pos.y -= uniforms.world.y * round(q.pos.y / uniforms.world.y);
+  }
   return q;
 }
 

@@ -187,10 +187,8 @@ fn reference_step(spec: &ParticleSpec, state: &State, world: Vec2) -> State {
       }
       let (mut nx, mut ny) = (x + vx * dt, y + vy * dt);
       for (n, size) in [(&mut nx, world.x as f64), (&mut ny, world.y as f64)] {
-        if *n > size / 2.0 {
-          *n -= size;
-        } else if *n < -size / 2.0 {
-          *n += size;
+        if n.abs() > size / 2.0 {
+          *n -= size * (*n / size).round();
         }
       }
 
