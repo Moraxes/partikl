@@ -1,35 +1,44 @@
-//! Pomiar rzędów wielkości członów sił mieszanych w `integrate_particle`
-//! (`rules/default_rules.wesl`): `attraction` i `boid` (= sep + align + coh), na stanach z
-//! prawdziwej symulacji GPU (headless). Człony liczone na CPU z migawki, wzorem shadera (bez
-//! próbkowania sąsiadów: brute force po siatce komórek, kwantyzacja f16 prędkości sąsiada).
+//! Rozkłady członów sił z aktualnego shadera `integrate_particle` (`rules/default_rules.wesl`)
+//! na stanach z prawdziwej symulacji GPU (headless), po ustabilizowaniu się układu, dla kilku
+//! macierzy oddziaływań. Człony liczone na CPU z migawki, wzorem shadera (bez próbkowania
+//! sąsiadów: brute force po siatce komórek, kwantyzacja f16 prędkości sąsiada).
 //!
 //! Test jest `#[ignore]`: uruchamiany ręcznie, zapisuje surowe dane i statystyki do
-//! `.artifacts/force-scales/`. Uruchomienie:
-//! `cargo test --quiet force_scales -- --ignored --nocapture`
+//! `.artifacts/force-distributions-2026-11-26/`. Uruchomienie:
+//! `cargo test --quiet measure_force_distributions -- --ignored --nocapture`
 
 use super::default_rules::quantize_f16;
 use super::*;
 use std::fmt::Write as _;
 
-/// Świat jak ekran 4K (świat symulacji = rozmiar ekranu), liczby cząstek do porównania.
+/// Świat jak ekran 4K (świat symulacji = rozmiar ekranu).
 const FS_WORLD: Vec2 = Vec2::new(3840.0, 2160.0);
-const COUNTS: [usize; 2] = [1_000_000, 100_000];
-/// Statystyki liczone na losowej próbce cząstek (sąsiadami są zawsze wszystkie cząstki).
+const N: usize = 100_000;
+/// Rozkład liczony na losowej próbce cząstek (sąsiadami są zawsze wszystkie cząstki).
 const SUBSAMPLE: usize = 20_000;
-const TYPES: usize = 3;
-const SEEDS: [u64; 6] = [101, 202, 303, 404, 505, 606];
-const SNAPSHOTS: [u64; 4] = [0, 200, 1000, 3000];
+/// Mała próbka do śledzenia ustabilizowania (mediany w czasie).
+const TRACK_SAMPLE: usize = 5_000;
+/// Kroki, w których logujemy mediany; próbki rozkładu z ostatnich trzech.
+const CHECKPOINTS: [u64; 6] = [500, 1000, 2000, 3000, 3500, 4000];
+const SAMPLED_FROM: u64 = 3000;
 
 #[derive(Clone, Copy, Default)]
 struct Row {
   species: u32,
   speed: f64,
   nw: f64,
+  vw: f64,
+  gain: f64,
   attraction: f64,
-  boid: f64,
   sep: f64,
   align: f64,
   coh: f64,
+  boid: f64,
+  eff_boid: f64,
+  eff_attraction: f64,
+  force: f64,
+  neighbours: f64,
+  kernel_w: f64,
 }
 
 fn norm(v: (f64, f64)) -> f64 {
@@ -42,7 +51,8 @@ fn terms(spec: &ParticleSpec, particles: &[GpuParticle], grid: &Grid, i: usize) 
   let me = &particles[i];
   let (px, py) = (me.pos[0] as f64, me.pos[1] as f64);
   let (vx, vy) = (me.vel[0] as f64, me.vel[1] as f64);
-  let (mut f, mut count, mut same) = ((0.0, 0.0), 0.0, 0.0);
+  let mut f = (0.0f64, 0.0f64);
+  let (mut count, mut same, mut kernel_w) = (0.0f64, 0.0f64, 0.0f64);
   let (mut s, mut sep_n) = ((0.0, 0.0), 0.0);
   let (mut a, mut align_w) = ((0.0, 0.0), 0.0);
   let (mut c, mut view_n) = ((0.0, 0.0), 0.0);
@@ -64,10 +74,12 @@ fn terms(spec: &ParticleSpec, particles: &[GpuParticle], grid: &Grid, i: usize) 
       return;
     }
     let (dirx, diry) = (dx / d, dy / d);
+    // Macierz: `interactions[sąsiad].force_coeffs[własny typ]`, dodatni = przyciąganie (dir: ja -> sąsiad).
     let coeff = spec.interactions[other.species as usize].force_coeffs[me.species as usize] as f64;
-    let att = coeff * (1.0 - ((d - u.kernel_middle as f64) / u.kernel_width as f64).abs()).max(0.0);
-    f.0 += att * dirx;
-    f.1 += att * diry;
+    let h = (1.0 - ((d - u.kernel_middle as f64) / u.kernel_width as f64).abs()).max(0.0);
+    f.0 += coeff * h * dirx;
+    f.1 += coeff * h * diry;
+    kernel_w += h;
     let same_species = me.species == other.species;
     same += f64::from(same_species);
     count += 1.0;
@@ -87,12 +99,7 @@ fn terms(spec: &ParticleSpec, particles: &[GpuParticle], grid: &Grid, i: usize) 
       view_n += 1.0;
     }
   });
-  let scale = if count > 0.0 {
-    (u.average_neighbours as f64 / count).min(1.0)
-  } else {
-    1.0
-  };
-  let attraction = (f.0 * scale, f.1 * scale);
+  let attraction = (f.0 / (kernel_w + 2.0), f.1 / (kernel_w + 2.0));
   let mean = |v: (f64, f64), n: f64| {
     if n > 0.0 {
       (v.0 / n, v.1 / n)
@@ -104,15 +111,29 @@ fn terms(spec: &ParticleSpec, particles: &[GpuParticle], grid: &Grid, i: usize) 
   let align = mean((a.0 - vx * align_w, a.1 - vy * align_w), view_n);
   let coh = mean(c, view_n);
   let boid = (sep.0 + align.0 + coh.0, sep.1 + align.1 + coh.1);
+  let nw = 0.1 + same / count.max(1.0);
+  let vw = (2.0 + vx * vx + vy * vy).log2();
+  let gain = (nw * vw).sqrt();
+  let force = (
+    gain * boid.0 + 10.0 * attraction.0 / gain,
+    gain * boid.1 + 10.0 * attraction.1 / gain,
+  );
   Row {
     species: me.species,
     speed: (vx * vx + vy * vy).sqrt(),
-    nw: same / count.max(1.0),
+    nw,
+    vw,
+    gain,
     attraction: norm(attraction),
-    boid: norm(boid),
     sep: norm(sep),
     align: norm(align),
     coh: norm(coh),
+    boid: norm(boid),
+    eff_boid: gain * norm(boid),
+    eff_attraction: 10.0 * norm(attraction) / gain,
+    force: norm(force),
+    neighbours: count,
+    kernel_w,
   }
 }
 
@@ -185,158 +206,141 @@ fn percentile(sorted: &[f64], q: f64) -> f64 {
   sorted[((sorted.len() - 1) as f64 * q).round() as usize]
 }
 
-/// `p10,p50,p90,p99` posortowanej kopii.
-fn pcts(mut v: Vec<f64>) -> [f64; 4] {
+/// Wielkość z wiersza.
+type Column = fn(&Row) -> f64;
+
+/// Kolumny rozkładu: nazwa i selektor.
+const COLUMNS: [(&str, Column); 14] = [
+  ("speed", |r| r.speed),
+  ("nw", |r| r.nw),
+  ("vw", |r| r.vw),
+  ("gain_sqrt_nw_vw", |r| r.gain),
+  ("attraction", |r| r.attraction),
+  ("a_sep", |r| r.sep),
+  ("a_align", |r| r.align),
+  ("a_coh", |r| r.coh),
+  ("boid", |r| r.boid),
+  ("eff_boid", |r| r.eff_boid),
+  ("eff_attraction", |r| r.eff_attraction),
+  ("force_total", |r| r.force),
+  ("neighbours", |r| r.neighbours),
+  ("kernel_w", |r| r.kernel_w),
+];
+
+fn median(rows: &[Row], f: fn(&Row) -> f64) -> f64 {
+  let mut v: Vec<f64> = rows.iter().map(f).collect();
   v.sort_by(|a, b| a.total_cmp(b));
-  [0.1, 0.5, 0.9, 0.99].map(|q| percentile(&v, q))
+  percentile(&v, 0.5)
 }
 
-fn stat_line(label: &str, group: &str, rows: &[&Row]) -> String {
-  let n = rows.len();
-  let col = |f: fn(&Row) -> f64| pcts(rows.iter().map(|r| f(r)).collect());
-  let ratio: Vec<f64> = rows
-    .iter()
-    .filter(|r| r.boid > 0.0)
-    .map(|r| r.attraction / r.boid)
-    .collect();
-  let zero_frac = rows.iter().filter(|r| r.boid == 0.0).count() as f64 / n.max(1) as f64;
-  let mut s = format!("{label},{group},{n}");
-  for p in [
-    col(|r| r.attraction),
-    col(|r| r.boid),
-    col(|r| r.sep),
-    col(|r| r.align),
-    col(|r| r.coh),
-    pcts(ratio),
-  ] {
-    for x in p {
-      write!(s, ",{x:.4}").unwrap();
+/// Wiersze podsumowania (kwantyle, średnia, odsetek dokładnych zer) dla jednej grupy.
+fn summary_lines(label: &str, rows: &[&Row], out: &mut String) {
+  for (name, f) in COLUMNS {
+    let mut v: Vec<f64> = rows.iter().map(|r| f(r)).collect();
+    v.sort_by(|a, b| a.total_cmp(b));
+    let mean = v.iter().sum::<f64>() / v.len().max(1) as f64;
+    let zeros = v.iter().filter(|x| **x == 0.0).count() as f64 / v.len().max(1) as f64;
+    write!(out, "{label},{name},{}", v.len()).unwrap();
+    for q in [0.01, 0.1, 0.5, 0.9, 0.99] {
+      write!(out, ",{:.5}", percentile(&v, q)).unwrap();
     }
+    writeln!(out, ",{mean:.5},{zeros:.5}").unwrap();
   }
-  write!(s, ",{zero_frac:.4}").unwrap();
-  s
+}
+
+fn matrix(types: usize, f: impl Fn(usize, usize) -> f32) -> ParticleSpec {
+  ParticleSpec::new(
+    (0..types)
+      .map(|a| Interaction {
+        force_coeffs: (0..types).map(|b| f(a, b)).collect(),
+      })
+      .collect(),
+  )
 }
 
 #[test]
-#[ignore = "pomiar: uruchamiany ręcznie, zapisuje do .artifacts/force-scales/"]
-fn measure_force_scales() {
-  let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".artifacts/force-scales");
+#[ignore = "pomiar: uruchamiany ręcznie, zapisuje do .artifacts/force-distributions-2026-11-26/"]
+fn measure_force_distributions() {
+  let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    .join(".artifacts/force-distributions-2026-11-26");
   std::fs::create_dir_all(&dir).unwrap();
-  for n in COUNTS {
-    if !measure(n, &dir) {
-      return;
-    }
+  // `M[a][b]` = `interactions[a].force_coeffs[b]`: siła typu `a` (sąsiad) na typ `b` (własny),
+  // dodatnia = przyciąganie.
+  let mut runs: Vec<(String, usize, Option<u64>)> = Vec::new();
+  for seed in [11, 22, 33, 44] {
+    runs.push((format!("random3_s{seed}"), 3, Some(seed)));
   }
-}
-
-/// Zwraca `false`, gdy brak GPU.
-fn measure(n: usize, dir: &std::path::Path) -> bool {
-  let mut raw = String::from("seed,step,id,species,speed,nw,attraction,boid,sep,align,coh\n");
-  let mut all: Vec<(u64, u64, Vec<Row>)> = Vec::new();
-  for seed in SEEDS {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let spec = spec(&mut rng, TYPES);
-    let particles = initial_particles(n, TYPES, FS_WORLD, &mut rng);
-    let initial = particles.clone();
+  for seed in [55, 66] {
+    runs.push((format!("random6_s{seed}"), 6, Some(seed)));
+  }
+  for name in ["all_attract", "all_repel", "self_sort", "chase", "zero"] {
+    runs.push((name.into(), 3, None));
+  }
+  let mut raw = String::from("matrix,step,id,species,");
+  raw += &COLUMNS.map(|(n, _)| n).join(",");
+  raw.push('\n');
+  let mut stab = String::from("matrix,step,median_speed,median_attraction\n");
+  let mut summary = String::from("matrix,quantity,n,p1,p10,p50,p90,p99,mean,zero_frac\n");
+  let mut pooled: Vec<Row> = Vec::new();
+  for (name, types, seed) in &runs {
+    let mut rng = StdRng::seed_from_u64(seed.unwrap_or(1));
+    let spec = match (seed, name.as_str()) {
+      (Some(_), _) => spec(&mut rng, *types),
+      (None, "all_attract") => matrix(3, |_, _| 300.0),
+      (None, "all_repel") => matrix(3, |_, _| -300.0),
+      (None, "self_sort") => matrix(3, |a, b| if a == b { 300.0 } else { -300.0 }),
+      (None, "chase") => matrix(3, |a, b| {
+        if b == (a + 1) % 3 {
+          300.0
+        } else if a == (b + 1) % 3 {
+          -300.0
+        } else {
+          0.0
+        }
+      }),
+      _ => matrix(3, |_, _| 0.0),
+    };
+    let particles = initial_particles(N, *types, FS_WORLD, &mut rng);
     let Some(mut harness) = Harness::new(SimOptions::default(), spec.clone(), particles, FS_WORLD)
     else {
       eprintln!("brak GPU, pomijam");
-      return false;
+      return;
     };
     let mut done = 0;
-    for step in SNAPSHOTS {
-      // Krok 0: stan początkowy (odczyt z GPU przed pierwszym krokiem nie działa).
-      let state = if step == 0 {
-        initial.clone()
-      } else {
-        harness.run(step - done)
-      };
+    let mut run_rows: Vec<Row> = Vec::new();
+    for step in CHECKPOINTS {
+      let state = harness.run(step - done);
       done = step;
-      assert_invariants(&state, FS_WORLD, &format!("n {n} seed {seed} krok {step}"));
-      let mut ids: Vec<usize> = (0..n).collect();
+      assert_invariants(&state, FS_WORLD, &format!("{name} krok {step}"));
+      let mut ids: Vec<usize> = (0..N).collect();
       ids.shuffle(&mut rng);
-      ids.truncate(SUBSAMPLE.min(n));
-      let rows = snapshot_rows(&spec, &state, &ids);
-      for (id, r) in ids.iter().zip(&rows) {
-        writeln!(
-          raw,
-          "{seed},{step},{id},{},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4}",
-          r.species, r.speed, r.nw, r.attraction, r.boid, r.sep, r.align, r.coh
-        )
-        .unwrap();
+      let track = snapshot_rows(&spec, &state, &ids[..TRACK_SAMPLE]);
+      writeln!(
+        stab,
+        "{name},{step},{:.4},{:.4}",
+        median(&track, |r| r.speed),
+        median(&track, |r| r.attraction)
+      )
+      .unwrap();
+      if step >= SAMPLED_FROM {
+        ids.truncate(SUBSAMPLE);
+        let rows = snapshot_rows(&spec, &state, &ids);
+        for (id, r) in ids.iter().zip(&rows) {
+          write!(raw, "{name},{step},{id},{}", r.species).unwrap();
+          for (_, f) in COLUMNS {
+            write!(raw, ",{:.5}", f(r)).unwrap();
+          }
+          raw.push('\n');
+        }
+        run_rows.extend(rows);
       }
-      eprintln!("n {n} seed {seed} krok {step} gotowe");
-      all.push((seed, step, rows));
+      eprintln!("{name} krok {step} gotowe");
     }
+    summary_lines(name, &run_rows.iter().collect::<Vec<_>>(), &mut summary);
+    pooled.extend(run_rows);
   }
-  std::fs::write(dir.join(format!("raw_per_particle_n{n}.csv")), raw).unwrap();
-  let mut out = String::from(
-    "label,group,n,\
-     att_p10,att_p50,att_p90,att_p99,boid_p10,boid_p50,boid_p90,boid_p99,\
-     sep_p10,sep_p50,sep_p90,sep_p99,align_p10,align_p50,align_p90,align_p99,\
-     coh_p10,coh_p50,coh_p90,coh_p99,ratio_p10,ratio_p50,ratio_p90,ratio_p99,boid_zero_frac\n",
-  );
-  let nw_bins = [
-    ("nw<0.1", 0.0, 0.1),
-    ("nw0.1-0.3", 0.1, 0.3),
-    ("nw0.3-0.6", 0.3, 0.6),
-    ("nw>0.6", 0.6, 9.0),
-  ];
-  let v_bins = [
-    ("v<10", 0.0, 10.0),
-    ("v10-40", 10.0, 40.0),
-    ("v40-100", 40.0, 100.0),
-    ("v>100", 100.0, 1e9),
-  ];
-  let mut emit = |label: String, rows: Vec<&Row>| {
-    out += &stat_line(&label, "all", &rows);
-    out.push('\n');
-    for (name, lo, hi) in nw_bins {
-      let sub: Vec<&Row> = rows
-        .iter()
-        .copied()
-        .filter(|r| r.nw >= lo && r.nw < hi)
-        .collect();
-      out += &stat_line(&label, name, &sub);
-      out.push('\n');
-    }
-    for (name, lo, hi) in v_bins {
-      let sub: Vec<&Row> = rows
-        .iter()
-        .copied()
-        .filter(|r| r.speed >= lo && r.speed < hi)
-        .collect();
-      out += &stat_line(&label, name, &sub);
-      out.push('\n');
-    }
-  };
-  for (seed, step, rows) in &all {
-    emit(format!("seed{seed}/step{step}"), rows.iter().collect());
-  }
-  for seed in SEEDS {
-    emit(
-      format!("seed{seed}/allsteps"),
-      all
-        .iter()
-        .filter(|(s, ..)| *s == seed)
-        .flat_map(|(.., r)| r)
-        .collect(),
-    );
-  }
-  for step in SNAPSHOTS {
-    emit(
-      format!("pooled/step{step}"),
-      all
-        .iter()
-        .filter(|(_, t, _)| *t == step)
-        .flat_map(|(.., r)| r)
-        .collect(),
-    );
-  }
-  emit(
-    "pooled/all".into(),
-    all.iter().flat_map(|(.., r)| r).collect(),
-  );
-  std::fs::write(dir.join(format!("summary_n{n}.csv")), out).unwrap();
-  true
+  summary_lines("pooled", &pooled.iter().collect::<Vec<_>>(), &mut summary);
+  std::fs::write(dir.join("raw_per_particle.csv"), raw).unwrap();
+  std::fs::write(dir.join("stabilization.csv"), stab).unwrap();
+  std::fs::write(dir.join("summary.csv"), summary).unwrap();
 }
