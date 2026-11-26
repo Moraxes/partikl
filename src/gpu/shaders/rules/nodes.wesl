@@ -26,12 +26,14 @@ fn inside(dist: f32, reach: f32) -> bool {
   return dist < reach;
 }
 
-fn overlap_push(dist: f32, reach: f32, dir: vec2<f32>) -> vec2<f32> {
-  return 0.5 * (dist - reach) * dir;
+// Sprężyna o długości spoczynkowej `rest` wzdłuż `dir` (od cząstki do sąsiada): bliżej niż `rest`
+// wskazuje od sąsiada, dalej do niego; długość = wydłużenie.
+fn spring(dist: f32, rest: f32, dir: vec2<f32>) -> vec2<f32> {
+  return (dist - rest) * dir;
 }
 
-fn separation(dir: vec2<f32>, dist: f32) -> vec2<f32> {
-  return -dir / max(dist, 1e-3);
+fn overlap_push(dist: f32, reach: f32, dir: vec2<f32>) -> vec2<f32> {
+  return 0.5 * spring(dist, reach, dir);
 }
 
 // -- gate --
@@ -48,6 +50,26 @@ fn mean2(sum: vec2<f32>, count: f32) -> vec2<f32> {
 
 fn capped_mean2(sum: vec2<f32>, count: f32, n0: f32) -> vec2<f32> {
   return select(sum, sum * min(1.0, n0 / count), count > 0.0);
+}
+
+// Średnia z wagą `prior` dodaną do mianownika (ściąga do zera przy małej łącznej wadze).
+fn shrunk_mean2(sum: vec2<f32>, weight: f32, prior: f32) -> vec2<f32> {
+  return sum / (weight + prior);
+}
+
+// Suma nasycana licznikiem: dla `count << n0` to suma, dla `count >> n0` średnia razy `n0`.
+fn saturating_sum2(sum: vec2<f32>, count: f32, n0: f32) -> vec2<f32> {
+  return sum / (1.0 + count / n0);
+}
+
+// Udział części w całości (0 bez całości).
+fn share(part: f32, total: f32) -> f32 {
+  return part / max(1.0, total);
+}
+
+// Relaksacja `current` do `goal` z szybkością `rate` (1/s): przyspieszenie, 0 bez celu.
+fn relax2(current: vec2<f32>, goal: vec2<f32>, rate: f32, has_goal: bool) -> vec2<f32> {
+  return select(vec2(0.0), rate * (goal - current), has_goal);
 }
 
 fn smoothed(prev: f32, tgt: f32, rate: f32) -> f32 {

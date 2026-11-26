@@ -1,203 +1,210 @@
-//! Rozkłady członów sił z aktualnego shadera `integrate_particle` (`rules/default_rules.wesl`)
-//! na stanach z prawdziwej symulacji GPU (headless), po ustabilizowaniu się układu, dla kilku
-//! macierzy oddziaływań. Człony liczone na CPU z migawki, wzorem shadera (bez próbkowania
-//! sąsiadów: brute force po siatce komórek, kwantyzacja f16 prędkości sąsiada).
+//! Rozkłady sił z `integrate_particle` (`rules/default_rules.wesl`) na stanach z prawdziwej
+//! symulacji GPU (headless), dla zestawu macierzy z `macro_stats`. Siły liczone na CPU z migawki,
+//! lustrem shadera (bez próbkowania sąsiadów: wszyscy sąsiedzi, kwantyzacja f16 prędkości sąsiada).
 //!
-//! Test jest `#[ignore]`: uruchamiany ręcznie, zapisuje surowe dane i statystyki do
-//! `.artifacts/force-distributions-2026-11-26/`. Uruchomienie:
-//! `cargo test --quiet measure_force_distributions -- --ignored --nocapture`
+//! Lustro sprawdza się samo: z policzonych sił przewiduje prędkość po jednym kroku i porównuje ją
+//! z GPU dla cząstek bez próbkowania (mało sąsiadów). Gdy shader się zmieni, a lustro nie, pomiar
+//! się wywraca zamiast dawać złe dane.
+//!
+//! Test jest `#[ignore]`; zmienne środowiskowe jak w `macro_stats` (`MACRO_OPTIONS`, `MACRO_PARAMS`,
+//! `MACRO_RUNS`), wynik w `.artifacts/<FORCES_OUT>` (domyślnie `boid-forces/forces`):
+//! `gate-run --resource cargo --resource gpu -- cargo test --quiet measure_forces -- --ignored --nocapture`
 
 use super::default_rules::quantize_f16;
+use super::macro_stats::{Grid, MS_N, MS_WORLD, env_setup, matrices, par_rows, selected};
 use super::*;
 use std::fmt::Write as _;
 
-/// Świat jak ekran 4K (świat symulacji = rozmiar ekranu).
-const FS_WORLD: Vec2 = Vec2::new(3840.0, 2160.0);
-const N: usize = 100_000;
-/// Rozkład liczony na losowej próbce cząstek (sąsiadami są zawsze wszystkie cząstki).
-const SUBSAMPLE: usize = 20_000;
-/// Mała próbka do śledzenia ustabilizowania (mediany w czasie).
-const TRACK_SAMPLE: usize = 5_000;
-/// Kroki, w których logujemy mediany; próbki rozkładu z ostatnich trzech.
-const CHECKPOINTS: [u64; 6] = [500, 1000, 2000, 3000, 3500, 4000];
-const SAMPLED_FROM: u64 = 3000;
+/// Próbka cząstek na migawkę.
+const SAMPLE: usize = 20_000;
+const SNAPSHOTS: [u64; 3] = [2000, 3000, 4000];
+/// Cząstki do sprawdzenia lustra: tylko takie, dla których GPU nie próbkuje sąsiadów.
+const CHECK_SAMPLE: usize = 2_000;
 
+type V = (f64, f64);
+
+fn add(a: V, b: V) -> V {
+  (a.0 + b.0, a.1 + b.1)
+}
+
+fn scale(k: f64, a: V) -> V {
+  (k * a.0, k * a.1)
+}
+
+fn norm(v: V) -> f64 {
+  (v.0 * v.0 + v.1 * v.1).sqrt()
+}
+
+/// Warianty opcji reguł (z `MACRO_OPTIONS`).
+#[derive(Clone, Copy)]
+struct Mode {
+  attraction_sum: bool,
+  mix_plain: bool,
+}
+
+fn mode() -> Mode {
+  let opts = std::env::var("MACRO_OPTIONS").unwrap_or_default();
+  Mode {
+    attraction_sum: opts.contains("attraction=sum"),
+    mix_plain: opts.contains("mix=plain"),
+  }
+}
+
+/// Siły jednej cząstki (już po mieszaniu: tak, jak wchodzą do sumy) i dane pomocnicze.
 #[derive(Clone, Copy, Default)]
-struct Row {
-  species: u32,
-  speed: f64,
+struct Forces {
+  attraction: V,
+  separation: V,
+  alignment: V,
+  cohesion: V,
+  total: V,
+  /// Poprawka prędkości z rozsuwania (`corr / dt`).
+  overlap_dv: V,
+  gain: f64,
   nw: f64,
   vw: f64,
-  gain: f64,
-  attraction: f64,
-  sep: f64,
-  align: f64,
-  coh: f64,
-  boid: f64,
-  eff_boid: f64,
-  eff_attraction: f64,
-  force: f64,
+  n_sep: f64,
   neighbours: f64,
   kernel_w: f64,
 }
 
-fn norm(v: (f64, f64)) -> f64 {
-  (v.0 * v.0 + v.1 * v.1).sqrt()
-}
-
-/// Człony sił jednej cząstki, lustro `pair_interact` + początku `integrate_particle`.
-fn terms(spec: &ParticleSpec, particles: &[GpuParticle], grid: &Grid, i: usize) -> Row {
+/// Lustro `pair_interact` i sił z `integrate_particle`.
+fn forces(
+  spec: &ParticleSpec,
+  mode: Mode,
+  particles: &[GpuParticle],
+  grid: &Grid,
+  i: usize,
+) -> Forces {
   let u = &spec.params;
   let me = &particles[i];
-  let (px, py) = (me.pos[0] as f64, me.pos[1] as f64);
-  let (vx, vy) = (me.vel[0] as f64, me.vel[1] as f64);
-  let mut f = (0.0f64, 0.0f64);
-  let (mut count, mut same, mut kernel_w) = (0.0f64, 0.0f64, 0.0f64);
-  let (mut s, mut sep_n) = ((0.0, 0.0), 0.0);
-  let (mut a, mut align_w) = ((0.0, 0.0), 0.0);
-  let (mut c, mut view_n) = ((0.0, 0.0), 0.0);
-  let wrap = |d: f64, size: f64| {
-    if d > size / 2.0 {
-      d - size
-    } else if d < -size / 2.0 {
-      d + size
-    } else {
-      d
-    }
-  };
-  grid.for_candidates(px, py, |j| {
+  let vel = (me.vel[0] as f64, me.vel[1] as f64);
+  let (mut att, mut kernel_w) = ((0.0, 0.0), 0.0);
+  let (mut push, mut n_sep) = ((0.0, 0.0), 0.0);
+  let (mut fvel, mut offset, mut n_flock) = ((0.0, 0.0), (0.0, 0.0), 0.0);
+  let (mut corr, mut n_overlap) = ((0.0, 0.0), 0.0);
+  let (mut same, mut all) = (0.0, 0.0);
+  grid.for_neighbours(particles, i, |j, dx, dy, d| {
     let other = &particles[j];
-    let dx = wrap(other.pos[0] as f64 - px, FS_WORLD.x as f64);
-    let dy = wrap(other.pos[1] as f64 - py, FS_WORLD.y as f64);
-    let d = (dx * dx + dy * dy).sqrt();
-    if j == i || d == 0.0 || d > INTERACTION_RADIUS as f64 {
-      return;
-    }
-    let (dirx, diry) = (dx / d, dy / d);
-    // Macierz: `interactions[sąsiad].force_coeffs[własny typ]`, dodatni = przyciąganie (dir: ja -> sąsiad).
+    let dir = (dx / d, dy / d);
     let coeff = spec.interactions[other.species as usize].force_coeffs[me.species as usize] as f64;
     let h = (1.0 - ((d - u.kernel_middle as f64) / u.kernel_width as f64).abs()).max(0.0);
-    f.0 += coeff * h * dirx;
-    f.1 += coeff * h * diry;
+    att = add(att, scale(coeff * h, dir));
     kernel_w += h;
-    let same_species = me.species == other.species;
-    same += f64::from(same_species);
-    count += 1.0;
-    if same_species && d < u.separation_radius as f64 {
-      let sd = d.max(1e-3);
-      s.0 += u.separation_weight as f64 * (-dirx / sd);
-      s.1 += u.separation_weight as f64 * (-diry / sd);
-      sep_n += 1.0;
+    let r = u.separation_radius as f64;
+    if d < r {
+      push = add(push, scale(d - r, dir));
+      n_sep += 1.0;
     }
-    if same_species && d < u.vision_radius as f64 {
-      let (wa, wc) = (u.alignment_weight as f64, u.coherence_weight as f64);
-      a.0 += wa * quantize_f16(other.vel[0]);
-      a.1 += wa * quantize_f16(other.vel[1]);
-      align_w += wa;
-      c.0 += wc * dx;
-      c.1 += wc * dy;
-      view_n += 1.0;
+    let is_same = other.species == me.species;
+    if is_same && d < u.vision_radius as f64 {
+      let ov = (
+        quantize_f16(other.vel[0].clamp(-65504.0, 65504.0)),
+        quantize_f16(other.vel[1].clamp(-65504.0, 65504.0)),
+      );
+      fvel = add(fvel, ov);
+      offset = add(offset, (dx, dy));
+      n_flock += 1.0;
     }
+    let reach = u.repulsion_radius as f64;
+    if d < reach {
+      corr = add(corr, scale(0.5 * (d - reach), dir));
+      n_overlap += 1.0;
+    }
+    same += f64::from(is_same);
+    all += 1.0;
   });
-  let attraction = (f.0 / (kernel_w + 2.0), f.1 / (kernel_w + 2.0));
-  let mean = |v: (f64, f64), n: f64| {
-    if n > 0.0 {
-      (v.0 / n, v.1 / n)
-    } else {
-      (0.0, 0.0)
-    }
+  let attraction = if mode.attraction_sum {
+    scale(u.attraction_scale as f64 / u.attraction_sum_ref as f64, att)
+  } else {
+    scale(u.attraction_scale as f64 / (kernel_w + 2.0), att)
   };
-  let sep = mean(s, sep_n);
-  let align = mean((a.0 - vx * align_w, a.1 - vy * align_w), view_n);
-  let coh = mean(c, view_n);
-  let boid = (sep.0 + align.0 + coh.0, sep.1 + align.1 + coh.1);
-  let nw = 0.1 + same / count.max(1.0);
-  let vw = (2.0 + vx * vx + vy * vy).log2();
-  let gain = (nw * vw).sqrt();
-  let force = (
-    gain * boid.0 + 10.0 * attraction.0 / gain,
-    gain * boid.1 + 10.0 * attraction.1 / gain,
+  let separation = scale(
+    u.separation_stiffness as f64 / (1.0 + n_sep / u.separation_saturation as f64),
+    push,
   );
-  Row {
-    species: me.species,
-    speed: (vx * vx + vy * vy).sqrt(),
+  let (alignment, cohesion) = if n_flock > 0.0 {
+    (
+      scale(
+        u.alignment_rate as f64,
+        add(scale(1.0 / n_flock, fvel), scale(-1.0, vel)),
+      ),
+      scale(u.cohesion_stiffness as f64 / n_flock, offset),
+    )
+  } else {
+    ((0.0, 0.0), (0.0, 0.0))
+  };
+  let nw = 0.1 + same / f64::max(1.0, all);
+  let vw = (2.0 + vel.0 * vel.0 + vel.1 * vel.1).log2();
+  let gain = if mode.mix_plain {
+    1.0
+  } else {
+    (nw * vw).sqrt()
+  };
+  let (attraction, alignment, cohesion) = (
+    scale(1.0 / gain, attraction),
+    scale(gain, alignment),
+    scale(gain, cohesion),
+  );
+  let total = add(add(separation, attraction), add(alignment, cohesion));
+  let overlap_dv = if n_overlap > 0.0 {
+    scale(1.0 / (n_overlap * u.dt as f64), corr)
+  } else {
+    (0.0, 0.0)
+  };
+  Forces {
+    attraction,
+    separation,
+    alignment,
+    cohesion,
+    total,
+    overlap_dv,
+    gain,
     nw,
     vw,
-    gain,
-    attraction: norm(attraction),
-    sep: norm(sep),
-    align: norm(align),
-    coh: norm(coh),
-    boid: norm(boid),
-    eff_boid: gain * norm(boid),
-    eff_attraction: 10.0 * norm(attraction) / gain,
-    force: norm(force),
-    neighbours: count,
+    n_sep,
+    neighbours: all,
     kernel_w,
   }
 }
 
-/// Siatka komórek o boku >= zasięgu oddziaływania (torus), do wyszukiwania kandydatów.
-struct Grid {
-  nx: usize,
-  ny: usize,
-  cells: Vec<Vec<usize>>,
+/// Prędkość po kroku z sił (jak koniec `integrate_particle`).
+fn predicted_vel(spec: &ParticleSpec, me: &GpuParticle, f: &Forces) -> V {
+  let u = &spec.params;
+  let dt = u.dt as f64;
+  let mut v = add((me.vel[0] as f64, me.vel[1] as f64), f.overlap_dv);
+  if v.0 * v.0 + v.1 * v.1 < u.velocity_threshold as f64 {
+    v = (0.0, 0.0);
+  }
+  let free = add(v, scale(dt, f.total));
+  let mut v = scale(1.0 / (1.0 + u.friction as f64 * dt * norm(free)), free);
+  let speed = norm(v);
+  if speed >= 1e-3 {
+    let dv = (u.target_speed as f64 - speed) * u.drive_rate as f64 * dt;
+    v = add(v, scale(dv / speed, v));
+  }
+  v
 }
 
-impl Grid {
-  fn new(particles: &[GpuParticle]) -> Self {
-    let nx = (FS_WORLD.x / INTERACTION_RADIUS).floor() as usize;
-    let ny = (FS_WORLD.y / INTERACTION_RADIUS).floor() as usize;
-    let mut grid = Grid {
-      nx,
-      ny,
-      cells: vec![Vec::new(); nx * ny],
-    };
-    for (i, p) in particles.iter().enumerate() {
-      let (cx, cy) = grid.cell(p.pos[0] as f64, p.pos[1] as f64);
-      grid.cells[cy * nx + cx].push(i);
-    }
-    grid
-  }
+/// Wielkość z wiersza.
+type Column = fn(&Forces) -> f64;
 
-  fn cell(&self, x: f64, y: f64) -> (usize, usize) {
-    let fx = ((x + FS_WORLD.x as f64 / 2.0) / FS_WORLD.x as f64).clamp(0.0, 0.999_999);
-    let fy = ((y + FS_WORLD.y as f64 / 2.0) / FS_WORLD.y as f64).clamp(0.0, 0.999_999);
-    (
-      (fx * self.nx as f64) as usize,
-      (fy * self.ny as f64) as usize,
-    )
-  }
-
-  fn for_candidates(&self, x: f64, y: f64, mut f: impl FnMut(usize)) {
-    let (cx, cy) = self.cell(x, y);
-    for dy in -1i64..=1 {
-      for dx in -1i64..=1 {
-        let gx = (cx as i64 + dx).rem_euclid(self.nx as i64) as usize;
-        let gy = (cy as i64 + dy).rem_euclid(self.ny as i64) as usize;
-        self.cells[gy * self.nx + gx].iter().for_each(|&j| f(j));
-      }
-    }
-  }
-}
-
-fn snapshot_rows(spec: &ParticleSpec, particles: &[GpuParticle], ids: &[usize]) -> Vec<Row> {
-  let grid = Grid::new(particles);
-  let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
-  let chunk = ids.len().div_ceil(threads);
-  let mut rows = vec![Row::default(); ids.len()];
-  std::thread::scope(|scope| {
-    for (k, out) in rows.chunks_mut(chunk).enumerate() {
-      let grid = &grid;
-      scope.spawn(move || {
-        for (o, slot) in out.iter_mut().enumerate() {
-          *slot = terms(spec, particles, grid, ids[k * chunk + o]);
-        }
-      });
-    }
-  });
-  rows
-}
+const COLUMNS: [(&str, Column); 12] = [
+  ("attraction", |f| norm(f.attraction)),
+  ("separation", |f| norm(f.separation)),
+  ("alignment", |f| norm(f.alignment)),
+  ("cohesion", |f| norm(f.cohesion)),
+  ("boid", |f| {
+    norm(add(add(f.separation, f.alignment), f.cohesion))
+  }),
+  ("total", |f| norm(f.total)),
+  ("gain", |f| f.gain),
+  ("nw", |f| f.nw),
+  ("vw", |f| f.vw),
+  ("n_sep", |f| f.n_sep),
+  ("neighbours", |f| f.neighbours),
+  ("kernel_w", |f| f.kernel_w),
+];
 
 fn percentile(sorted: &[f64], q: f64) -> f64 {
   if sorted.is_empty() {
@@ -206,141 +213,141 @@ fn percentile(sorted: &[f64], q: f64) -> f64 {
   sorted[((sorted.len() - 1) as f64 * q).round() as usize]
 }
 
-/// Wielkość z wiersza.
-type Column = fn(&Row) -> f64;
-
-/// Kolumny rozkładu: nazwa i selektor.
-const COLUMNS: [(&str, Column); 14] = [
-  ("speed", |r| r.speed),
-  ("nw", |r| r.nw),
-  ("vw", |r| r.vw),
-  ("gain_sqrt_nw_vw", |r| r.gain),
-  ("attraction", |r| r.attraction),
-  ("a_sep", |r| r.sep),
-  ("a_align", |r| r.align),
-  ("a_coh", |r| r.coh),
-  ("boid", |r| r.boid),
-  ("eff_boid", |r| r.eff_boid),
-  ("eff_attraction", |r| r.eff_attraction),
-  ("force_total", |r| r.force),
-  ("neighbours", |r| r.neighbours),
-  ("kernel_w", |r| r.kernel_w),
-];
-
-fn median(rows: &[Row], f: fn(&Row) -> f64) -> f64 {
-  let mut v: Vec<f64> = rows.iter().map(f).collect();
-  v.sort_by(|a, b| a.total_cmp(b));
-  percentile(&v, 0.5)
-}
-
-/// Wiersze podsumowania (kwantyle, średnia, odsetek dokładnych zer) dla jednej grupy.
-fn summary_lines(label: &str, rows: &[&Row], out: &mut String) {
+/// Wiersze podsumowania (kwantyle, średnia, odsetek zer) dla jednej grupy.
+fn summary_lines(label: &str, rows: &[Forces], out: &mut String) {
   for (name, f) in COLUMNS {
-    let mut v: Vec<f64> = rows.iter().map(|r| f(r)).collect();
-    v.sort_by(|a, b| a.total_cmp(b));
+    let mut v: Vec<f64> = rows.iter().map(f).collect();
+    v.sort_by(f64::total_cmp);
     let mean = v.iter().sum::<f64>() / v.len().max(1) as f64;
     let zeros = v.iter().filter(|x| **x == 0.0).count() as f64 / v.len().max(1) as f64;
     write!(out, "{label},{name},{}", v.len()).unwrap();
-    for q in [0.01, 0.1, 0.5, 0.9, 0.99] {
-      write!(out, ",{:.5}", percentile(&v, q)).unwrap();
+    for q in [0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99] {
+      write!(out, ",{:.4}", percentile(&v, q)).unwrap();
     }
-    writeln!(out, ",{mean:.5},{zeros:.5}").unwrap();
+    writeln!(out, ",{mean:.4},{zeros:.4}").unwrap();
   }
 }
 
-fn matrix(types: usize, f: impl Fn(usize, usize) -> f32) -> ParticleSpec {
-  ParticleSpec::new(
-    (0..types)
-      .map(|a| Interaction {
-        force_coeffs: (0..types).map(|b| f(a, b)).collect(),
-      })
-      .collect(),
-  )
+/// Liczba kandydatów na sąsiadów każdej cząstki na GPU: cząstki w sąsiedztwie
+/// `(2·GRID_REACH + 1)²` komórek siatki silnika (powyżej `DEFAULT_MAX_CANDIDATES` GPU próbkuje).
+fn gpu_candidates(state: &[GpuParticle]) -> Vec<u32> {
+  let geo = Geometry::new(MS_WORLD);
+  let (nx, ny) = (geo.dims.x as i64, geo.dims.y as i64);
+  let cell = |p: &GpuParticle| {
+    let c = ((Vec2::from(p.pos) + MS_WORLD * 0.5) / geo.cell_size).floor();
+    ((c.x as i64).clamp(0, nx - 1), (c.y as i64).clamp(0, ny - 1))
+  };
+  let mut counts = vec![0u32; (nx * ny) as usize];
+  for p in state {
+    let (x, y) = cell(p);
+    counts[(y * nx + x) as usize] += 1;
+  }
+  let reach = GRID_REACH as i64;
+  state
+    .iter()
+    .map(|p| {
+      let (x, y) = cell(p);
+      let mut sum = 0;
+      for oy in -reach..=reach {
+        for ox in -reach..=reach {
+          let (gx, gy) = ((x + ox).rem_euclid(nx), (y + oy).rem_euclid(ny));
+          sum += counts[(gy * nx + gx) as usize];
+        }
+      }
+      sum
+    })
+    .collect()
+}
+
+/// Lustro względem GPU: jeden krok z `state`, porównanie prędkości cząstek bez próbkowania.
+fn check_mirror(
+  harness: &mut Harness,
+  spec: &ParticleSpec,
+  mode: Mode,
+  state: &[GpuParticle],
+  rng: &mut StdRng,
+  name: &str,
+) {
+  let grid = Grid::new(state);
+  let candidates = gpu_candidates(state);
+  let mut ids: Vec<usize> = (0..state.len())
+    .filter(|&i| candidates[i] <= DEFAULT_MAX_CANDIDATES)
+    .collect();
+  ids.shuffle(rng);
+  ids.truncate(CHECK_SAMPLE);
+  let rows = par_rows(&ids, |i| forces(spec, mode, state, &grid, i));
+  let next = harness.run(1);
+  let mut checked = 0;
+  let mut worst = 0.0f64;
+  for (&i, f) in ids.iter().zip(&rows) {
+    checked += 1;
+    let want = predicted_vel(spec, &state[i], f);
+    let got = (next[i].vel[0] as f64, next[i].vel[1] as f64);
+    let err = norm(add(want, scale(-1.0, got)));
+    let tol = 1e-2 + 1e-3 * norm(want);
+    worst = worst.max(err / tol);
+    assert!(
+      err <= tol,
+      "{name}: lustro niezgodne z GPU dla cząstki {i}: przewidziane {want:?}, GPU {got:?} \
+       (v0 {:?}, sąsiadów {}, att {:?}, sep {:?}, align {:?}, coh {:?}, overlap {:?}, gain {})",
+      state[i].vel,
+      f.neighbours,
+      f.attraction,
+      f.separation,
+      f.alignment,
+      f.cohesion,
+      f.overlap_dv,
+      f.gain
+    );
+  }
+  assert!(
+    checked > CHECK_SAMPLE / 4,
+    "{name}: za mało cząstek do sprawdzenia lustra ({checked})"
+  );
+  eprintln!("{name}: lustro zgodne na {checked} cząstkach (najgorzej {worst:.2} tolerancji)");
 }
 
 #[test]
-#[ignore = "pomiar: uruchamiany ręcznie, zapisuje do .artifacts/force-distributions-2026-11-26/"]
-fn measure_force_distributions() {
+#[ignore = "pomiar: uruchamiany ręcznie, zapisuje do .artifacts/"]
+fn measure_forces() {
+  let out = std::env::var("FORCES_OUT").unwrap_or_else(|_| "boid-forces/forces".into());
   let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-    .join(".artifacts/force-distributions-2026-11-26");
+    .join(".artifacts")
+    .join(out);
   std::fs::create_dir_all(&dir).unwrap();
-  // `M[a][b]` = `interactions[a].force_coeffs[b]`: siła typu `a` (sąsiad) na typ `b` (własny),
-  // dodatnia = przyciąganie.
-  let mut runs: Vec<(String, usize, Option<u64>)> = Vec::new();
-  for seed in [11, 22, 33, 44] {
-    runs.push((format!("random3_s{seed}"), 3, Some(seed)));
-  }
-  for seed in [55, 66] {
-    runs.push((format!("random6_s{seed}"), 6, Some(seed)));
-  }
-  for name in ["all_attract", "all_repel", "self_sort", "chase", "zero"] {
-    runs.push((name.into(), 3, None));
-  }
-  let mut raw = String::from("matrix,step,id,species,");
-  raw += &COLUMNS.map(|(n, _)| n).join(",");
-  raw.push('\n');
-  let mut stab = String::from("matrix,step,median_speed,median_attraction\n");
-  let mut summary = String::from("matrix,quantity,n,p1,p10,p50,p90,p99,mean,zero_frac\n");
-  let mut pooled: Vec<Row> = Vec::new();
-  for (name, types, seed) in &runs {
-    let mut rng = StdRng::seed_from_u64(seed.unwrap_or(1));
-    let spec = match (seed, name.as_str()) {
-      (Some(_), _) => spec(&mut rng, *types),
-      (None, "all_attract") => matrix(3, |_, _| 300.0),
-      (None, "all_repel") => matrix(3, |_, _| -300.0),
-      (None, "self_sort") => matrix(3, |a, b| if a == b { 300.0 } else { -300.0 }),
-      (None, "chase") => matrix(3, |a, b| {
-        if b == (a + 1) % 3 {
-          300.0
-        } else if a == (b + 1) % 3 {
-          -300.0
-        } else {
-          0.0
-        }
-      }),
-      _ => matrix(3, |_, _| 0.0),
-    };
-    let particles = initial_particles(N, *types, FS_WORLD, &mut rng);
-    let Some(mut harness) = Harness::new(SimOptions::default(), spec.clone(), particles, FS_WORLD)
-    else {
+  let mode = mode();
+  let mut summary = String::from("matrix,quantity,n,p1,p10,p25,p50,p75,p90,p99,mean,zero_frac\n");
+  let mut pooled: Vec<Forces> = Vec::new();
+  for (k, (name, types, spec)) in matrices().into_iter().enumerate() {
+    if !selected(&name) {
+      continue;
+    }
+    let (options, spec) = env_setup(spec);
+    let mut rng = StdRng::seed_from_u64(1000 + k as u64);
+    let particles = initial_particles(MS_N, types, MS_WORLD, &mut rng);
+    let Some(mut harness) = Harness::new(options, spec.clone(), particles, MS_WORLD) else {
       eprintln!("brak GPU, pomijam");
       return;
     };
     let mut done = 0;
-    let mut run_rows: Vec<Row> = Vec::new();
-    for step in CHECKPOINTS {
+    let mut rows: Vec<Forces> = Vec::new();
+    for step in SNAPSHOTS {
       let state = harness.run(step - done);
       done = step;
-      assert_invariants(&state, FS_WORLD, &format!("{name} krok {step}"));
-      let mut ids: Vec<usize> = (0..N).collect();
+      let grid = Grid::new(&state);
+      let mut ids: Vec<usize> = (0..MS_N).collect();
       ids.shuffle(&mut rng);
-      let track = snapshot_rows(&spec, &state, &ids[..TRACK_SAMPLE]);
-      writeln!(
-        stab,
-        "{name},{step},{:.4},{:.4}",
-        median(&track, |r| r.speed),
-        median(&track, |r| r.attraction)
-      )
-      .unwrap();
-      if step >= SAMPLED_FROM {
-        ids.truncate(SUBSAMPLE);
-        let rows = snapshot_rows(&spec, &state, &ids);
-        for (id, r) in ids.iter().zip(&rows) {
-          write!(raw, "{name},{step},{id},{}", r.species).unwrap();
-          for (_, f) in COLUMNS {
-            write!(raw, ",{:.5}", f(r)).unwrap();
-          }
-          raw.push('\n');
-        }
-        run_rows.extend(rows);
+      ids.truncate(SAMPLE);
+      rows.extend(par_rows(&ids, |i| forces(&spec, mode, &state, &grid, i)));
+      if step == SNAPSHOTS[0] {
+        check_mirror(&mut harness, &spec, mode, &state, &mut rng, &name);
+        done += 1;
       }
-      eprintln!("{name} krok {step} gotowe");
     }
-    summary_lines(name, &run_rows.iter().collect::<Vec<_>>(), &mut summary);
-    pooled.extend(run_rows);
+    summary_lines(&name, &rows, &mut summary);
+    pooled.extend(rows);
+    eprintln!("{name} gotowe");
   }
-  summary_lines("pooled", &pooled.iter().collect::<Vec<_>>(), &mut summary);
-  std::fs::write(dir.join("raw_per_particle.csv"), raw).unwrap();
-  std::fs::write(dir.join("stabilization.csv"), stab).unwrap();
+  summary_lines("pooled", &pooled, &mut summary);
   std::fs::write(dir.join("summary.csv"), summary).unwrap();
 }

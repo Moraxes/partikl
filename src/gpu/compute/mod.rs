@@ -91,15 +91,17 @@ pub struct RuleParams {
   pub repulsion_radius: f32,
   pub kernel_middle: f32,
   pub kernel_width: f32,
-  pub average_neighbours: f32,
+  pub attraction_scale: f32,
+  pub attraction_sum_ref: f32,
   pub friction: f32,
   #[serde(skip)]
   pub velocity_threshold: f32,
   pub separation_radius: f32,
-  pub separation_weight: f32,
+  pub separation_stiffness: f32,
+  pub separation_saturation: f32,
   pub vision_radius: f32,
-  pub coherence_weight: f32,
-  pub alignment_weight: f32,
+  pub cohesion_stiffness: f32,
+  pub alignment_rate: f32,
   pub target_speed: f32,
   pub drive_rate: f32,
   pub fov_cos: f32,
@@ -113,13 +115,15 @@ impl RuleParams {
       self.repulsion_radius,
       self.kernel_middle,
       self.kernel_width,
-      self.average_neighbours,
+      self.attraction_scale,
+      self.attraction_sum_ref,
       self.friction,
       self.separation_radius,
-      self.separation_weight,
+      self.separation_stiffness,
+      self.separation_saturation,
       self.vision_radius,
-      self.coherence_weight,
-      self.alignment_weight,
+      self.cohesion_stiffness,
+      self.alignment_rate,
       self.target_speed,
       self.drive_rate,
       self.fov_cos,
@@ -127,8 +131,13 @@ impl RuleParams {
     if finite.iter().any(|v| !v.is_finite()) {
       return Err("parametry reguł muszą być skończone".into());
     }
-    if self.kernel_width <= 0.0 || self.average_neighbours <= 0.0 {
-      return Err("kernel_width i average_neighbours muszą być dodatnie".into());
+    if self.kernel_width <= 0.0
+      || self.attraction_sum_ref <= 0.0
+      || self.separation_saturation <= 0.0
+    {
+      return Err(
+        "kernel_width, attraction_sum_ref i separation_saturation muszą być dodatnie".into(),
+      );
     }
     let reach = self.kernel_middle + self.kernel_width;
     if reach > INTERACTION_RADIUS {
@@ -159,14 +168,16 @@ impl Default for RuleParams {
       repulsion_radius: REPULSION_RADIUS,
       kernel_middle: KERNEL_MIDDLE,
       kernel_width: KERNEL_WIDTH,
-      average_neighbours: AVERAGE_NEIGHBOURS,
+      attraction_scale: ATTRACTION_SCALE,
+      attraction_sum_ref: ATTRACTION_SUM_REF,
       friction: FRICTION_COEFF,
       velocity_threshold: VELOCITY_THRESHOLD,
       separation_radius: SEPARATION_RADIUS,
-      separation_weight: SEPARATION_WEIGHT,
+      separation_stiffness: SEPARATION_STIFFNESS,
+      separation_saturation: SEPARATION_SATURATION,
       vision_radius: VISION_RADIUS,
-      coherence_weight: COHERENCE_WEIGHT,
-      alignment_weight: ALIGNMENT_WEIGHT,
+      cohesion_stiffness: COHESION_STIFFNESS,
+      alignment_rate: ALIGNMENT_RATE,
       target_speed: TARGET_SPEED,
       drive_rate: DRIVE_RATE,
       fov_cos: FOV_COS,

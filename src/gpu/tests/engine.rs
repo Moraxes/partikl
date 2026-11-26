@@ -6,7 +6,7 @@ use super::*;
 fn layout_matches_wgsl() {
   assert_eq!(size_of::<GpuParticle>(), 24);
   assert_eq!(EngineUniforms::min_size().get(), 56);
-  assert_eq!(RuleParams::min_size().get(), 60);
+  assert_eq!(RuleParams::min_size().get(), 68);
 }
 
 #[test]
@@ -782,9 +782,9 @@ fn wrap_handles_displacements_over_one_and_a_half_world() {
   spec.params.repulsion_radius = 0.0;
   spec.params.friction = 0.0;
   spec.params.velocity_threshold = 0.0;
-  spec.params.separation_weight = 0.0;
-  spec.params.alignment_weight = 0.0;
-  spec.params.coherence_weight = 0.0;
+  spec.params.separation_stiffness = 0.0;
+  spec.params.alignment_rate = 0.0;
+  spec.params.cohesion_stiffness = 0.0;
   spec.params.drive_rate = 0.0;
 
   let particles = vec![

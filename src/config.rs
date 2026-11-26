@@ -19,20 +19,28 @@ pub const GRID_REACH: i32 = 2;
 /// Poniżej tej odległości działa twarde odpychanie niezależne od typu cząstek.
 pub const REPULSION_RADIUS: f32 = 1.0;
 
-/// Uśrednianie sił: siła cząstki z więcej sąsiadami w
-/// zasięgu niż tyle jest mnożona przez `AVERAGE_NEIGHBOURS / sąsiedzi`, więc nie rośnie z
-/// gęstością.
-pub const AVERAGE_NEIGHBOURS: f32 = 64.0;
+/// Skala przyciągania z macierzy: współczynnik macierzy razy to daje przyspieszenie (j/s²).
+pub const ATTRACTION_SCALE: f32 = 10.0;
+/// Przyciąganie jako suma (opcja `attraction=sum`): suma wkładów dzielona przez tę wagę jądra,
+/// czyli siła jak od tylu sąsiadów w środku jądra.
+pub const ATTRACTION_SUM_REF: f32 = 8.0;
 
 /// Współczynnik tarcia kwadratowego (proporcjonalnego do |v|·v).
 pub const FRICTION_COEFF: f32 = 0.01;
 
-// Parametry boidów
-pub const SEPARATION_RADIUS: f32 = 10.0;
-pub const SEPARATION_WEIGHT: f32 = 2.0;
+// Parametry boidów. Wszystkie składowe są przyspieszeniami (j/s²).
+/// Zasięg separacji (sprężyny od wszystkich sąsiadów bliżej niż to).
+pub const SEPARATION_RADIUS: f32 = 3.5;
+/// Sztywność sprężyny separacji (1/s²): siła od jednego sąsiada to `k · (R − d)`.
+pub const SEPARATION_STIFFNESS: f32 = 20.0;
+/// Nasycenie separacji: suma sprężyn dzielona przez `1 + n / to`, więc w tłumie rośnie wolniej niż
+/// liczba sąsiadów (najwyżej ok. `k · R · to`).
+pub const SEPARATION_SATURATION: f32 = 4.0;
 pub const VISION_RADIUS: f32 = 40.0;
-pub const COHERENCE_WEIGHT: f32 = 1.0;
-pub const ALIGNMENT_WEIGHT: f32 = 1.0;
+/// Sztywność sprężyny do środka sąsiadów własnego gatunku (1/s²).
+pub const COHESION_STIFFNESS: f32 = 1.0;
+/// Szybkość wyrównania prędkości do średniej sąsiadów własnego gatunku (1/s).
+pub const ALIGNMENT_RATE: f32 = 1.0;
 pub const TARGET_SPEED: f32 = 40.0;
 pub const DRIVE_RATE: f32 = 0.0;
 pub const FOV_COS: f32 = 0.86;
