@@ -32,7 +32,7 @@ pub const FRICTION_COEFF: f32 = 0.01;
 /// Zasięg separacji (sprężyny od wszystkich sąsiadów bliżej niż to).
 pub const SEPARATION_RADIUS: f32 = 3.5;
 /// Sztywność sprężyny separacji (1/s²): siła od jednego sąsiada to `k · (R − d)`.
-pub const SEPARATION_STIFFNESS: f32 = 20.0;
+pub const SEPARATION_STIFFNESS: f32 = 10.0;
 /// Nasycenie separacji: suma sprężyn dzielona przez `1 + n / to`, więc w tłumie rośnie wolniej niż
 /// liczba sąsiadów (najwyżej ok. `k · R · to`).
 pub const SEPARATION_SATURATION: f32 = 4.0;
