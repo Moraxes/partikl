@@ -39,18 +39,16 @@ fn norm(v: V) -> f64 {
 #[derive(Clone, Copy)]
 struct Mode {
   attraction_sum: bool,
-  mix_plain: bool,
 }
 
 fn mode() -> Mode {
   let opts = std::env::var("MACRO_OPTIONS").unwrap_or_default();
   Mode {
     attraction_sum: opts.contains("attraction=sum"),
-    mix_plain: opts.contains("mix=plain"),
   }
 }
 
-/// Siły jednej cząstki (już po mieszaniu: tak, jak wchodzą do sumy) i dane pomocnicze.
+/// Siły jednej cząstki (tak, jak wchodzą do sumy) i dane pomocnicze.
 #[derive(Clone, Copy, Default)]
 struct Forces {
   attraction: V,
@@ -60,9 +58,6 @@ struct Forces {
   total: V,
   /// Poprawka prędkości z rozsuwania (`corr / dt`).
   overlap_dv: V,
-  gain: f64,
-  nw: f64,
-  vw: f64,
   n_sep: f64,
   neighbours: f64,
   kernel_w: f64,
@@ -83,7 +78,7 @@ fn forces(
   let (mut push, mut n_sep) = ((0.0, 0.0), 0.0);
   let (mut fvel, mut offset, mut n_flock) = ((0.0, 0.0), (0.0, 0.0), 0.0);
   let (mut corr, mut n_overlap) = ((0.0, 0.0), 0.0);
-  let (mut same, mut all) = (0.0, 0.0);
+  let mut all = 0.0;
   grid.for_neighbours(particles, i, |j, dx, dy, d| {
     let other = &particles[j];
     let dir = (dx / d, dy / d);
@@ -111,7 +106,6 @@ fn forces(
       corr = add(corr, scale(0.5 * (d - reach), dir));
       n_overlap += 1.0;
     }
-    same += f64::from(is_same);
     all += 1.0;
   });
   let attraction = if mode.attraction_sum {
@@ -134,18 +128,6 @@ fn forces(
   } else {
     ((0.0, 0.0), (0.0, 0.0))
   };
-  let nw = 0.1 + same / f64::max(1.0, all);
-  let vw = (2.0 + vel.0 * vel.0 + vel.1 * vel.1).log2();
-  let gain = if mode.mix_plain {
-    1.0
-  } else {
-    (nw * vw).sqrt()
-  };
-  let (attraction, alignment, cohesion) = (
-    scale(1.0 / gain, attraction),
-    scale(gain, alignment),
-    scale(gain, cohesion),
-  );
   let total = add(add(separation, attraction), add(alignment, cohesion));
   let overlap_dv = if n_overlap > 0.0 {
     scale(1.0 / (n_overlap * u.dt as f64), corr)
@@ -159,9 +141,6 @@ fn forces(
     cohesion,
     total,
     overlap_dv,
-    gain,
-    nw,
-    vw,
     n_sep,
     neighbours: all,
     kernel_w,
@@ -189,7 +168,7 @@ fn predicted_vel(spec: &ParticleSpec, me: &GpuParticle, f: &Forces) -> V {
 /// Wielkość z wiersza.
 type Column = fn(&Forces) -> f64;
 
-const COLUMNS: [(&str, Column); 12] = [
+const COLUMNS: [(&str, Column); 9] = [
   ("attraction", |f| norm(f.attraction)),
   ("separation", |f| norm(f.separation)),
   ("alignment", |f| norm(f.alignment)),
@@ -198,9 +177,6 @@ const COLUMNS: [(&str, Column); 12] = [
     norm(add(add(f.separation, f.alignment), f.cohesion))
   }),
   ("total", |f| norm(f.total)),
-  ("gain", |f| f.gain),
-  ("nw", |f| f.nw),
-  ("vw", |f| f.vw),
   ("n_sep", |f| f.n_sep),
   ("neighbours", |f| f.neighbours),
   ("kernel_w", |f| f.kernel_w),
@@ -289,15 +265,14 @@ fn check_mirror(
     assert!(
       err <= tol,
       "{name}: lustro niezgodne z GPU dla cząstki {i}: przewidziane {want:?}, GPU {got:?} \
-       (v0 {:?}, sąsiadów {}, att {:?}, sep {:?}, align {:?}, coh {:?}, overlap {:?}, gain {})",
+       (v0 {:?}, sąsiadów {}, att {:?}, sep {:?}, align {:?}, coh {:?}, overlap {:?})",
       state[i].vel,
       f.neighbours,
       f.attraction,
       f.separation,
       f.alignment,
       f.cohesion,
-      f.overlap_dv,
-      f.gain
+      f.overlap_dv
     );
   }
   assert!(

@@ -12,7 +12,6 @@
 // Reguły same importują swoje wiązania (parametry, macierz sił z `rules/bindings.wesl`).
 
 //@option attraction key=G: mean, sum=ATTRACTION_SUM
-//@option mix key=M: nw_vw, plain=MIX_PLAIN
 
 import super::super::engine::types::Particle;
 import super::bindings::rule_params;
@@ -32,8 +31,6 @@ import super::nodes as nd;
 //  - spójność: sprężyna do środka sąsiadów własnego gatunku w `vision_radius`, `cohesion_stiffness`
 //    (1/s²);
 //  - rozsuwanie nakładających się (`repulsion_radius`) to poprawka pozycji, nie siła.
-// Opcja `mix`: `nw_vw` mnoży wyrównanie i spójność przez `g = sqrt(nw · vw)`, a przyciąganie dzieli
-// przez `g` (`nw` udział własnego gatunku, `vw` rośnie z prędkością); `plain` = zwykła suma.
 
 const F16_MAX: f32 = 65504.0;
 
@@ -100,20 +97,11 @@ struct OverlapAcc {
   count: f32,
 }
 
-// Skład gatunkowy otoczenia, do mnożnika mieszania (opcja `mix`).
-struct SpeciesAcc {
-  // [1] Sąsiedzi własnego gatunku (z wagą).
-  same_count: f32,
-  // [1] Wszyscy sąsiedzi w zasięgu oddziaływania (z wagą); `same_count / total_count` to `nw`.
-  total_count: f32,
-}
-
 struct RuleAccum {
   attraction: AttractionAcc,
   separation: SeparationAcc,
   flock: FlockAcc,
   overlap: OverlapAcc,
-  species: SpeciesAcc,
 }
 
 fn accum_init() -> RuleAccum {
@@ -122,7 +110,6 @@ fn accum_init() -> RuleAccum {
     SeparationAcc(vec2(0.0), 0.0),
     FlockAcc(vec2(0.0), vec2(0.0), 0.0),
     OverlapAcc(vec2(0.0), 0.0),
-    SpeciesAcc(0.0, 0.0),
   );
 }
 
@@ -158,10 +145,6 @@ fn overlap_pair(acc: OverlapAcc, g: nd::PairGeom, weight: f32) -> OverlapAcc {
   return OverlapAcc(acc.push_sum + nd::overlap_push(g.dist, reach, g.dir), acc.count + weight);
 }
 
-fn species_pair(acc: SpeciesAcc, same: bool, weight: f32) -> SpeciesAcc {
-  return SpeciesAcc(acc.same_count + weight * f32(same), acc.total_count + weight);
-}
-
 // Wkład jednego sąsiada (już w zasięgu oddziaływania, `dist_sq > 0`). `delta` wskazuje od
 // `self_p` do `other` (po torusie; `other.pos` jest bez przesunięcia torusa), siłę typu sąsiada
 // na typ `self_p` reguła czyta z macierzy (`rule_self.coeffs`), `weight` to waga próbkowania
@@ -176,7 +159,6 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
     (*accum).flock = flock_pair((*accum).flock, g, delta, other.vel, weight);
   }
   (*accum).overlap = overlap_pair((*accum).overlap, g, weight);
-  (*accum).species = species_pair((*accum).species, same, weight);
 }
 
 // -- siły (po akumulacji) --
@@ -204,18 +186,6 @@ fn cohesion_force(acc: FlockAcc) -> vec2<f32> {
   return rule_params.cohesion_stiffness * nd::mean2(acc.offset_sum, acc.count);
 }
 
-// Mnożnik mieszania boidów z przyciąganiem (opcja `mix`).
-fn mix_gain(species: SpeciesAcc, vel: vec2<f32>) -> f32 {
-  @if(MIX_PLAIN) {
-    return 1.0;
-  }
-  @else {
-    let nw = 0.1 + nd::share(species.same_count, species.total_count);
-    let vw = log2(2.0 + dot(vel, vel));
-    return sqrt(nw * vw);
-  }
-}
-
 // Poprawka pozycji (rozsuwanie), tarcie kwadratowe i krok półjawnego Eulera (v, potem pos).
 // Zawijanie robi silnik.
 fn integrate_particle(self_p: Particle, accum: RuleAccum) -> Particle {
@@ -223,9 +193,8 @@ fn integrate_particle(self_p: Particle, accum: RuleAccum) -> Particle {
   var p = self_p;
 
   // Siły z prędkości sprzed poprawki rozsuwania.
-  let gain = mix_gain(accum.species, p.vel);
   let flock = alignment_force(accum.flock, p.vel) + cohesion_force(accum.flock);
-  let force = separation_force(accum.separation) + gain * flock + attraction_force(accum.attraction) / gain;
+  let force = separation_force(accum.separation) + flock + attraction_force(accum.attraction);
 
   // Poprawka tylko w prędkości; pozycja idzie za nią w tym samym kroku (p.pos += v * dt).
   let corr = nd::mean2(accum.overlap.push_sum, accum.overlap.count);

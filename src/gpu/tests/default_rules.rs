@@ -308,7 +308,7 @@ fn cohesion_pulls_toward_neighbours_within_vision_radius() {
 }
 
 /// Dodatni współczynnik macierzy przyciąga sąsiada w środku jądra, ujemny odpycha; w każdym
-/// wariancie opcji `attraction` i `mix`.
+/// wariancie opcji `attraction`.
 #[test]
 fn attraction_follows_matrix_sign_in_every_option() {
   let mut spec = isolated_spec(2);
@@ -322,19 +322,15 @@ fn attraction_follows_matrix_sign_in_every_option() {
   particles[0].species = 0;
   particles[1].species = 1;
   for attraction in ["mean", "sum"] {
-    for mix in ["nw_vw", "plain"] {
-      let options = SimOptions::default()
-        .with("attraction", attraction)
-        .with("mix", mix);
-      let Some(actual) = one_step(options, spec.clone(), particles.clone()) else {
-        return;
-      };
-      let ctx = format!("attraction={attraction} mix={mix}: {actual:?}");
-      // Cząstka 1 (typ 1) jest przyciągana przez typ 0: w stronę cząstki 0.
-      assert!(actual[1].vel[0] < 0.0, "{ctx}");
-      // Cząstka 0 (typ 0) jest odpychana przez typ 1: od cząstki 1.
-      assert!(actual[0].vel[0] < 0.0, "{ctx}");
-    }
+    let options = SimOptions::default().with("attraction", attraction);
+    let Some(actual) = one_step(options, spec.clone(), particles.clone()) else {
+      return;
+    };
+    let ctx = format!("attraction={attraction}: {actual:?}");
+    // Cząstka 1 (typ 1) jest przyciągana przez typ 0: w stronę cząstki 0.
+    assert!(actual[1].vel[0] < 0.0, "{ctx}");
+    // Cząstka 0 (typ 0) jest odpychana przez typ 1: od cząstki 1.
+    assert!(actual[0].vel[0] < 0.0, "{ctx}");
   }
 }
 
@@ -347,17 +343,13 @@ fn every_option_combination_runs_and_differs() {
   let particles = random_particles(&mut rng, 5_000, 3);
   let mut results = Vec::new();
   for attraction in ["mean", "sum"] {
-    for mix in ["nw_vw", "plain"] {
-      let options = SimOptions::default()
-        .with("attraction", attraction)
-        .with("mix", mix);
-      let Some(mut harness) = Harness::new(options, spec.clone(), particles.clone(), WORLD) else {
-        return;
-      };
-      let after = harness.run(20);
-      assert_invariants(&after, WORLD, &format!("attraction={attraction} mix={mix}"));
-      results.push(after);
-    }
+    let options = SimOptions::default().with("attraction", attraction);
+    let Some(mut harness) = Harness::new(options, spec.clone(), particles.clone(), WORLD) else {
+      return;
+    };
+    let after = harness.run(20);
+    assert_invariants(&after, WORLD, &format!("attraction={attraction}"));
+    results.push(after);
   }
   for i in 0..results.len() {
     for j in i + 1..results.len() {

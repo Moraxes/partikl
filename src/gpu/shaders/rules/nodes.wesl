@@ -62,11 +62,6 @@ fn saturating_sum2(sum: vec2<f32>, count: f32, n0: f32) -> vec2<f32> {
   return sum / (1.0 + count / n0);
 }
 
-// Udział części w całości (0 bez całości).
-fn share(part: f32, total: f32) -> f32 {
-  return part / max(1.0, total);
-}
-
 // Relaksacja `current` do `goal` z szybkością `rate` (1/s): przyspieszenie, 0 bez celu.
 fn relax2(current: vec2<f32>, goal: vec2<f32>, rate: f32, has_goal: bool) -> vec2<f32> {
   return select(vec2(0.0), rate * (goal - current), has_goal);
