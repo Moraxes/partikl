@@ -152,7 +152,6 @@ fn current_full_spec_loads_all_rule_params() {
         kernel_middle: 28.0,
         kernel_width: 12.0,
         attraction_scale: 12.0,
-        attraction_sum_ref: 6.0,
         friction: 0.02,
         separation_radius: 3.0,
         separation_stiffness: 15.0,
@@ -172,7 +171,6 @@ fn current_full_spec_loads_all_rule_params() {
   assert_eq!(spec.params.kernel_middle, 28.0);
   assert_eq!(spec.params.kernel_width, 12.0);
   assert_eq!(spec.params.attraction_scale, 12.0);
-  assert_eq!(spec.params.attraction_sum_ref, 6.0);
   assert_eq!(spec.params.friction, 0.02);
   assert_eq!(spec.params.separation_radius, 3.0);
   assert_eq!(spec.params.separation_stiffness, 15.0);
@@ -212,7 +210,6 @@ fn legacy_unknown_fields_are_rejected_by_deny_unknown_fields() {
 fn param_limits_are_enforced_on_load() {
   for (name, params) in [
     ("zero-width", "kernel_width: 0.0"),
-    ("zero-sum-ref", "attraction_sum_ref: 0.0"),
     ("zero-saturation", "separation_saturation: 0.0"),
     ("vision-too-far", "vision_radius: 100.0"),
     ("separation-too-far", "separation_radius: 100.0"),

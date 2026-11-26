@@ -8,7 +8,6 @@ struct RuleParams {
   kernel_middle: f32,
   kernel_width: f32,
   attraction_scale: f32,
-  attraction_sum_ref: f32,
   friction: f32,
   velocity_threshold: f32,
   separation_radius: f32,

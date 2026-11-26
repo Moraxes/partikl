@@ -13,6 +13,7 @@ use crate::options::SimOptions;
 use crate::spec::Interaction;
 use bevy::render::render_resource::ShaderType;
 
+mod clusters;
 mod default_rules;
 mod engine;
 mod force_scales;

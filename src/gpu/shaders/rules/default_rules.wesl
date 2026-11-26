@@ -11,7 +11,8 @@
 //  - `RuleAccum`, `accum_init`, `RuleSelf`, `prepare_self`, `pair_interact`, `integrate_particle`.
 // Reguły same importują swoje wiązania (parametry, macierz sił z `rules/bindings.wesl`).
 
-//@option attraction key=G: mean, sum=ATTRACTION_SUM
+//@option overlap key=O: unweighted, weighted=OVERLAP_WEIGHTED
+//@option overlap_damp key=D: off, force=OVERLAP_DAMP
 
 import super::super::engine::types::Particle;
 import super::bindings::rule_params;
@@ -20,8 +21,7 @@ import super::nodes as nd;
 
 // Model sił. Wszystkie składowe są przyspieszeniami (j/s², masa 1), sumowanymi w `integrate_particle`:
 //  - przyciąganie: macierz typów przez trójkątne jądro (`kernel_middle ± kernel_width`), wszystkie
-//    gatunki; opcja `attraction`: `mean` = średnia ważona jądrem, `sum` = suma przez stałą wagę
-//    odniesienia `attraction_sum_ref`; całość razy `attraction_scale`;
+//    gatunki; średnia ważona jądrem (ściągnięta do zera przy małej wadze), razy `attraction_scale`;
 //  - separacja: sprężyny `separation_stiffness · (separation_radius − d)` od każdego sąsiada
 //    (wszystkie gatunki) bliżej niż `separation_radius`, suma nasycana licznikiem
 //    (`separation_saturation`): w tłumie siła rośnie wolniej niż liczba sąsiadów, więc dość silne
@@ -30,7 +30,11 @@ import super::nodes as nd;
 //    z szybkością `alignment_rate` (1/s);
 //  - spójność: sprężyna do środka sąsiadów własnego gatunku w `vision_radius`, `cohesion_stiffness`
 //    (1/s²);
-//  - rozsuwanie nakładających się (`repulsion_radius`) to poprawka pozycji, nie siła.
+//  - rozsuwanie nakładających się (`repulsion_radius`) to poprawka pozycji, nie siła; średnia
+//    poprawek od nakładających się sąsiadów. Opcja `overlap`: `unweighted` sumuje poprawki bez wagi
+//    próbkowania przy liczniku z wagą, więc przy próbkowaniu (gęsto) średnia maleje ok. `every`
+//    razy; `weighted` waży też sumę (średnia nieobciążona). Opcja `overlap_damp`: `force` dzieli
+//    sumę sił przez `1 + liczba nakładających się sąsiadów` (z wagą).
 
 const F16_MAX: f32 = 65504.0;
 
@@ -67,7 +71,7 @@ struct AttractionAcc {
   // [1] Σ coeff · h · dir: kierunki do sąsiadów ważone jądrem i współczynnikiem macierzy typów;
   // znak `coeff`: przyciąga (+) / odpycha (−), dopiero `attraction_scale` daje j/s².
   pull_sum: vec2<f32>,
-  // [1] Σ h: łączna waga jądra; mianownik średniej w trybie `mean` (w `sum` nieużywana).
+  // [1] Σ h: łączna waga jądra; mianownik średniej.
   kernel_weight_sum: f32,
 }
 
@@ -91,7 +95,7 @@ struct FlockAcc {
 
 // Rozsuwanie nakładających się (bliżej niż `repulsion_radius`).
 struct OverlapAcc {
-  // [j] Σ poprawek pozycji wypychających z nakładania (bez wagi próbkowania).
+  // [j] Σ poprawek pozycji wypychających z nakładania (z wagą próbkowania tylko w `overlap=weighted`).
   push_sum: vec2<f32>,
   // [1] Liczba nakładających się par (z wagą); mianownik uśredniania poprawki.
   count: f32,
@@ -141,8 +145,13 @@ fn overlap_pair(acc: OverlapAcc, g: nd::PairGeom, weight: f32) -> OverlapAcc {
   if !nd::inside(g.dist, reach) {
     return acc;
   }
-  // Poprawka bez wagi próbkowania, licznik z wagą (jak przed podziałem na akumulatory).
-  return OverlapAcc(acc.push_sum + nd::overlap_push(g.dist, reach, g.dir), acc.count + weight);
+  @if(OVERLAP_WEIGHTED) {
+    return OverlapAcc(acc.push_sum + weight * nd::overlap_push(g.dist, reach, g.dir), acc.count + weight);
+  }
+  @else {
+    // Poprawka bez wagi próbkowania, licznik z wagą (jak przed podziałem na akumulatory).
+    return OverlapAcc(acc.push_sum + nd::overlap_push(g.dist, reach, g.dir), acc.count + weight);
+  }
 }
 
 // Wkład jednego sąsiada (już w zasięgu oddziaływania, `dist_sq > 0`). `delta` wskazuje od
@@ -165,12 +174,7 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
 
 fn attraction_force(acc: AttractionAcc) -> vec2<f32> {
   let u = rule_params;
-  @if(ATTRACTION_SUM) {
-    return u.attraction_scale * acc.pull_sum / u.attraction_sum_ref;
-  }
-  @else {
-    return u.attraction_scale * nd::shrunk_mean2(acc.pull_sum, acc.kernel_weight_sum, 2.0);
-  }
+  return u.attraction_scale * nd::shrunk_mean2(acc.pull_sum, acc.kernel_weight_sum, 2.0);
 }
 
 fn separation_force(acc: SeparationAcc) -> vec2<f32> {
@@ -194,7 +198,10 @@ fn integrate_particle(self_p: Particle, accum: RuleAccum) -> Particle {
 
   // Siły z prędkości sprzed poprawki rozsuwania.
   let flock = alignment_force(accum.flock, p.vel) + cohesion_force(accum.flock);
-  let force = separation_force(accum.separation) + flock + attraction_force(accum.attraction);
+  var force = separation_force(accum.separation) + flock + attraction_force(accum.attraction);
+  @if(OVERLAP_DAMP) {
+    force /= 1.0 + accum.overlap.count;
+  }
 
   // Poprawka tylko w prędkości; pozycja idzie za nią w tym samym kroku (p.pos += v * dt).
   let corr = nd::mean2(accum.overlap.push_sum, accum.overlap.count);

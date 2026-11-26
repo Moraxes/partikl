@@ -6,7 +6,7 @@ use super::*;
 fn layout_matches_wgsl() {
   assert_eq!(size_of::<GpuParticle>(), 24);
   assert_eq!(EngineUniforms::min_size().get(), 56);
-  assert_eq!(RuleParams::min_size().get(), 68);
+  assert_eq!(RuleParams::min_size().get(), 64);
 }
 
 #[test]

@@ -307,8 +307,22 @@ fn cohesion_pulls_toward_neighbours_within_vision_radius() {
   assert!(actual[5].vel[0] < 0.0 && actual[6].vel[0] > 0.0);
 }
 
+/// Wszystkie kombinacje opcji reguł (opis, opcje).
+fn option_combinations() -> Vec<(String, SimOptions)> {
+  let mut out = Vec::new();
+  for overlap in ["unweighted", "weighted"] {
+    for damp in ["off", "force"] {
+      let options = SimOptions::default()
+        .with("overlap", overlap)
+        .with("overlap_damp", damp);
+      out.push((format!("overlap={overlap} overlap_damp={damp}"), options));
+    }
+  }
+  out
+}
+
 /// Dodatni współczynnik macierzy przyciąga sąsiada w środku jądra, ujemny odpycha; w każdym
-/// wariancie opcji `attraction`.
+/// wariancie opcji.
 #[test]
 fn attraction_follows_matrix_sign_in_every_option() {
   let mut spec = isolated_spec(2);
@@ -321,12 +335,11 @@ fn attraction_follows_matrix_sign_in_every_option() {
   ];
   particles[0].species = 0;
   particles[1].species = 1;
-  for attraction in ["mean", "sum"] {
-    let options = SimOptions::default().with("attraction", attraction);
+  for (ctx, options) in option_combinations() {
     let Some(actual) = one_step(options, spec.clone(), particles.clone()) else {
       return;
     };
-    let ctx = format!("attraction={attraction}: {actual:?}");
+    let ctx = format!("{ctx}: {actual:?}");
     // Cząstka 1 (typ 1) jest przyciągana przez typ 0: w stronę cząstki 0.
     assert!(actual[1].vel[0] < 0.0, "{ctx}");
     // Cząstka 0 (typ 0) jest odpychana przez typ 1: od cząstki 1.
@@ -342,13 +355,12 @@ fn every_option_combination_runs_and_differs() {
   let spec = spec(&mut rng, 3);
   let particles = random_particles(&mut rng, 5_000, 3);
   let mut results = Vec::new();
-  for attraction in ["mean", "sum"] {
-    let options = SimOptions::default().with("attraction", attraction);
+  for (ctx, options) in option_combinations() {
     let Some(mut harness) = Harness::new(options, spec.clone(), particles.clone(), WORLD) else {
       return;
     };
     let after = harness.run(20);
-    assert_invariants(&after, WORLD, &format!("attraction={attraction}"));
+    assert_invariants(&after, WORLD, &ctx);
     results.push(after);
   }
   for i in 0..results.len() {

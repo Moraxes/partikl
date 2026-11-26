@@ -35,19 +35,6 @@ fn norm(v: V) -> f64 {
   (v.0 * v.0 + v.1 * v.1).sqrt()
 }
 
-/// Warianty opcji reguł (z `MACRO_OPTIONS`).
-#[derive(Clone, Copy)]
-struct Mode {
-  attraction_sum: bool,
-}
-
-fn mode() -> Mode {
-  let opts = std::env::var("MACRO_OPTIONS").unwrap_or_default();
-  Mode {
-    attraction_sum: opts.contains("attraction=sum"),
-  }
-}
-
 /// Siły jednej cząstki (tak, jak wchodzą do sumy) i dane pomocnicze.
 #[derive(Clone, Copy, Default)]
 struct Forces {
@@ -64,13 +51,7 @@ struct Forces {
 }
 
 /// Lustro `pair_interact` i sił z `integrate_particle`.
-fn forces(
-  spec: &ParticleSpec,
-  mode: Mode,
-  particles: &[GpuParticle],
-  grid: &Grid,
-  i: usize,
-) -> Forces {
+fn forces(spec: &ParticleSpec, particles: &[GpuParticle], grid: &Grid, i: usize) -> Forces {
   let u = &spec.params;
   let me = &particles[i];
   let vel = (me.vel[0] as f64, me.vel[1] as f64);
@@ -108,11 +89,7 @@ fn forces(
     }
     all += 1.0;
   });
-  let attraction = if mode.attraction_sum {
-    scale(u.attraction_scale as f64 / u.attraction_sum_ref as f64, att)
-  } else {
-    scale(u.attraction_scale as f64 / (kernel_w + 2.0), att)
-  };
+  let attraction = scale(u.attraction_scale as f64 / (kernel_w + 2.0), att);
   let separation = scale(
     u.separation_stiffness as f64 / (1.0 + n_sep / u.separation_saturation as f64),
     push,
@@ -206,7 +183,7 @@ fn summary_lines(label: &str, rows: &[Forces], out: &mut String) {
 
 /// Liczba kandydatów na sąsiadów każdej cząstki na GPU: cząstki w sąsiedztwie
 /// `(2·GRID_REACH + 1)²` komórek siatki silnika (powyżej `DEFAULT_MAX_CANDIDATES` GPU próbkuje).
-fn gpu_candidates(state: &[GpuParticle]) -> Vec<u32> {
+pub(super) fn gpu_candidates(state: &[GpuParticle]) -> Vec<u32> {
   let geo = Geometry::new(MS_WORLD);
   let (nx, ny) = (geo.dims.x as i64, geo.dims.y as i64);
   let cell = |p: &GpuParticle| {
@@ -239,7 +216,6 @@ fn gpu_candidates(state: &[GpuParticle]) -> Vec<u32> {
 fn check_mirror(
   harness: &mut Harness,
   spec: &ParticleSpec,
-  mode: Mode,
   state: &[GpuParticle],
   rng: &mut StdRng,
   name: &str,
@@ -251,7 +227,7 @@ fn check_mirror(
     .collect();
   ids.shuffle(rng);
   ids.truncate(CHECK_SAMPLE);
-  let rows = par_rows(&ids, |i| forces(spec, mode, state, &grid, i));
+  let rows = par_rows(&ids, |i| forces(spec, state, &grid, i));
   let next = harness.run(1);
   let mut checked = 0;
   let mut worst = 0.0f64;
@@ -290,7 +266,6 @@ fn measure_forces() {
     .join(".artifacts")
     .join(out);
   std::fs::create_dir_all(&dir).unwrap();
-  let mode = mode();
   let mut summary = String::from("matrix,quantity,n,p1,p10,p25,p50,p75,p90,p99,mean,zero_frac\n");
   let mut pooled: Vec<Forces> = Vec::new();
   for (k, (name, types, spec)) in matrices().into_iter().enumerate() {
@@ -313,9 +288,9 @@ fn measure_forces() {
       let mut ids: Vec<usize> = (0..MS_N).collect();
       ids.shuffle(&mut rng);
       ids.truncate(SAMPLE);
-      rows.extend(par_rows(&ids, |i| forces(&spec, mode, &state, &grid, i)));
+      rows.extend(par_rows(&ids, |i| forces(&spec, &state, &grid, i)));
       if step == SNAPSHOTS[0] {
-        check_mirror(&mut harness, &spec, mode, &state, &mut rng, &name);
+        check_mirror(&mut harness, &spec, &state, &mut rng, &name);
         done += 1;
       }
     }

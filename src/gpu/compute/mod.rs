@@ -92,7 +92,6 @@ pub struct RuleParams {
   pub kernel_middle: f32,
   pub kernel_width: f32,
   pub attraction_scale: f32,
-  pub attraction_sum_ref: f32,
   pub friction: f32,
   #[serde(skip)]
   pub velocity_threshold: f32,
@@ -116,7 +115,6 @@ impl RuleParams {
       self.kernel_middle,
       self.kernel_width,
       self.attraction_scale,
-      self.attraction_sum_ref,
       self.friction,
       self.separation_radius,
       self.separation_stiffness,
@@ -131,13 +129,8 @@ impl RuleParams {
     if finite.iter().any(|v| !v.is_finite()) {
       return Err("parametry reguł muszą być skończone".into());
     }
-    if self.kernel_width <= 0.0
-      || self.attraction_sum_ref <= 0.0
-      || self.separation_saturation <= 0.0
-    {
-      return Err(
-        "kernel_width, attraction_sum_ref i separation_saturation muszą być dodatnie".into(),
-      );
+    if self.kernel_width <= 0.0 || self.separation_saturation <= 0.0 {
+      return Err("kernel_width i separation_saturation muszą być dodatnie".into());
     }
     let reach = self.kernel_middle + self.kernel_width;
     if reach > INTERACTION_RADIUS {
@@ -169,7 +162,6 @@ impl Default for RuleParams {
       kernel_middle: KERNEL_MIDDLE,
       kernel_width: KERNEL_WIDTH,
       attraction_scale: ATTRACTION_SCALE,
-      attraction_sum_ref: ATTRACTION_SUM_REF,
       friction: FRICTION_COEFF,
       velocity_threshold: VELOCITY_THRESHOLD,
       separation_radius: SEPARATION_RADIUS,

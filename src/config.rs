@@ -21,9 +21,6 @@ pub const REPULSION_RADIUS: f32 = 1.0;
 
 /// Skala przyciągania z macierzy: współczynnik macierzy razy to daje przyspieszenie (j/s²).
 pub const ATTRACTION_SCALE: f32 = 10.0;
-/// Przyciąganie jako suma (opcja `attraction=sum`): suma wkładów dzielona przez tę wagę jądra,
-/// czyli siła jak od tylu sąsiadów w środku jądra.
-pub const ATTRACTION_SUM_REF: f32 = 8.0;
 
 /// Współczynnik tarcia kwadratowego (proporcjonalnego do |v|·v).
 pub const FRICTION_COEFF: f32 = 0.01;
