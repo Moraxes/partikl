@@ -65,35 +65,47 @@ fn prepare_self(p: Particle) -> RuleSelf {
 
 // -- akumulatory (sumy ważone wagą próbkowania) --
 
-// Przyciąganie: suma `coeff · h · dir` i suma wag jądra `h`.
+// Przyciąganie (wszystkie gatunki w zasięgu jądra).
 struct AttractionAcc {
-  force: vec2<f32>,
-  kernel_w: f32,
+  // [1] Σ coeff · h · dir: kierunki do sąsiadów ważone jądrem i współczynnikiem macierzy typów;
+  // znak `coeff`: przyciąga (+) / odpycha (−), dopiero `attraction_scale` daje j/s².
+  pull_sum: vec2<f32>,
+  // [1] Σ h: łączna waga jądra; mianownik średniej w trybie `mean` (w `sum` nieużywana).
+  kernel_weight_sum: f32,
 }
 
-// Separacja: suma sprężyn i liczba sąsiadów w `separation_radius`.
+// Separacja (wszystkie gatunki bliżej niż `separation_radius`).
 struct SeparationAcc {
-  push: vec2<f32>,
-  n: f32,
+  // [j] Σ wydłużeń sprężyn od sąsiadów; razy `separation_stiffness` (1/s²) daje j/s².
+  spring_sum: vec2<f32>,
+  // [1] Ile sąsiadów naciska (z wagą); steruje nasycaniem sumy (`separation_saturation`).
+  crowd: f32,
 }
 
-// Wyrównanie i spójność (własny gatunek w `vision_radius`): suma prędkości, suma przesunięć, liczba.
+// Wyrównanie i spójność (tylko własny gatunek w `vision_radius`).
 struct FlockAcc {
-  vel: vec2<f32>,
-  offset: vec2<f32>,
-  n: f32,
+  // [j/s] Σ prędkości sąsiadów; po podzieleniu przez `count` cel relaksacji wyrównania.
+  vel_sum: vec2<f32>,
+  // [j] Σ przesunięć do sąsiadów; po podzieleniu przez `count` wektor do środka grupy (spójność).
+  offset_sum: vec2<f32>,
+  // [1] Liczba sąsiadów stada (z wagą); zero wyłącza wyrównanie.
+  count: f32,
 }
 
-// Rozsuwanie: suma poprawek pozycji i waga nakładających się par.
+// Rozsuwanie nakładających się (bliżej niż `repulsion_radius`).
 struct OverlapAcc {
-  corr: vec2<f32>,
-  n: f32,
+  // [j] Σ poprawek pozycji wypychających z nakładania (bez wagi próbkowania).
+  push_sum: vec2<f32>,
+  // [1] Liczba nakładających się par (z wagą); mianownik uśredniania poprawki.
+  count: f32,
 }
 
-// Sąsiedzi w zasięgu: własnego gatunku i wszyscy.
+// Skład gatunkowy otoczenia, do mnożnika mieszania (opcja `mix`).
 struct SpeciesAcc {
-  same: f32,
-  all: f32,
+  // [1] Sąsiedzi własnego gatunku (z wagą).
+  same_count: f32,
+  // [1] Wszyscy sąsiedzi w zasięgu oddziaływania (z wagą); `same_count / total_count` to `nw`.
+  total_count: f32,
 }
 
 struct RuleAccum {
@@ -119,7 +131,7 @@ fn accum_init() -> RuleAccum {
 fn attraction_pair(acc: AttractionAcc, g: nd::PairGeom, coeff: f32, weight: f32) -> AttractionAcc {
   let u = rule_params;
   let h = nd::hat(g.dist, u.kernel_middle, u.kernel_width);
-  return AttractionAcc(acc.force + weight * coeff * h * g.dir, acc.kernel_w + weight * h);
+  return AttractionAcc(acc.pull_sum + weight * coeff * h * g.dir, acc.kernel_weight_sum + weight * h);
 }
 
 fn separation_pair(acc: SeparationAcc, g: nd::PairGeom, weight: f32) -> SeparationAcc {
@@ -127,14 +139,14 @@ fn separation_pair(acc: SeparationAcc, g: nd::PairGeom, weight: f32) -> Separati
   if !nd::inside(g.dist, r) {
     return acc;
   }
-  return SeparationAcc(acc.push + weight * nd::spring(g.dist, r, g.dir), acc.n + weight);
+  return SeparationAcc(acc.spring_sum + weight * nd::spring(g.dist, r, g.dir), acc.crowd + weight);
 }
 
 fn flock_pair(acc: FlockAcc, g: nd::PairGeom, delta: vec2<f32>, other_vel: vec2<f32>, weight: f32) -> FlockAcc {
   if !nd::inside(g.dist, rule_params.vision_radius) {
     return acc;
   }
-  return FlockAcc(acc.vel + weight * other_vel, acc.offset + weight * delta, acc.n + weight);
+  return FlockAcc(acc.vel_sum + weight * other_vel, acc.offset_sum + weight * delta, acc.count + weight);
 }
 
 fn overlap_pair(acc: OverlapAcc, g: nd::PairGeom, weight: f32) -> OverlapAcc {
@@ -143,11 +155,11 @@ fn overlap_pair(acc: OverlapAcc, g: nd::PairGeom, weight: f32) -> OverlapAcc {
     return acc;
   }
   // Poprawka bez wagi próbkowania, licznik z wagą (jak przed podziałem na akumulatory).
-  return OverlapAcc(acc.corr + nd::overlap_push(g.dist, reach, g.dir), acc.n + weight);
+  return OverlapAcc(acc.push_sum + nd::overlap_push(g.dist, reach, g.dir), acc.count + weight);
 }
 
 fn species_pair(acc: SpeciesAcc, same: bool, weight: f32) -> SpeciesAcc {
-  return SpeciesAcc(acc.same + weight * f32(same), acc.all + weight);
+  return SpeciesAcc(acc.same_count + weight * f32(same), acc.total_count + weight);
 }
 
 // Wkład jednego sąsiada (już w zasięgu oddziaływania, `dist_sq > 0`). `delta` wskazuje od
@@ -172,24 +184,24 @@ fn pair_interact(self_p: Particle, other: Neighbour, delta: vec2<f32>, dist_sq: 
 fn attraction_force(acc: AttractionAcc) -> vec2<f32> {
   let u = rule_params;
   @if(ATTRACTION_SUM) {
-    return u.attraction_scale * acc.force / u.attraction_sum_ref;
+    return u.attraction_scale * acc.pull_sum / u.attraction_sum_ref;
   }
   @else {
-    return u.attraction_scale * nd::shrunk_mean2(acc.force, acc.kernel_w, 2.0);
+    return u.attraction_scale * nd::shrunk_mean2(acc.pull_sum, acc.kernel_weight_sum, 2.0);
   }
 }
 
 fn separation_force(acc: SeparationAcc) -> vec2<f32> {
   let u = rule_params;
-  return u.separation_stiffness * nd::saturating_sum2(acc.push, acc.n, u.separation_saturation);
+  return u.separation_stiffness * nd::saturating_sum2(acc.spring_sum, acc.crowd, u.separation_saturation);
 }
 
 fn alignment_force(acc: FlockAcc, vel: vec2<f32>) -> vec2<f32> {
-  return nd::relax2(vel, nd::mean2(acc.vel, acc.n), rule_params.alignment_rate, acc.n > 0.0);
+  return nd::relax2(vel, nd::mean2(acc.vel_sum, acc.count), rule_params.alignment_rate, acc.count > 0.0);
 }
 
 fn cohesion_force(acc: FlockAcc) -> vec2<f32> {
-  return rule_params.cohesion_stiffness * nd::mean2(acc.offset, acc.n);
+  return rule_params.cohesion_stiffness * nd::mean2(acc.offset_sum, acc.count);
 }
 
 // Mnożnik mieszania boidów z przyciąganiem (opcja `mix`).
@@ -198,7 +210,7 @@ fn mix_gain(species: SpeciesAcc, vel: vec2<f32>) -> f32 {
     return 1.0;
   }
   @else {
-    let nw = 0.1 + nd::share(species.same, species.all);
+    let nw = 0.1 + nd::share(species.same_count, species.total_count);
     let vw = log2(2.0 + dot(vel, vel));
     return sqrt(nw * vw);
   }
@@ -216,7 +228,7 @@ fn integrate_particle(self_p: Particle, accum: RuleAccum) -> Particle {
   let force = separation_force(accum.separation) + gain * flock + attraction_force(accum.attraction) / gain;
 
   // Poprawka tylko w prędkości; pozycja idzie za nią w tym samym kroku (p.pos += v * dt).
-  let corr = nd::mean2(accum.overlap.corr, accum.overlap.n);
+  let corr = nd::mean2(accum.overlap.push_sum, accum.overlap.count);
   p.vel += corr / u.dt;
   var v = nd::rest_below(p.vel, u.velocity_threshold);
   v = nd::quad_drag(nd::kick(v, force, u.dt), u.friction, u.dt);
