@@ -17,6 +17,7 @@ mod default_rules;
 mod engine;
 mod force_scales;
 mod macro_stats;
+mod record;
 mod render;
 mod rules;
 mod shaders;
